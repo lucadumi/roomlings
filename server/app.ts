@@ -2,8 +2,12 @@ import express from 'express'
 import type { ErrorRequestHandler, Request, Response } from 'express'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { balances, centsSchema, currencies, expenseInputSchema, memberColors, nameSchema } from '../shared/domain.ts'
-import type { Household } from '../shared/domain.ts'
+import {
+  balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
+  centsSchema, currencies, expenseInputSchema, memberColors, nameSchema,
+} from '../shared/domain.ts'
+import type { Bill, Expense, Household } from '../shared/domain.ts'
+import { billOccurrence, reviseBill, setBillPaused } from '../shared/bills.ts'
 import type { Store } from './store.ts'
 
 class ApiError extends Error {
@@ -54,6 +58,21 @@ export function createApp(store: Store) {
     store.save(household)
     res.json({ household })
   }
+  const requireRoommates = (household: Household, participants: string[], paidBy?: string) => {
+    const members = new Set(household.members.map((member) => member.id))
+    if (participants.some((id) => !members.has(id)) || (paidBy !== undefined && !members.has(paidBy))) {
+      throw new ApiError(400, 'Choose roommates who belong to this kitchen.')
+    }
+  }
+  const addExpense = (household: Household, expense: Omit<Expense, 'id' | 'createdAt'>) => {
+    if (household.expenses.length >= 20_000) throw new ApiError(409, 'This kitchen has reached its expense limit. Export the ledger and start a new kitchen.')
+    household.expenses.unshift({ ...expense, id: randomUUID(), createdAt: new Date().toISOString() })
+  }
+  const findBill = (household: Household, id: string): Bill => {
+    const bill = household.bills.find((bill) => bill.id === id)
+    if (!bill) throw new ApiError(404, 'That monthly bill was not found in this kitchen.')
+    return bill
+  }
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
   app.post('/api/demo', (_req, res) => res.status(201).json(store.create('The Sunday House', 'You', 'EUR', 45000, true)))
@@ -78,17 +97,54 @@ export function createApp(store: Store) {
   app.get('/api/household', (req, res) => res.json(authenticated(req)))
   app.post('/api/expenses', (req, res) => mutate(req, res, (household) => {
     const expense = expenseInputSchema.parse(req.body)
-    if (!household.members.some((member) => member.id === expense.paidBy)
-      || expense.participants.some((id) => !household.members.some((member) => member.id === id))) {
-      throw new ApiError(400, 'Choose roommates who belong to this kitchen.')
-    }
-    if (household.expenses.length >= 20_000) throw new ApiError(409, 'This kitchen has reached its expense limit. Export the ledger and start a new kitchen.')
-    household.expenses.unshift({ ...expense, id: randomUUID(), createdAt: new Date().toISOString() })
+    requireRoommates(household, expense.participants, expense.paidBy)
+    addExpense(household, expense)
   }))
   app.delete('/api/expenses/:id', (req, res) => mutate(req, res, (household) => {
     const index = household.expenses.findIndex((expense) => expense.id === req.params.id)
-    if (index === -1) throw new ApiError(404, 'That grocery run is no longer in the ledger.')
+    if (index === -1) throw new ApiError(404, 'That expense is no longer in the ledger.')
     household.expenses.splice(index, 1)
+  }))
+  app.post('/api/bills', (req, res) => mutate(req, res, (household) => {
+    const input = billCreateInputSchema.parse(req.body)
+    requireRoommates(household, input.participants)
+    if (household.bills.length >= 100) throw new ApiError(409, 'This kitchen already has 100 monthly bills.')
+    if (!household.bills.length) household.billingTimeZone = input.timeZone
+    const startMonth = input.firstDueDate.slice(0, 7)
+    household.bills.unshift({
+      id: randomUUID(), createdAt: new Date().toISOString(), startMonth, pauses: [],
+      revisions: [{
+        fromMonth: startMonth, name: input.name, amount: input.amount,
+        dueDay: Number(input.firstDueDate.slice(8)), participants: input.participants,
+      }],
+    })
+  }))
+  app.patch('/api/bills/:id', (req, res) => mutate(req, res, (household) => {
+    const bill = findBill(household, req.params.id)
+    const input = billEditInputSchema.parse(req.body)
+    requireRoommates(household, input.participants)
+    const updated = reviseBill(bill, input, billingDate(household.billingTimeZone).slice(0, 7))
+    household.bills = household.bills.map((entry) => entry.id === bill.id ? updated : entry)
+  }))
+  app.post('/api/bills/:id/pause', (req, res) => mutate(req, res, (household) => {
+    const bill = findBill(household, req.params.id)
+    const { paused } = z.object({ paused: z.boolean() }).parse(req.body)
+    const alreadyPaused = bill.pauses.some((pause) => pause.untilMonth === null)
+    if (paused === alreadyPaused) throw new ApiError(409, paused ? 'This monthly bill is already paused.' : 'This monthly bill is already active.')
+    const updated = setBillPaused(bill, paused, billingDate(household.billingTimeZone).slice(0, 7))
+    household.bills = household.bills.map((entry) => entry.id === bill.id ? updated : entry)
+  }))
+  app.post('/api/bills/:id/payments', (req, res) => mutate(req, res, (household) => {
+    const bill = findBill(household, req.params.id)
+    const input = billPaymentInputSchema.parse(req.body)
+    requireRoommates(household, input.participants, input.paidBy)
+    const item = billOccurrence(household, bill, input.month)
+    if (!item) throw new ApiError(409, 'This bill is not scheduled for that month. Refresh the bill and choose an active month.')
+    if (item.payment) throw new ApiError(409, 'A payment is already recorded for this bill and month.')
+    addExpense(household, {
+      description: item.name, amount: input.amount, paidBy: input.paidBy, participants: input.participants,
+      category: 'other', date: input.date, bill: { billId: bill.id, month: input.month, dueDate: item.dueDate },
+    })
   }))
   app.post('/api/settlements', (req, res) => mutate(req, res, (household) => {
     const transfer = z.object({ from: z.string().uuid(), to: z.string().uuid(), amount: centsSchema }).parse(req.body)
@@ -107,8 +163,8 @@ export function createApp(store: Store) {
   }))
   app.patch('/api/household', (req, res) => mutate(req, res, (household) => {
     const input = z.object({ name: nameSchema, budget: centsSchema, currency: z.enum(currencies) }).parse(req.body)
-    if (input.currency !== household.currency && (household.expenses.length || household.settlements.length)) {
-      throw new ApiError(400, 'Currency cannot change after the first expense. Create a new kitchen for a different currency.')
+    if (input.currency !== household.currency && (household.expenses.length || household.settlements.length || household.bills.length)) {
+      throw new ApiError(400, 'Currency cannot change after adding expenses or monthly bills. Create a new kitchen for a different currency.')
     }
     Object.assign(household, input)
   }))

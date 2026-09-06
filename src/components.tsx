@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from 'react'
-import type { FormEvent, ReactNode } from 'react'
-import { Apple, Coffee, Cookie, Egg, ShoppingBasket, X } from 'lucide-react'
+import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
+import { Apple, Check, Coffee, Cookie, Egg, ShoppingBasket, X } from 'lucide-react'
+import { money, splitAmount } from '../shared/domain.ts'
 import type { Category, Member } from '../shared/domain.ts'
 
 export function CategoryIcon({ category, size = 20 }: { category: Category; size?: number }) {
@@ -70,8 +71,8 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
   </div>
 }
 
-export function RoomPanel({ title, subtitle, children, onClose }: {
-  title: string; subtitle: string; children: ReactNode; onClose: () => void
+export function RoomPanel({ title, subtitle, children, onClose, view }: {
+  title: string; subtitle: string; children: ReactNode; onClose: () => void; view?: string
 }) {
   const panel = useRef<HTMLElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
@@ -86,7 +87,7 @@ export function RoomPanel({ title, subtitle, children, onClose }: {
     if (!returnFocus.current) returnFocus.current = document.querySelector<HTMLButtonElement>('.game-dock button[aria-pressed="true"]')
     if (scroll.current) scroll.current.scrollTop = 0
     panel.current?.focus({ preventScroll: true })
-  }, [title])
+  }, [title, view])
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented) {
@@ -108,4 +109,28 @@ export function RoomPanel({ title, subtitle, children, onClose }: {
 
 export function Form({ children, onSubmit }: { children: ReactNode; onSubmit: () => void }) {
   return <form onSubmit={(event: FormEvent) => { event.preventDefault(); onSubmit() }}>{children}</form>
+}
+
+export function SplitParticipants({ members, selected, onChange, amount, currency, disabled }: {
+  members: Member[]
+  selected: string[]
+  onChange: Dispatch<SetStateAction<string[]>>
+  amount: number | null
+  currency: string
+  disabled: boolean
+}) {
+  const shares = amount && selected.length ? splitAmount(amount, selected) : null
+  return <>
+    <fieldset className="split-fieldset"><legend>Share it with</legend><div className="participant-options">
+      {members.map((member) => <label className={`participant-option${selected.includes(member.id) ? ' chosen' : ''}`} key={member.id}>
+        <input type="checkbox" checked={selected.includes(member.id)} disabled={disabled} onChange={(event) => onChange((previous) =>
+          event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id),
+        )} />
+        <Avatar member={member} small /><span>{member.name}</span>{selected.includes(member.id) && <Check size={13} />}
+      </label>)}
+    </div></fieldset>
+    {shares && <div className="split-preview">{members.filter((member) => selected.includes(member.id)).map((member) =>
+      <span key={member.id}>{member.name}<strong>{money(shares.get(member.id) ?? 0, currency)}</strong></span>,
+    )}</div>}
+  </>
 }

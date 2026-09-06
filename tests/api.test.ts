@@ -6,7 +6,8 @@ import type { AddressInfo } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { createApp } from '../server/app.ts'
 import { Store } from '../server/store.ts'
-import { balances } from '../shared/domain.ts'
+import { balances, billingDate, householdSchema, localDate, monthlyGroceries } from '../shared/domain.ts'
+import { addMonths, monthlyBills } from '../shared/bills.ts'
 import type { Session } from '../shared/domain.ts'
 
 describe('shared kitchen API', () => {
@@ -32,6 +33,14 @@ describe('shared kitchen API', () => {
     const response = await call('/households', { name: 'Our kitchen', memberName: 'Ada', currency: 'EUR', budget: 30000 })
     assert.equal(response.status, 201)
     return response.json()
+  }
+  const createBill = async (session: Session): Promise<Session> => {
+    const response = await call('/bills', {
+      name: 'Internet', amount: 3000, firstDueDate: `${billingDate(session.household.billingTimeZone).slice(0, 7)}-01`,
+      participants: session.household.members.map((member) => member.id), version: session.household.version,
+    }, session.token)
+    assert.equal(response.status, 200)
+    return { ...session, household: householdSchema.parse((await response.json()).household) }
   }
   it('keeps kitchens private and joins roommates into the same persistent ledger', async () => {
     assert.equal((await call('/household')).status, 401)
@@ -88,5 +97,98 @@ describe('shared kitchen API', () => {
     assert.equal(a.household.demo, true)
     assert.equal(a.household.expenses.length, 6)
     assert.equal((await call('/join', { inviteCode: a.household.inviteCode, name: 'Another' })).status, 404)
+  })
+  it('records one bill expense per month even with concurrent or repeated submissions', async () => {
+    const owner = await create()
+    const roommate: Session = await (await call('/join', { inviteCode: owner.household.inviteCode, name: 'Ben' })).json()
+    const session = await createBill({ ...owner, household: roommate.household })
+    const bill = session.household.bills[0]
+    const month = billingDate(session.household.billingTimeZone).slice(0, 7)
+    const input = {
+      month, amount: 3101, paidBy: owner.memberId, participants: session.household.members.map((member) => member.id),
+      date: localDate(), version: session.household.version,
+    }
+    const attempts = await Promise.all([
+      call(`/bills/${bill.id}/payments`, input, owner.token),
+      call(`/bills/${bill.id}/payments`, input, roommate.token),
+    ])
+    assert.deepEqual(attempts.map((response) => response.status).sort(), [200, 409])
+    const current = householdSchema.parse((await (await call('/household', undefined, owner.token)).json()).household)
+    assert.equal(current.expenses.length, 1)
+    assert.equal(current.expenses[0].amount, 3101)
+    assert.equal(current.expenses[0].bill?.billId, bill.id)
+    assert.equal(monthlyGroceries(current, month).length, 0)
+    assert.equal(monthlyBills(current, month)[0].status, 'paid')
+    assert.equal([...balances(current).values()].reduce((sum, value) => sum + value, 0), 0)
+    assert.equal((await call(`/bills/${bill.id}/payments`, { ...input, version: current.version }, owner.token)).status, 409)
+    const removed = await call(`/expenses/${current.expenses[0].id}`, { version: current.version }, owner.token, 'DELETE')
+    const restored = householdSchema.parse((await removed.json()).household)
+    assert.equal(restored.expenses.length, 0)
+    assert.notEqual(monthlyBills(restored, month)[0].status, 'paid')
+    assert.equal((await call(`/bills/${bill.id}/payments`, { ...input, version: restored.version }, owner.token)).status, 200)
+  })
+  it('preserves bill payment snapshots while defaults change and pauses future months', async () => {
+    const session = await createBill(await create())
+    const bill = session.household.bills[0]
+    const month = billingDate(session.household.billingTimeZone).slice(0, 7)
+    const payment = {
+      month, amount: 3205, paidBy: session.memberId, participants: [session.memberId], date: localDate(),
+      version: session.household.version,
+    }
+    const recorded = await call(`/bills/${bill.id}/payments`, payment, session.token)
+    const paid = householdSchema.parse((await recorded.json()).household)
+    const edited = await call(`/bills/${bill.id}`, {
+      name: 'New internet plan', amount: 4000, dueDay: 31, participants: [session.memberId], version: paid.version,
+    }, session.token, 'PATCH')
+    const current = householdSchema.parse((await edited.json()).household)
+    assert.equal(current.expenses[0].description, 'Internet')
+    assert.equal(current.expenses[0].amount, 3205)
+    const pausedResponse = await call(`/bills/${bill.id}/pause`, { paused: true, version: current.version }, session.token)
+    const paused = householdSchema.parse((await pausedResponse.json()).household)
+    assert.equal(monthlyBills(paused, month)[0].status, 'paid')
+    assert.equal(monthlyBills(paused, addMonths(month, 1)).length, 0)
+    assert.equal((await call(`/bills/${bill.id}/payments`, {
+      ...payment, month: addMonths(month, 1), version: paused.version,
+    }, session.token)).status, 409)
+    const resumedResponse = await call(`/bills/${bill.id}/pause`, { paused: false, version: paused.version }, session.token)
+    const resumed = householdSchema.parse((await resumedResponse.json()).household)
+    assert.equal(monthlyBills(resumed, addMonths(month, 1))[0].amount, 4000)
+    assert.equal(resumed.expenses.length, 1)
+  })
+  it('validates bills, protects household boundaries and keeps planned amounts in their currency', async () => {
+    const session = await createBill(await create())
+    const bill = session.household.bills[0]
+    const input = { name: 'Internet', amount: 4000, dueDay: 15, participants: [session.memberId], version: session.household.version }
+    assert.equal((await call(`/bills/${bill.id}`, input, undefined, 'PATCH')).status, 401)
+    assert.equal((await call(`/bills/${bill.id}`, { ...input, version: 0 }, session.token, 'PATCH')).status, 409)
+    assert.equal((await call(`/bills/${bill.id}`, { ...input, participants: [randomUUID()] }, session.token, 'PATCH')).status, 400)
+    assert.equal((await call(`/bills/${bill.id}`, { ...input, participants: [session.memberId, session.memberId] }, session.token, 'PATCH')).status, 400)
+    assert.equal((await call(`/bills/${bill.id}`, { ...input, dueDay: 32 }, session.token, 'PATCH')).status, 400)
+    assert.equal((await call('/bills', { ...input, firstDueDate: '2026-02-30' }, session.token)).status, 400)
+    const other = await create()
+    assert.equal((await call(`/bills/${bill.id}`, { ...input, version: 0 }, other.token, 'PATCH')).status, 404)
+    assert.equal((await call(`/bills/${bill.id}/payments`, {
+      month: localDate().slice(0, 7), date: localDate(), amount: 3000, paidBy: randomUUID(),
+      participants: [session.memberId], version: session.household.version,
+    }, session.token)).status, 400)
+    assert.equal((await call('/household', {
+      name: 'Other currency', budget: 30000, currency: 'USD', version: session.household.version,
+    }, session.token, 'PATCH')).status, 400)
+    const current = householdSchema.parse((await (await call('/household', undefined, session.token)).json()).household)
+    assert.equal(current.version, session.household.version)
+    assert.equal(current.expenses.length, 0)
+  })
+  it('keeps one household billing time zone after the first bill establishes it', async () => {
+    const session = await create()
+    const input = {
+      name: 'Rent', amount: 90000, firstDueDate: localDate(), participants: [session.memberId], timeZone: 'Pacific/Auckland',
+    }
+    const first = await call('/bills', { ...input, version: 0 }, session.token)
+    const initial = householdSchema.parse((await first.json()).household)
+    assert.equal(initial.billingTimeZone, 'Pacific/Auckland')
+    const next = await call('/bills', { ...input, name: 'Electricity', timeZone: 'America/New_York', version: initial.version }, session.token)
+    const current = householdSchema.parse((await next.json()).household)
+    assert.equal(current.billingTimeZone, 'Pacific/Auckland')
+    assert.equal(current.bills.length, 2)
   })
 })
