@@ -12,9 +12,10 @@ import {
 import type { Category, Expense, Household, Session, Settlement, Transfer } from '../shared/domain.ts'
 import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, saveToken, sessionSchema } from './api.ts'
 import type { SavedKitchen } from './api.ts'
-import { Avatar, CategoryIcon, Form, Modal } from './components.tsx'
+import { Avatar, CategoryIcon, Form, Modal, RoomPanel } from './components.tsx'
 import { GameHome } from './GameHome.tsx'
 import type { KitchenAction } from './room.ts'
+import type { FocusRequest } from './camera.ts'
 
 type Page = 'overview' | 'groceries' | 'settle' | 'kitchen' | 'budget'
 type Dialog = 'expense' | 'create' | 'join' | 'invite' | 'settings' | 'help' | { transfer: Transfer } | { remove: Expense } | { undo: Settlement } | null
@@ -63,6 +64,7 @@ export function App() {
   const [syncState, setSyncState] = useState<'saved' | 'offline'>('saved')
   const [saved, setSaved] = useState<SavedKitchen[]>([])
   const [stockEvent, setStockEvent] = useState<{ id: string; category: Category } | null>(null)
+  const [focusRequest, setFocusRequest] = useState<FocusRequest>({ target: 'room', id: 0 })
 
   const initialize = useCallback(() => {
     setLoading(true)
@@ -118,6 +120,7 @@ export function App() {
     setDialog(null)
     setSyncState('saved')
     setStockEvent(null)
+    setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
   }
 
   const action = async (path: string, body: Record<string, unknown>, success: string, method?: string) => {
@@ -195,8 +198,14 @@ export function App() {
     date.setMonth(date.getMonth() + direction)
     setMonth(localDate(date).slice(0, 7))
   }
-  const visit = (next: Page) => { setPage(next); setSearch(''); setFilter('all') }
+  const visit = (next: Page) => {
+    setPage(next)
+    setSearch('')
+    setFilter('all')
+    if (next === 'overview') setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
+  }
   const interact = (action: KitchenAction) => {
+    setFocusRequest((previous) => ({ target: action, id: previous.id + 1 }))
     if (action === 'stock') openDialog('expense')
     else {
       const pages: Record<Exclude<KitchenAction, 'stock'>, Page> = { ledger: 'groceries', budget: 'budget', roommates: 'kitchen', settle: 'settle' }
@@ -215,7 +224,7 @@ export function App() {
         <p><ReceiptText size={19} /><span><strong>Keep the receipts.</strong> The little book holds your shared shopping history.</span></p>
         <p><Wallet size={19} /><span><strong>Watch the house pot.</strong> The coins represent the monthly budget you have left, not points or rewards.</span></p>
         <p><Users size={19} /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
-      </div><p className="field-hint">Drag to turn the room. Use the camera controls to zoom, hide labels, or switch to evening lighting. Everything is also available from the toolbar. The fridge visualizes purchases, not what is left to eat.</p>
+      </div><p className="field-hint">Drag to turn the room. Scroll or pinch to zoom. Selecting an object brings it closer while its details stay beside the room. Use Whole room to pull back, or tap the kettle for a little tea break. Everything is also available from the toolbar. The fridge visualizes purchases, not what is left to eat.</p>
     </Modal>
     if (dialog === 'create') return <Modal title="Make room for your people." subtitle="Start a fresh kitchen, then invite your roommates. You can switch back to saved kitchens from The roommates." onClose={close} busy={busy}>
       <CreateForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/households', body) }} />
@@ -292,7 +301,8 @@ export function App() {
       <div className="ledger-table-head" role="row"><span role="columnheader">THE GROCERY RUN</span><span role="columnheader">PAID BY</span><span role="columnheader">SPLIT WITH</span><span role="columnheader">TOTAL</span><span /></div>
       {filtered.map((expense) => {
         const payer = household.members.find((member) => member.id === expense.paidBy)!
-        return <div className="expense-row" role="row" key={expense.id}><div className="expense-description" role="cell"><span className={`category-icon ${expense.category}`}><CategoryIcon category={expense.category} /></span><div><strong>{expense.description}</strong><span>{dateTitle(expense.date)}<i />{categoryLabels[expense.category]}</span></div></div><div className="paid-by" role="cell"><Avatar member={payer} small /><span>{payer.name}</span></div><div className="split-avatars" role="cell" aria-label={expense.participants.map(memberName).join(', ')}>{expense.participants.slice(0, 4).map((id) => <Avatar key={id} member={household.members.find((member) => member.id === id)!} small />)}{expense.participants.length > 4 && <span className="extra-members">+{expense.participants.length - 4}</span>}</div><strong className="expense-total" role="cell">{money(expense.amount, household.currency)}</strong><button className="icon-button delete-expense" title={`Remove ${expense.description}`} aria-label={`Remove ${expense.description}`} onClick={() => openDialog({ remove: expense })}><Trash2 size={15} /></button></div>
+        const shares = splitAmount(expense.amount, expense.participants)
+        return <div className="expense-row" role="row" key={expense.id}><div className="expense-description" role="cell"><span className={`category-icon ${expense.category}`}><CategoryIcon category={expense.category} /></span><div><strong>{expense.description}</strong><span>{dateTitle(expense.date)}<i />Paid by {payer.name}</span><details className="expense-shares"><summary>{expense.participants.length} {expense.participants.length === 1 ? 'share' : 'shares'}</summary>{expense.participants.map((id) => <span className="expense-share" key={id}>{memberName(id)} <strong>{money(shares.get(id) ?? 0, household.currency)}</strong></span>)}</details></div></div><div className="paid-by" role="cell"><Avatar member={payer} small /><span>{payer.name}</span></div><div className="split-avatars" role="cell" aria-label={expense.participants.map(memberName).join(', ')}>{expense.participants.slice(0, 4).map((id) => <Avatar key={id} member={household.members.find((member) => member.id === id)!} small />)}{expense.participants.length > 4 && <span className="extra-members">+{expense.participants.length - 4}</span>}</div><strong className="expense-total" role="cell">{money(expense.amount, household.currency)}</strong><button className="icon-button delete-expense" title={`Remove ${expense.description}`} aria-label={`Remove ${expense.description}`} onClick={() => openDialog({ remove: expense })}><Trash2 size={15} /></button></div>
       })}
       {!filtered.length && <div className="empty-state"><ShoppingBagIllustration /><h3>{search || filter !== 'all' ? 'Nothing in this little corner.' : 'A fresh shelf, a fresh start.'}</h3><p>{search || filter !== 'all' ? 'Try another category or search term.' : 'Add your first grocery run and we will sort out the shares.'}</p>{!search && filter === 'all' && <button className="text-button" onClick={() => openDialog('expense')}>Add a grocery run <Plus size={16} /></button>}</div>}
     </div>
@@ -303,16 +313,17 @@ export function App() {
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       expenseCount={expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
-      stockEvent={stockEvent} syncState={syncState} inert={page !== 'overview' || dialog !== null}
+      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
+      panelOpen={page !== 'overview'} activeTool={page === 'groceries' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
       onAction={interact} onCreate={() => openDialog('create')} onInvite={() => openDialog('invite')}
       onSettings={() => openDialog('settings')} onHelp={() => openDialog('help')}
-      onSelect={(category) => { visit('groceries'); setFilter(category) }}
+      onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
     {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button></div>}
-    {page !== 'overview' && !dialog && <Modal
+    {page !== 'overview' && !dialog && <RoomPanel
       title={{ groceries: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.' }[page]}
       subtitle={{ groceries: 'Every little thing you brought home, all in one place.', settle: 'Real repayments, without the awkward conversations.', kitchen: 'One kitchen. Different tastes. Always a fair share.', budget: 'The coins in your jar show how much of this month is left to enjoy.' }[page]}
-      onClose={() => visit('overview')} wide
+      onClose={() => visit('overview')}
     ><div className="game-panel-content">
         {page === 'groceries' && <><div className="panel-period">{monthControls}<button className="button primary small-button" onClick={() => openDialog('expense')}><Plus size={15} />Add grocery run</button></div><div className="grocery-summary"><div><span className="eyebrow">SPENT TOGETHER</span><strong>{money(total, household.currency)}</strong></div><div><span className="eyebrow">GROCERY RUNS</span><strong>{expenses.length.toString().padStart(2, '0')}</strong></div><div className="category-breakdown">{categories.filter((category) => totals[category] > 0).map((category) => <button key={category} onClick={() => setFilter(category)} className={`breakdown-item ${category}`}><CategoryIcon category={category} size={16} /><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong></button>)}</div></div>{ledger}</>}
         {page === 'budget' && <><div className="panel-period">{monthControls}<button className="button secondary small-button" onClick={() => openDialog('settings')}><Settings2 size={15} />Edit monthly budget</button></div><section className="budget-panel"><div className="card-topline"><span className="eyebrow">SPENT TOGETHER</span><Leaf size={19} /></div><div className="spend-amount">{money(total, household.currency)}<span>of {money(household.budget, household.currency)}</span></div><div className="budget-track" role="meter" aria-label="Monthly grocery spending" aria-valuemin={0} aria-valuemax={household.budget} aria-valuenow={Math.min(total, household.budget)} aria-valuetext={`${money(total, household.currency)} spent out of ${money(household.budget, household.currency)}`}><div style={{ width: `${progress * 100}%` }} className={remaining < 0 ? 'over-budget' : ''} /></div><div className="budget-labels"><strong className={remaining < 0 ? 'negative' : ''}>{money(Math.abs(remaining), household.currency)} {remaining < 0 ? 'over budget' : 'left to enjoy'}</strong><span>{expenses.length} grocery runs</span></div><p className="budget-note">{remaining < 0 ? 'The pot is empty for this month. Maybe a pantry dinner tonight?' : 'A little room for the essentials. And a little treat.'}</p></section><div className="budget-categories">{categories.map((category) => <button key={category} onClick={() => { visit('groceries'); setFilter(category) }}><span className={`category-icon ${category}`}><CategoryIcon category={category} /></span><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong><ArrowRight size={15} /></button>)}</div><p className="field-hint">The jar represents your remaining monthly budget, not a bank account. The app never moves money.</p></>}
@@ -322,7 +333,7 @@ export function App() {
           <div className="info-note"><CircleHelp size={17} /><p>Roomlings does not send money. Pay your roommate however you like, then record it here. Cent remainders are shared deterministically, so the ledger always adds up.</p></div></section>
           <section className="payment-history"><div className="section-heading"><h2>All paid, all good.</h2><span className="small-muted">Payment history</span></div>{household.settlements.length ? household.settlements.map((settlement) => <div className="history-row" key={settlement.id}><span className="history-check"><Check size={17} /></span><div><strong>{memberName(settlement.from)} paid {memberName(settlement.to)}</strong><span>{dateTitle(settlement.createdAt.slice(0, 10))}</span></div><strong>{money(settlement.amount, household.currency)}</strong><button className="text-button" onClick={() => openDialog({ undo: settlement })}>Undo</button></div>) : <p className="muted-paragraph">Recorded payments will find a home here.</p>}</section></div><section className="household-panel settle-balances"><div className="card-topline"><span className="eyebrow">WHERE EVERYONE STANDS</span></div>{balanceList}<div className="handwritten-note">Fair shares.<br />Full plates.</div></section></div>}
         {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>{saved.filter((kitchen) => kitchen.token !== session.token).length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{saved.filter((kitchen) => kitchen.token !== session.token).map((kitchen) => <button key={kitchen.token} disabled={busy} onClick={() => { void switchKitchen(kitchen) }}><Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></span><ArrowRight size={14} /></button>)}</div>}<p className="small-muted">Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.</p></section></div>}
-    </div></Modal>}
+    </div></RoomPanel>}
     {notice && <div className="toast" role="status"><Check size={17} /><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {renderDialog()}
   </div>

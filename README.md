@@ -31,7 +31,10 @@ The browser suite uses Playwright Chromium. If it is not installed, run `npx pla
 - Expenses paid by any roommate and split equally among the selected people, with integer-cent arithmetic.
 - Monthly budgets and category filters. The fridge shelves represent categories bought in the selected month, not an inventory or an expiry tracker. The coins in the house pot show the remaining monthly budget, not reward points or a bank balance.
 - A game-first 3D kitchen with animated fridge doors, groceries that fly into the fridge after a saved expense, a shopping bag for new runs, a receipt book, a budget jar, a roommate noticeboard, and a repayment envelope.
-- Drag-to-turn, zoom and reset controls, day/evening lighting, a gently simmering kettle, and clickable objects with keyboard-accessible toolbar equivalents. The finance tools open as short, focused panels instead of replacing the kitchen with a dashboard.
+- A full-screen room with transparent header and footer wrappers. The individual controls keep their cream surfaces, including when the camera focuses on an object.
+- Object-focused camera transitions, drag-to-turn, wheel and pinch zoom, a whole-room framing control, day/evening lighting, and a kettle that responds to a tap. The phone view starts close enough to explore instead of shrinking the entire room into a thumbnail.
+- Finance tools open beside the room on desktop and above the action dock on phones. The camera keeps the selected object in the visible area while the scene continues behind the UI. Keyboard-accessible controls provide alternatives to direct object picking.
+- Receipt rows include the payer and expandable per-person shares. Camera transitions finish before idle animation pauses behind a panel, keeping forms responsive without losing the room.
 - Reduced-motion support and a clear WebGL fallback that keeps the complete shared ledger usable.
 - Automatically simplified repayment suggestions, confirmation when recording an actual payment, and reversal of incorrect records. **Roomlings does not move money or connect to a bank.**
 - CSV export of the entire ledger, including recorded repayments.
@@ -64,3 +67,7 @@ Work on one feature per local `feat/...` branch. Present a working local preview
 Commit messages are short imperative sentences, with no body paragraphs or trailers. Commits and pull request descriptions have no attribution watermarks. Do not use em dashes in authored copy.
 
 The GitHub workflow runs the existing domain, API, persistence, browser, and production-build commands for pull requests and updates to `main`. More contributor conventions are in [AGENTS.md](AGENTS.md).
+
+## Interaction references
+
+The peripheral controls draw on [Apple's ornament placement guidance](https://developer.apple.com/design/human-interface-guidelines/ornaments), adapted as a web layout pattern rather than a native visionOS component. The object-selection and inspector relationship also takes inspiration from [Tiny Room Planner](https://github.com/crayonzgrim/3d-room-planner). The kitchen's low-poly art and procedural models remain its own.

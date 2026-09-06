@@ -55,7 +55,7 @@ test('Roomlings sessions take precedence over retained legacy browser storage', 
   }, { oldKitchen: savedKitchen(legacy), currentKitchen })
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Make yourself at home.' })).toBeVisible()
+  await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(current.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([currentKitchen])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(legacy.token)

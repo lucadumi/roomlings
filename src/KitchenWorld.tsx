@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Eye, EyeOff, Minus, Moon, Plus, RotateCcw, Snowflake, Sun } from 'lucide-react'
+import { Coffee, Eye, EyeOff, Maximize, Minus, Moon, Move, Plus, Snowflake, Sun } from 'lucide-react'
 import {
   ACESFilmicToneMapping, AmbientLight, BoxGeometry, CanvasTexture, ConeGeometry, CylinderGeometry,
   DirectionalLight, DodecahedronGeometry, Group, HemisphereLight, MathUtils,
@@ -13,9 +13,13 @@ import type { Category } from '../shared/domain.ts'
 import { categoryLabels } from '../shared/domain.ts'
 import { buildRoom, sceneAnchors } from './room.ts'
 import type { KitchenAction, SceneAction } from './room.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, focusLabels } from './camera.ts'
+import type { FocusRequest, SceneFocus } from './camera.ts'
 
 type Props = {
   paused: boolean
+  panelOpen: boolean
+  focusRequest: FocusRequest
   counts: Record<Category, number>
   selected: Category | 'all'
   fundFraction: number
@@ -35,13 +39,27 @@ const targetLabels: Record<SceneAction, string> = {
   roommates: 'Meet your roommates',
   settle: 'Make things even',
   light: 'Change the kitchen lighting',
+  brew: 'Put the kettle on',
 }
 
-export default function KitchenWorld({ paused, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
+type WorldControls = {
+  open: boolean
+  evening: boolean
+  zoom: number
+  focus: SceneFocus
+  wholeRoom: boolean
+  wake: (duration?: number) => void
+  focusOn: (target: SceneFocus) => void
+  reset: () => void
+  brew: () => void
+}
+
+export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
   const host = useRef<HTMLDivElement>(null)
-  const labels = useRef(new Map<KitchenAction, HTMLButtonElement>())
-  const controls = useRef<{ open: boolean; evening: boolean; zoom: number; reset: () => void } | null>(null)
-  const state = useRef({ paused, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
+  const stage = useRef<HTMLDivElement>(null)
+  const labels = useRef(new Map<KitchenAction | 'brew', HTMLButtonElement>())
+  const controls = useRef<WorldControls | null>(null)
+  const state = useRef({ paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -49,12 +67,18 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
   const [hovered, setHovered] = useState<Target | null>(null)
   const hoverRef = useRef(hovered)
   const [unavailable, setUnavailable] = useState(false)
-  state.current = { paused, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
+  const [focused, setFocused] = useState<SceneFocus>('room')
+  const [fittingRoom, setFittingRoom] = useState(false)
+  const [renderingPaused, setRenderingPaused] = useState(false)
+  const [cameraMoving, setCameraMoving] = useState(false)
+  const [brewing, setBrewing] = useState(false)
+  state.current = { paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
   hoverRef.current = hovered
 
   useEffect(() => {
     const element = host.current
-    if (!element) return
+    const stageElement = stage.current
+    if (!element || !stageElement) return
     let renderer: WebGLRenderer
     try {
       renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
@@ -68,15 +92,15 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
     renderer.shadowMap.type = PCFSoftShadowMap
     renderer.outputColorSpace = SRGBColorSpace
     renderer.toneMapping = ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.15
+    renderer.toneMappingExposure = 1.05
     renderer.setClearColor(0x000000, 0)
     renderer.domElement.setAttribute('aria-hidden', 'true')
     element.appendChild(renderer.domElement)
     const scene = new Scene()
     const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 100)
-    camera.position.set(9, 9, 13)
-    camera.lookAt(-0.15, 1.55, 0)
-    const skyLight = new HemisphereLight(0xfffff3, 0xb1b69d, 2)
+    camera.position.set(9, 9.5, 13)
+    camera.lookAt(-0.1, 1.65, -0.05)
+    const skyLight = new HemisphereLight(0xfffff3, 0xb1b69d, 1.7)
     scene.add(skyLight, new AmbientLight(0xffffff, 0.3))
     const sunlight = new DirectionalLight(0xfff5d5, 2.7)
     sunlight.position.set(-3, 9, 6)
@@ -284,10 +308,18 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let targetRotation = 0
     let dragging = false
+    let moved = false
     let startX = 0
+    let startY = 0
     let previousX = 0
+    let previousY = 0
+    let targetPitch = 0
+    const pointers = new Map<number, Vector2>()
+    let pinchDistance = 0
+    let pinchZoom = 1
     let visible = true
     let needsFrame = true
+    let needsResize = true
     let frame = 0
     let last = performance.now()
     let entrance = 0
@@ -295,12 +327,54 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
     let lastStockId: string | null = null
     let stockStarted = -10_000
     let stockCategory: Category = 'produce'
+    let lastFocusId = -1
+    let activeUntil = performance.now() + 1000
+    let brewStarted = -20_000
+    let wasBrewing = false
+    let wasMoving = false
+    let wasPaused = false
+    let visualKey = ''
+    let halfHeight = 4.6
+    const viewport = { width: 1, height: 1 }
+    const framingArea = { x: 0, y: 0, width: 1, height: 1 }
     const raycaster = new Raycaster()
     const pointer = new Vector2()
     const vector = new Vector3()
     const projected = new Vector3()
+    const cameraCenter = new Vector3(-0.1, 1.65, -0.05)
+    const desiredCenter = new Vector3()
+    const desiredCamera = new Vector3()
     const actorsY = new Map([...scenery.actors].map(([action, actor]) => [action, actor.position.y]))
-    const currentControls = { open: true, evening: false, zoom: 1, reset: () => { targetRotation = 0; currentControls.zoom = 1; setZoom(1) } }
+    const wake = (duration = 900) => {
+      needsFrame = true
+      activeUntil = Math.max(activeUntil, performance.now() + duration)
+    }
+    const focusOn = (target: SceneFocus) => {
+      currentControls.focus = target
+      currentControls.wholeRoom = false
+      currentControls.zoom = 1
+      setFocused(target)
+      setFittingRoom(false)
+      setZoom(1)
+      wake()
+    }
+    const currentControls: WorldControls = {
+      open: true, evening: false, zoom: 1, focus: 'room', wholeRoom: false, wake, focusOn,
+      reset: () => {
+        targetRotation = 0
+        targetPitch = 0
+        focusOn('room')
+        currentControls.wholeRoom = true
+        setFittingRoom(true)
+      },
+      brew: () => {
+        brewStarted = performance.now()
+        wasBrewing = true
+        setBrewing(true)
+        focusOn('brew')
+        wake(1800)
+      },
+    }
     controls.current = currentControls
     doors.forEach((door, index) => { door.rotation.y = index ? -1.72 : -1.97 })
 
@@ -308,18 +382,21 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
       const width = element.clientWidth
       const height = element.clientHeight
       if (!width || !height) return
-      renderer.setSize(width, height)
-      needsFrame = true
-      const aspect = width / height
-      const halfHeight = Math.max(4.8, 7.25 / aspect)
-      camera.left = -halfHeight * aspect
-      camera.right = halfHeight * aspect
-      camera.top = halfHeight
-      camera.bottom = -halfHeight
-      camera.updateProjectionMatrix()
+      const sceneBounds = element.getBoundingClientRect()
+      const stageBounds = stageElement.getBoundingClientRect()
+      if (!stageBounds.width || !stageBounds.height) return
+      needsResize = needsResize || viewport.width !== width || viewport.height !== height
+      viewport.width = width
+      viewport.height = height
+      framingArea.x = stageBounds.left - sceneBounds.left
+      framingArea.y = stageBounds.top - sceneBounds.top
+      framingArea.width = stageBounds.width
+      framingArea.height = stageBounds.height
+      wake()
     }
     const observer = new ResizeObserver(resize)
     observer.observe(element)
+    observer.observe(stageElement)
     const visibility = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting })
     visibility.observe(element)
     const hitTarget = (event: PointerEvent): Target | null => {
@@ -344,42 +421,87 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
       return null
     }
     const down = (event: PointerEvent) => {
+      pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
       dragging = true
       startX = previousX = event.clientX
+      startY = previousY = event.clientY
+      moved = pointers.size > 1
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()]
+        pinchDistance = a.distanceTo(b)
+        pinchZoom = currentControls.zoom
+      }
+      wake()
       renderer.domElement.setPointerCapture(event.pointerId)
     }
     const move = (event: PointerEvent) => {
+      if (pointers.has(event.pointerId)) pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
+      if (pointers.size === 2 && pinchDistance > 0) {
+        const [a, b] = [...pointers.values()]
+        currentControls.zoom = MathUtils.clamp(pinchZoom * a.distanceTo(b) / pinchDistance, 0.65, 1.9)
+        setZoom(currentControls.zoom)
+        moved = true
+        wake()
+        return
+      }
       if (dragging) {
-        targetRotation = MathUtils.clamp(targetRotation + (event.clientX - previousX) * 0.003, -0.42, 0.42)
+        const dx = event.clientX - previousX
+        const dy = event.clientY - previousY
+        if (Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) moved = true
+        targetRotation = MathUtils.clamp(targetRotation + dx * 0.004, -0.75, 0.75)
+        targetPitch = MathUtils.clamp(targetPitch + dy * 0.015, -1.7, 3)
         previousX = event.clientX
+        previousY = event.clientY
+        wake()
       } else {
         const target = hitTarget(event)
-        setHovered(target)
+        setHovered((previous) => JSON.stringify(previous) === JSON.stringify(target) ? previous : target)
         element.style.cursor = target ? 'pointer' : 'grab'
+        if (JSON.stringify(hoverRef.current) !== JSON.stringify(target)) wake()
       }
     }
     const up = (event: PointerEvent) => {
       if (!dragging) return
-      dragging = false
-      if (Math.abs(event.clientX - startX) < 5) {
+      pointers.delete(event.pointerId)
+      dragging = pointers.size > 0
+      if (dragging) {
+        const pointer = [...pointers.values()][0]
+        previousX = pointer.x
+        previousY = pointer.y
+        moved = true
+        return
+      }
+      if (!moved && Math.abs(event.clientX - startX) < 5) {
         const target = hitTarget(event)
         if (target && 'category' in target) state.current.onSelect(target.category)
         else if (target?.action === 'fridge') {
           currentControls.open = !currentControls.open
           setOpen(currentControls.open)
+          focusOn('fridge')
         } else if (target?.action === 'light') {
           currentControls.evening = !currentControls.evening
           setEvening(currentControls.evening)
+          wake()
+        } else if (target?.action === 'brew') {
+          currentControls.brew()
         } else if (target) state.current.onAction(target.action)
       }
     }
-    const leave = () => { setHovered(null) }
-    const cancel = () => { dragging = false; setHovered(null) }
+    const leave = () => { setHovered(null); wake() }
+    const cancel = () => { pointers.clear(); dragging = false; setHovered(null); wake() }
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.height : 1
+      currentControls.zoom = MathUtils.clamp(currentControls.zoom * Math.exp(-event.deltaY * units * 0.0015), 0.65, 1.9)
+      setZoom(currentControls.zoom)
+      wake()
+    }
     renderer.domElement.addEventListener('pointerdown', down)
     renderer.domElement.addEventListener('pointermove', move)
     renderer.domElement.addEventListener('pointerup', up)
     renderer.domElement.addEventListener('pointerleave', leave)
     renderer.domElement.addEventListener('pointercancel', cancel)
+    renderer.domElement.addEventListener('wheel', wheel, { passive: false })
     const onContextLost = (event: Event) => {
       event.preventDefault()
       setUnavailable(true)
@@ -387,12 +509,27 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
     renderer.domElement.addEventListener('webglcontextlost', onContextLost)
     const animate = (now: number) => {
       frame = requestAnimationFrame(animate)
-      const delta = Math.min((now - last) / 1000, 0.05)
+      const delta = Math.min((now - last) / 1000, 0.1)
       last = now
       const latest = state.current
-      // Preserve one frame behind panels, then leave the GPU free for the active form.
-      if (!visible || document.hidden || (latest.paused && !needsFrame)) return
+      if (!visible || document.hidden) return
+      if (latest.focusRequest.id !== lastFocusId) {
+        lastFocusId = latest.focusRequest.id
+        focusOn(latest.focusRequest.target)
+      }
+      const nextVisualKey = JSON.stringify([latest.counts, latest.selected, latest.fundFraction, latest.memberCount, latest.expenseCount, latest.stockEvent])
+      if (nextVisualKey !== visualKey) { visualKey = nextVisualKey; wake() }
+      const isBrewing = now - brewStarted < 12_000
+      if (isBrewing !== wasBrewing) { wasBrewing = isBrewing; setBrewing(isBrewing); wake(300) }
+      const resting = latest.paused && !needsFrame && !wasMoving && now > activeUntil
+      if (resting !== wasPaused) { wasPaused = resting; setRenderingPaused(resting) }
+      // Let camera and input animations finish, then stop idle work behind a panel.
+      if (resting) return
       needsFrame = false
+      if (needsResize) {
+        renderer.setSize(viewport.width, viewport.height)
+        needsResize = false
+      }
       const key = JSON.stringify(latest.counts)
       if (key !== countsKey) { entrance = now; countsKey = key }
       if (latest.stockEvent && latest.stockEvent.id !== lastStockId) {
@@ -401,6 +538,8 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
         stockCategory = latest.stockEvent.category
         currentControls.open = true
         setOpen(true)
+        focusOn('fridge')
+        wake(2800)
         flyingGroceries.forEach((item) => {
           item.geometry = flyingShapes[stockCategory]
           item.material = flyingColors[stockCategory]
@@ -411,8 +550,33 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
         door.rotation.y = reducedMotion.matches ? target : MathUtils.damp(door.rotation.y, target, 7 - index, delta)
       }
       room.rotation.y = reducedMotion.matches ? targetRotation : MathUtils.damp(room.rotation.y, targetRotation, 9, delta)
+      if (Math.abs(room.rotation.y - targetRotation) < 0.001) room.rotation.y = targetRotation
+      room.updateMatrixWorld(true)
+      const area = latest.panelOpen ? framingArea : { x: 0, y: 0, width: viewport.width, height: viewport.height }
+      const framing = cameraFraming(area.width, area.height, currentControls.focus, currentControls.wholeRoom)
+      desiredCenter.set(...framing.center).applyMatrix4(room.matrixWorld)
+      if (reducedMotion.matches) cameraCenter.copy(desiredCenter)
+      else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
+      if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
+      desiredCamera.copy(cameraCenter).add(vector.set(baseCameraOffset[0], baseCameraOffset[1] + targetPitch, baseCameraOffset[2]))
+      if (reducedMotion.matches) camera.position.copy(desiredCamera)
+      else camera.position.lerp(desiredCamera, 1 - Math.exp(-10 * delta))
+      if (camera.position.distanceTo(desiredCamera) < 0.002) camera.position.copy(desiredCamera)
+      camera.lookAt(cameraCenter)
+      halfHeight = reducedMotion.matches ? framing.halfHeight : MathUtils.damp(halfHeight, framing.halfHeight, 9, delta)
+      if (Math.abs(halfHeight - framing.halfHeight) < 0.002) halfHeight = framing.halfHeight
       camera.zoom = reducedMotion.matches ? currentControls.zoom : MathUtils.damp(camera.zoom, currentControls.zoom, 8, delta)
+      if (Math.abs(camera.zoom - currentControls.zoom) < 0.002) camera.zoom = currentControls.zoom
+      const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
+      camera.left = projection.left
+      camera.right = projection.right
+      camera.top = projection.top
+      camera.bottom = projection.bottom
       camera.updateProjectionMatrix()
+      const moving = cameraCenter.distanceTo(desiredCenter) > 0.002 || camera.position.distanceTo(desiredCamera) > 0.002
+        || halfHeight !== framing.halfHeight || camera.zoom !== currentControls.zoom || room.rotation.y !== targetRotation
+      if (moving !== wasMoving) { wasMoving = moving; setCameraMoving(moving) }
+      if (moving) activeUntil = Math.max(activeUntil, now + 120)
       for (const item of foods) {
         const count = latest.counts[item.category]
         item.group.visible = count > 0 && item.index < Math.min(count + 1, 3)
@@ -424,10 +588,10 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
         item.group.scale.lerp(vector.setScalar(scale), reducedMotion.matches ? 1 : Math.min(delta * 8, 1))
       }
       for (const [index, item] of flyingGroceries.entries()) {
-        const age = (now - stockStarted) / 1000 - index * 0.13
-        item.visible = !reducedMotion.matches && age >= 0 && age < 1.25
+        const age = (now - stockStarted) / 1000 - index * 0.18
+        item.visible = !reducedMotion.matches && age >= 0 && age < 1.65
         if (!item.visible) continue
-        const t = MathUtils.clamp(age / 1.25, 0, 1)
+        const t = MathUtils.clamp(age / 1.65, 0, 1)
         const ease = t * t * (3 - 2 * t)
         const shelf = { produce: 0.95, dairy: 2.25, pantry: 1.6, drinks: 2.25, other: 2.9 }[stockCategory]
         item.position.set(
@@ -438,27 +602,40 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
         item.rotation.set(age * 2, age * 4 + index, Math.sin(age * 3) * 0.3)
         item.scale.setScalar(0.7 + Math.sin(t * Math.PI) * 0.5)
       }
-      scenery.coins.forEach((coin, index) => { coin.visible = index < Math.ceil(MathUtils.clamp(latest.fundFraction, 0, 1) * 12) })
+      scenery.coins.forEach((coin, index) => {
+        const target = index < Math.ceil(MathUtils.clamp(latest.fundFraction, 0, 1) * 12) ? 1 : 0
+        const scale = reducedMotion.matches ? target : MathUtils.damp(coin.scale.x, target, 9, delta)
+        coin.scale.setScalar(scale < 0.001 ? 0 : scale)
+        coin.visible = scale > 0.001
+      })
       scenery.portraits.forEach((portrait, index) => { portrait.visible = index < latest.memberCount })
       scenery.receipts.forEach((receipt, index) => { receipt.visible = index < latest.expenseCount })
       scenery.receiptLines.visible = latest.expenseCount > 0
       scenery.receiptLines.position.y = 0.043 + Math.min(latest.expenseCount, 10) * 0.012
       scenery.steam.forEach((puff, index) => {
-        const phase = ((now / 3500 + index * 0.29) % 1)
+        const phase = ((now / (isBrewing ? 1700 : 3500) + index * 0.29) % 1)
         puff.visible = !reducedMotion.matches
-        puff.position.y = 0.44 + phase * 0.65
+        puff.position.y = 0.44 + phase * (isBrewing ? 1.05 : 0.65)
         puff.position.x = 0.33 + Math.sin(phase * 4) * 0.06
-        puff.scale.setScalar(0.4 + Math.sin(phase * Math.PI) * 1.3)
+        puff.scale.setScalar(0.4 + Math.sin(phase * Math.PI) * (isBrewing ? 2 : 1.3))
       })
+      scenery.kettleLid.position.y = 0.39 + (isBrewing && !reducedMotion.matches ? Math.abs(Math.sin(now / 80)) * 0.016 : 0)
       scenery.plants.forEach((plant, index) => { plant.rotation.z = reducedMotion.matches ? 0 : Math.sin(now / 2500 + index) * 0.025 })
       const hoveredTarget = hoverRef.current
       for (const [action, actor] of scenery.actors) {
         const lifted = hoveredTarget && 'action' in hoveredTarget && hoveredTarget.action === action
         const base = actorsY.get(action) ?? 0
         actor.position.y = reducedMotion.matches ? base : MathUtils.damp(actor.position.y, base + (lifted && action !== 'light' ? 0.06 : 0), 10, delta)
+        if (action === 'stock' && now - stockStarted < 2400 && !reducedMotion.matches) {
+          const age = (now - stockStarted) / 1000
+          actor.position.y = base + Math.abs(Math.sin(age * 7)) * Math.max(0, 1 - age / 2.4) * 0.13
+          actor.rotation.z = Math.sin(age * 9) * Math.max(0, 1 - age / 2.4) * 0.025
+        } else if (action === 'stock') {
+          actor.rotation.z = 0
+        }
       }
       sunlight.intensity = MathUtils.damp(sunlight.intensity, currentControls.evening ? 0.7 : 2.7, 4, delta)
-      skyLight.intensity = MathUtils.damp(skyLight.intensity, currentControls.evening ? 0.85 : 2, 4, delta)
+      skyLight.intensity = MathUtils.damp(skyLight.intensity, currentControls.evening ? 0.85 : 1.7, 4, delta)
       scenery.light.intensity = MathUtils.damp(scenery.light.intensity, currentControls.evening ? 10 : 0, 4, delta)
       scenery.bulb.emissiveIntensity = currentControls.evening ? 1.7 : 0.12
       scenery.sky.color.set(currentControls.evening ? '#697a90' : '#b5d2c8')
@@ -472,10 +649,10 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
         const label = labels.current.get(anchor.action)
         if (!label) continue
         projected.set(...anchor.position).applyMatrix4(room.matrixWorld).project(camera)
-        const x = (projected.x * 0.5 + 0.5) * element.clientWidth
-        const y = (-projected.y * 0.5 + 0.5) * element.clientHeight
+        const x = (projected.x * 0.5 + 0.5) * viewport.width
+        const y = (-projected.y * 0.5 + 0.5) * viewport.height
         label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
-        label.style.visibility = x < 5 || x > element.clientWidth - 5 || y < 0 || y > element.clientHeight ? 'hidden' : 'visible'
+        label.style.visibility = x < 18 || x > viewport.width - 18 || y < 18 || y > viewport.height - 18 ? 'hidden' : 'visible'
       }
     }
     resize()
@@ -489,6 +666,7 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
       renderer.domElement.removeEventListener('pointerup', up)
       renderer.domElement.removeEventListener('pointerleave', leave)
       renderer.domElement.removeEventListener('pointercancel', cancel)
+      renderer.domElement.removeEventListener('wheel', wheel)
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost)
       scene.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
       materials.forEach((mat) => mat.dispose())
@@ -507,29 +685,34 @@ export default function KitchenWorld({ paused, counts, selected, fundFraction, m
     const next = !(controls.current?.open ?? open)
     if (controls.current) controls.current.open = next
     setOpen(next)
+    controls.current?.focusOn('fridge')
   }
   const changeZoom = (direction: number) => {
-    const next = MathUtils.clamp((controls.current?.zoom ?? zoom) + direction * 0.2, 0.8, 1.8)
+    const next = MathUtils.clamp(Math.round(((controls.current?.zoom ?? zoom) + direction * 0.2) * 100) / 100, 0.65, 1.9)
     if (controls.current) controls.current.zoom = next
     setZoom(next)
+    controls.current?.wake()
   }
   const changeLight = () => {
     const next = !(controls.current?.evening ?? evening)
     if (controls.current) controls.current.evening = next
     setEvening(next)
+    controls.current?.wake()
   }
 
   return (
-    <div className="kitchen-world" data-evening={evening}>
-      <div className="world-canvas" ref={host} role="img" aria-label="Interactive low-poly shared kitchen. Click the grocery bag to stock the fridge, the receipt book for expenses, the coin jar for your budget, the noticeboard for roommates, or the envelope to settle up. Drag to turn the room." />
+    <div className="kitchen-world" ref={stage} data-evening={evening} data-focus={focused} data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
+      <div className="world-canvas" ref={host} role="img" aria-label="Interactive low-poly shared kitchen. Select objects to move closer. The bag stocks the fridge, the book opens expenses, the jar shows the budget, and the noticeboard holds your roommates. Drag to turn the room, scroll or pinch to zoom." />
       {unavailable && <div className="fridge-unavailable"><Snowflake size={42} /><strong>Your kitchen, minus the 3D.</strong><p>This browser could not display the fridge. All expenses and balances still work.</p></div>}
       {!unavailable && <>
         <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label="Objects in your kitchen">
-          {sceneAnchors.map((anchor) => <button key={anchor.action} ref={(element) => { if (element) labels.current.set(anchor.action, element); else labels.current.delete(anchor.action) }} className={`world-hotspot hotspot-${anchor.action}`} onClick={() => onAction(anchor.action)} onMouseEnter={() => setHovered({ action: anchor.action })} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ action: anchor.action })} onBlur={() => setHovered(null)}><span className="hotspot-dot" /><span>{anchor.label}</span></button>)}
+          {sceneAnchors.map((anchor) => <button key={anchor.action} ref={(element) => { if (element) labels.current.set(anchor.action, element); else labels.current.delete(anchor.action) }} className={`world-hotspot hotspot-${anchor.action}`} aria-label={anchor.label} data-selected={focused === anchor.action} onClick={() => { if (anchor.action === 'brew') controls.current?.brew(); else onAction(anchor.action) }} onMouseEnter={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onMouseLeave={() => { setHovered(null); controls.current?.wake() }} onFocus={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onBlur={() => { setHovered(null); controls.current?.wake() }}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{anchor.label}</span></button>)}
         </div>
-        <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.8} aria-label="Zoom out"><Minus size={16} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.8} aria-label="Zoom in"><Plus size={16} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset kitchen view"><RotateCcw size={15} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels}>{showLabels ? <Eye size={16} /> : <EyeOff size={16} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening}>{evening ? <Moon size={16} /> : <Sun size={16} />}</button></div>
-        <div className="world-interaction-hint">{hovered ? ('category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : targetLabels[hovered.action]) : 'Drag to turn the room. Tap something to make yourself at home.'}</div>
+        <div className="world-view-label"><span className="view-label-dot" />{focusLabels[focused]}{cameraMoving && <span className="view-moving">Moving closer</span>}</div>
+        <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.9} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.65} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Frame the whole room" title="Whole room" aria-pressed={fittingRoom}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels} title="Object labels">{showLabels ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
+        <div className="world-interaction-hint"><Move size={13} />{hovered ? ('category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : targetLabels[hovered.action]) : 'Drag to explore. Select an object to get closer.'}</div>
         <button className="world-fridge-toggle" onClick={toggle} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size={15} />{open ? 'Close the fridge' : 'Peek inside'}<span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>
+        <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size={16} /><span>{brewing ? 'Kettle is on' : 'Tea break'}</span></button>
       </>}
     </div>
   )
