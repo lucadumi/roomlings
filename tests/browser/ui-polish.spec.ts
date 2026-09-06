@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Locator } from '@playwright/test'
+import { openGroceryForm } from './fixtures.ts'
 
 async function surface(control: Locator) {
   return control.evaluate((element) => {
@@ -167,7 +168,7 @@ test.describe('UI polish', () => {
       await page.keyboard.press('Escape')
       await expect(people).toBeFocused()
 
-      await page.getByRole('button', { name: 'Stock the fridge, add a grocery run', exact: true }).click()
+      await openGroceryForm(page)
       const description = page.getByLabel('What did you pick up?', { exact: true })
       await expect(description).toBeFocused()
       await description.fill('A careful little grocery run')

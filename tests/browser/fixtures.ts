@@ -34,3 +34,14 @@ export async function pauseRequest(page: Page, url: string) {
   await page.route(url, receiveRoute)
   return { pending }
 }
+
+export async function openShoppingBag(page: Page) {
+  await page.getByRole('button', { name: 'Shopping bag, plan and record groceries', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'The shopping bag.', exact: true })).toBeVisible()
+}
+
+export async function openGroceryForm(page: Page) {
+  await openShoppingBag(page)
+  await page.getByRole('button', { name: 'Record without a list', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'What is in the bag?', exact: true })).toBeVisible()
+}
