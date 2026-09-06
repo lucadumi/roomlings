@@ -207,7 +207,7 @@ test('budgets, category filtering, month navigation, and complete ledger export'
   expect(csv.split('\r\n')).toHaveLength(7)
 })
 
-test.describe('room controls', () => {
+test.describe('room controls', { tag: '@room' }, () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/')
@@ -272,7 +272,7 @@ test('the ledger remains usable when WebGL is unavailable', async ({ page }) => 
   await expect(page.locator('.expense-row')).toHaveCount(6)
 })
 
-test('the grocery bag and receipt book meshes work without clickable labels', async ({ page }) => {
+test('the grocery bag and receipt book meshes work without clickable labels', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/')
   await expect(page.locator('.hotspot-stock')).toBeVisible()
@@ -293,7 +293,7 @@ test('the grocery bag and receipt book meshes work without clickable labels', as
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
 
-test('the kitchen stops drawing behind a finance panel and resumes when it closes', async ({ page }) => {
+test('the kitchen stops drawing behind a finance panel and resumes when it closes', { tag: '@room' }, async ({ page }) => {
   await page.addInitScript(() => {
     let draws = 0
     const original = WebGL2RenderingContext.prototype.drawElements
@@ -319,7 +319,7 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
   await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
 })
 
-test('the phone view gives the room most of the screen and keeps panels below it', async ({ page }) => {
+test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
@@ -357,7 +357,7 @@ test('the phone view gives the room most of the screen and keeps panels below it
   await expect(page.locator('.room-panel')).toHaveCount(0)
 })
 
-test('wheel zoom and the kettle respond without changing the household ledger', async ({ page }) => {
+test('wheel zoom and the kettle respond without changing the household ledger', { tag: '@room' }, async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   const before = await page.locator('.fund-trigger strong').innerText()
@@ -374,7 +374,7 @@ test('wheel zoom and the kettle respond without changing the household ledger', 
   await expect(page.locator('.world-kettle-toggle')).toHaveAttribute('aria-pressed', 'false', { timeout: 15_000 })
 })
 
-test('header and footer wrappers are transparent while their controls keep their own surfaces', async ({ page }) => {
+test('header and footer wrappers are transparent while their controls keep their own surfaces', { tag: '@room' }, async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   for (const selector of ['.game-hud', '.game-bottom']) {
@@ -399,7 +399,7 @@ test('header and footer wrappers are transparent while their controls keep their
   expect(focusedCanvas!.height).toBe(page.viewportSize()!.height)
 })
 
-test('touch gestures zoom and turn the room without opening an object', async ({ page }) => {
+test('touch gestures zoom and turn the room without opening an object', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
