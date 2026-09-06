@@ -79,7 +79,7 @@ export function GameHome({
 
     <SceneBoundary>
       <Suspense fallback={<div className="scene-loading"><LoaderCircle size={28} className="spin" /><span>Putting the kettle on...</span></div>}>
-        <KitchenWorld key={household.id} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={household.members.length} expenseCount={expenseCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
+        <KitchenWorld key={household.id} paused={inert} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={household.members.length} expenseCount={expenseCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
       </Suspense>
     </SceneBoundary>
 

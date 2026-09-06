@@ -193,3 +193,30 @@ test('the grocery bag and receipt book meshes work without clickable labels', as
   await expect(page.getByRole('dialog')).toContainText('The receipt book.')
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
+
+test('the kitchen stops drawing behind a finance panel and resumes when it closes', async ({ page }) => {
+  await page.addInitScript(() => {
+    let draws = 0
+    const original = WebGL2RenderingContext.prototype.drawElements
+    Object.defineProperty(WebGL2RenderingContext.prototype, 'drawElements', {
+      value(this: WebGL2RenderingContext, ...args: Parameters<WebGL2RenderingContext['drawElements']>) {
+        draws++
+        return Reflect.apply(original, this, args)
+      },
+    })
+    Object.defineProperty(window, 'roomlingsTestDrawCalls', { get: () => draws })
+  })
+  await page.goto('/')
+  const drawCalls = () => page.evaluate(() => Number(Reflect.get(window, 'roomlingsTestDrawCalls')))
+  await expect.poll(drawCalls).toBeGreaterThan(0)
+  await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+  const pausedAt = await drawCalls()
+  await page.waitForTimeout(250)
+  expect(await drawCalls()).toBe(pausedAt)
+  await page.keyboard.press('Escape')
+  await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
+})

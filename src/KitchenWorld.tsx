@@ -15,6 +15,7 @@ import { buildRoom, sceneAnchors } from './room.ts'
 import type { KitchenAction, SceneAction } from './room.ts'
 
 type Props = {
+  paused: boolean
   counts: Record<Category, number>
   selected: Category | 'all'
   fundFraction: number
@@ -36,11 +37,11 @@ const targetLabels: Record<SceneAction, string> = {
   light: 'Change the kitchen lighting',
 }
 
-export default function KitchenWorld({ counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
+export default function KitchenWorld({ paused, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<KitchenAction, HTMLButtonElement>())
   const controls = useRef<{ open: boolean; evening: boolean; zoom: number; reset: () => void } | null>(null)
-  const state = useRef({ counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
+  const state = useRef({ paused, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -48,7 +49,7 @@ export default function KitchenWorld({ counts, selected, fundFraction, memberCou
   const [hovered, setHovered] = useState<Target | null>(null)
   const hoverRef = useRef(hovered)
   const [unavailable, setUnavailable] = useState(false)
-  state.current = { counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
+  state.current = { paused, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
   hoverRef.current = hovered
 
   useEffect(() => {
@@ -286,6 +287,7 @@ export default function KitchenWorld({ counts, selected, fundFraction, memberCou
     let startX = 0
     let previousX = 0
     let visible = true
+    let needsFrame = true
     let frame = 0
     let last = performance.now()
     let entrance = 0
@@ -307,6 +309,7 @@ export default function KitchenWorld({ counts, selected, fundFraction, memberCou
       const height = element.clientHeight
       if (!width || !height) return
       renderer.setSize(width, height)
+      needsFrame = true
       const aspect = width / height
       const halfHeight = Math.max(4.8, 7.25 / aspect)
       camera.left = -halfHeight * aspect
@@ -386,8 +389,10 @@ export default function KitchenWorld({ counts, selected, fundFraction, memberCou
       frame = requestAnimationFrame(animate)
       const delta = Math.min((now - last) / 1000, 0.05)
       last = now
-      if (!visible || document.hidden) return
       const latest = state.current
+      // Preserve one frame behind panels, then leave the GPU free for the active form.
+      if (!visible || document.hidden || (latest.paused && !needsFrame)) return
+      needsFrame = false
       const key = JSON.stringify(latest.counts)
       if (key !== countsKey) { entrance = now; countsKey = key }
       if (latest.stockEvent && latest.stockEvent.id !== lastStockId) {
