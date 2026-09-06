@@ -44,3 +44,5 @@ npm run test:browser
 ```
 
 Use the smallest relevant existing test selection while iterating. Cover the changed behavior and preserve the existing household, settlement, persistence and accessibility flows before presenting a feature for approval.
+
+Tag browser rendering and 3D interaction scenarios with `@room`. CI runs household flows separately from two room shards, each with one worker. Room tests must remain independent so `--fully-parallel` can partition them safely; the normal browser command still runs every test.

@@ -24,7 +24,7 @@ async function expectTouchTarget(control: Locator) {
 test.describe('UI polish', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('the room backdrop blends lighting changes and honors reduced motion', async ({ page }) => {
+  test('the room backdrop blends lighting changes and honors reduced motion', { tag: '@room' }, async ({ page }) => {
     await page.goto('/')
     const home = page.locator('.game-home')
     const world = page.locator('.kitchen-world')
