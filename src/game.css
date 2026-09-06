@@ -23,7 +23,17 @@
   isolation: isolate;
   background: radial-gradient(ellipse at 52% 40%, #faf7ed 0%, #f1efe2 50%, #e6e8d8 100%);
 }
-.game-home:has(.kitchen-world[data-evening="true"]) { background: radial-gradient(ellipse at 48% 45%, #eee2c9, #d5d8c6 70%, #c3cdbc); }
+.game-home::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: radial-gradient(ellipse at 48% 45%, #eee2c9, #d5d8c6 70%, #c3cdbc);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.game-home:has(.kitchen-world[data-evening="true"])::after { opacity: 1; }
 .game-home::before {
   content: '';
   position: absolute;
@@ -422,4 +432,7 @@
 @media (max-width: 560px) and (max-height: 620px) {
   .game-app { --sheet-height: 44dvh; }
   .world-camera-controls { top: 66%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .game-home::after { transition: none; }
 }

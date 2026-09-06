@@ -23,6 +23,32 @@ async function expectTouchTarget(control: Locator) {
 test.describe('UI polish', () => {
   test.use({ reducedMotion: 'reduce' })
 
+  test('the room backdrop blends lighting changes and honors reduced motion', async ({ page }) => {
+    await page.goto('/')
+    const home = page.locator('.game-home')
+    const world = page.locator('.kitchen-world')
+    const opacity = () => home.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
+    const transition = () => home.evaluate((element) => getComputedStyle(element, '::after').transitionProperty)
+    await expect(world).toHaveAttribute('data-evening', 'false')
+    await expect.poll(opacity).toBe(0)
+    await expect.poll(transition).toBe('none')
+    const daylight = await home.evaluate((element) => getComputedStyle(element).backgroundImage)
+    expect(await home.evaluate((element) => getComputedStyle(element, '::after').backgroundImage)).not.toBe('none')
+
+    await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
+    await expect(world).toHaveAttribute('data-evening', 'true')
+    await expect.poll(opacity).toBe(1)
+    await expect(home).toHaveCSS('background-image', daylight)
+
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect.poll(transition).toBe('opacity')
+    expect(await home.evaluate((element) => Number.parseFloat(getComputedStyle(element, '::after').transitionDuration))).toBeGreaterThan(0)
+    await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
+    await expect(world).toHaveAttribute('data-evening', 'false')
+    await expect.poll(opacity).toBe(0)
+    await expect(home).toHaveCSS('background-image', daylight)
+  })
+
   test('shared controls keep their surfaces, selection and keyboard focus', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/')
@@ -55,7 +81,16 @@ test.describe('UI polish', () => {
     const name = page.getByLabel('Kitchen name', { exact: true })
     await expect(name).toBeFocused()
     await expect(name).toHaveCSS('outline-style', 'solid')
-    const focusColor = await name.evaluate((element) => getComputedStyle(element).outlineColor)
+    const focusColor = await name.evaluate((element) => {
+      const swatch = document.createElement('span')
+      swatch.hidden = true
+      swatch.style.color = getComputedStyle(element).getPropertyValue('--focus-ring')
+      document.body.append(swatch)
+      const color = getComputedStyle(swatch).color
+      swatch.remove()
+      return color
+    })
+    await expect(name).toHaveCSS('outline-color', focusColor)
     const close = page.getByRole('button', { name: 'Close dialog', exact: true })
     expect(await surface(close)).toEqual(controlSurface)
     await page.keyboard.press('Shift+Tab')
