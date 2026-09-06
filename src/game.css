@@ -1,0 +1,357 @@
+.game-app {
+  background: #f1efe3;
+  min-height: 100vh;
+  color: #414b37;
+}
+.game-home {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 710px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(ellipse at 53% 47%, #f8f5e9 0%, #f2efe1 48%, #eae9da 100%);
+}
+.game-home::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.3;
+  background-image: radial-gradient(#b7b49d 0.6px, transparent 0.6px);
+  background-size: 9px 9px;
+  mask-image: linear-gradient(to bottom, #000, transparent 40%, transparent 60%, #000);
+  pointer-events: none;
+}
+.game-hud {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 104px;
+  padding: 28px 42px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.game-identity, .game-resources { display: flex; align-items: center; gap: 20px; }
+.game-hud .brand { font-size: 30px; gap: 9px; color: #414b37; }
+.game-hud .brand-period { display: inline; }
+.game-hud .brand-mark { height: 36px; width: 32px; box-shadow: 0 3px 0 #ad523022; }
+.hud-divider { height: 27px; width: 1px; background: #d8d8c4; }
+.game-house { padding: 8px 0; display: flex; align-items: center; gap: 8px; background: none; font-size: 11px; color: #6d785c; }
+.game-house > span { max-width: 165px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.game-house:hover { color: #3a4e2b; }
+.game-month { position: absolute; left: 50%; transform: translateX(-50%); }
+.game-month .month-control { background: #faf8ee99; border-color: #dddec9; padding: 4px; box-shadow: 0 2px 0 #81836406; }
+.game-month .month-control > span { font-size: 10px; min-width: 87px; color: #738062; }
+.fund-trigger { display: flex; align-items: center; gap: 10px; padding: 9px 15px 9px 9px; background: #fcf9ed; border: 1px solid #e0dbc2; border-radius: 12px; box-shadow: 0 3px 0 #9c9c7514; text-align: left; }
+.fund-trigger:hover { background: #fffbee; box-shadow: 0 4px 0 #9c9c7526; transform: translateY(-1px); }
+.coin-stamp { display: flex; align-items: center; justify-content: center; background: #ede1b7; border: 1px solid #dfca87; color: #ae924d; width: 36px; height: 36px; border-radius: 50%; }
+.fund-trigger small { display: block; font-size: 7px; letter-spacing: 1px; color: #8b8b6d; margin-bottom: 4px; }
+.fund-trigger strong { font-size: 20px; font-weight: 550; color: #63714d; letter-spacing: -0.5px; line-height: 1; }
+.fund-trigger strong > span { font-size: 10px; color: #8c9477; font-weight: 400; letter-spacing: 0; margin-left: 4px; }
+.fund-trigger.low-fund strong, .fund-trigger.low-fund strong > span { color: #b46343; }
+.player-button { padding: 0; position: relative; border-radius: 50%; background: none; }
+.player-button .avatar { height: 43px; width: 43px; font-size: 14px; border: 3px solid #fff9e9; box-shadow: 0 0 0 1px #dcd9bd, 0 3px 0 #8d90681a; }
+.player-status { position: absolute; width: 9px; height: 9px; background: #93a874; border: 2px solid #fff8e9; bottom: 1px; right: 1px; border-radius: 50%; }
+.player-status.offline { background: #c8795b; }
+.game-intro { position: absolute; left: 45px; top: 153px; z-index: 3; max-width: 280px; pointer-events: none; }
+.game-intro .eyebrow { font-size: 8px; letter-spacing: 1.5px; color: #889477; }
+.game-intro h1 { margin: 19px 0 15px; font-size: clamp(39px, 3.4vw, 53px); line-height: 1.08; font-weight: 450; letter-spacing: -2px; color: #4d5a3d; }
+.game-intro h1 em { color: #89916c; }
+.game-intro > p { font-size: 11px; color: #8c937a; line-height: 1.85; margin-bottom: 21px; }
+.game-help-link { display: flex; align-items: center; gap: 6px; padding: 0; background: none; color: #9a9477; font-size: 9px; pointer-events: auto; }
+.game-help-link:hover { color: #62764c; }
+.game-help-link > svg:last-child { margin-left: 4px; }
+.game-party { position: absolute; top: 160px; right: 47px; z-index: 3; text-align: right; }
+.game-party .eyebrow { justify-content: flex-end; font-size: 7px; letter-spacing: 1.3px; color: #929778; }
+.party-members { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 11px 0 8px; }
+.party-members > button:first-child { display: flex; background: none; padding: 0 0 0 5px; }
+.party-members .avatar { margin-left: -5px; width: 29px; height: 29px; font-size: 10px; border-color: #f8f5e7; }
+.party-invite { width: 28px; height: 28px; border: 1px dashed #bfc9a9; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #f5f5e9; color: #8a9975; }
+.party-invite:hover { background: #e5ecd7; border-color: #859b6a; }
+.game-party > span { font-size: 9px; color: #9b9d82; }
+.kitchen-world { position: absolute; inset: 105px 10px 117px; z-index: 1; }
+.world-canvas { position: absolute; inset: 0; cursor: grab; touch-action: pan-y; }
+.world-canvas:active { cursor: grabbing; }
+.world-canvas canvas { display: block; touch-action: pan-y; }
+.world-hotspots { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.world-hotspots.hide-labels { display: none; }
+.world-hotspot { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 7px; min-height: 30px; white-space: nowrap; padding: 7px 11px 7px 8px; border: 1px solid #fffdf3; border-radius: 7px; background: #fbf8eccf; box-shadow: 0 3px 0 #8f8d6922, 0 3px 10px #535b2c0b; backdrop-filter: blur(8px); color: #71805a; font-size: 9px; font-weight: 550; pointer-events: auto; visibility: hidden; transition: background-color 150ms, box-shadow 150ms; }
+.world-hotspot:hover, .world-hotspot:focus-visible { background: #fffdf2; box-shadow: 0 4px 0 #858f6638; color: #475e31; }
+.hotspot-dot { width: 14px; height: 14px; display: block; border-radius: 50%; background: #e0e7cf; position: relative; }
+.hotspot-dot::before, .hotspot-dot::after { content: ''; position: absolute; background: #8c9c70; width: 6px; height: 1px; left: 4px; top: 6px; }
+.hotspot-dot::after { transform: rotate(90deg); }
+.hotspot-stock { color: #ab6d4c; background: #fff3dbed; border-color: #fff8e8; }
+.hotspot-stock .hotspot-dot { background: #edcfad; }
+.hotspot-stock .hotspot-dot::before, .hotspot-stock .hotspot-dot::after { background: #b78353; }
+.world-camera-controls { position: absolute; right: 30px; bottom: 3px; display: flex; align-items: center; gap: 3px; padding: 5px 7px; border: 1px solid #dedec8; background: #faf8ebbd; border-radius: 8px; color: #909778; backdrop-filter: blur(7px); box-shadow: 0 2px 0 #9c9c7510; }
+.world-camera-controls > span { font-size: 8px; min-width: 31px; text-align: center; color: #909679; }
+.world-camera-controls > i { width: 1px; height: 17px; background: #dfe3cd; margin: 0 5px; }
+.world-camera-controls .icon-button { color: #909b7b; }
+.world-camera-controls .icon-button:hover { color: #5c7244; background: #e6ecd7; }
+.world-interaction-hint { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); font-size: 9px; color: #929a7f; pointer-events: none; width: max-content; max-width: 370px; text-align: center; line-height: 1.6; }
+.world-fridge-toggle { position: absolute; left: 30px; bottom: 4px; display: grid; grid-template-columns: 19px auto; gap: 1px 7px; align-items: center; border: 1px solid #d9e0c7; border-radius: 8px; background: #edf1e1df; color: #829668; padding: 9px 12px; font-size: 10px; box-shadow: 0 3px 0 #7a925314; backdrop-filter: blur(7px); }
+.world-fridge-toggle > svg { grid-row: span 2; }
+.world-fridge-toggle > span { display: block; font-size: 7px; color: #9ca78b; margin-top: 2px; }
+.world-fridge-toggle:hover { background: #e6eeda; color: #526e39; }
+.game-world-status { position: absolute; bottom: 245px; left: 45px; z-index: 2; pointer-events: none; }
+.game-world-status .eyebrow { font-size: 7px; letter-spacing: 1.2px; color: #969d81; }
+.game-world-status > strong { display: block; font-family: 'Fraunces Variable', Georgia, serif; color: #808d69; font-size: 21px; font-weight: 400; letter-spacing: -0.45px; line-height: 1.3; margin: 11px 0 14px; }
+.game-world-status strong > em { color: #9da588; }
+.game-world-status .sync-status { font-size: 8px; color: #909e7c; }
+.game-world-status .sync-status.offline { color: #b77554; }
+.game-demo { position: absolute; bottom: 176px; left: 44px; z-index: 3; max-width: 190px; padding: 9px 11px; border: 1px dashed #d2d5ba; border-radius: 7px; transform: rotate(-2deg); background: #f7f5e5b3; }
+.game-demo > span { display: flex; align-items: center; gap: 6px; font-size: 8px; color: #939778; }
+.game-demo > button { display: flex; gap: 7px; align-items: center; margin: 7px 0 0 19px; padding: 0; background: none; color: #b37852; font-size: 9px; font-weight: 550; }
+.game-demo > button:hover { color: #914d2d; }
+.game-bottom { position: absolute; bottom: 24px; left: 42px; right: 42px; display: flex; align-items: center; justify-content: space-between; z-index: 5; min-height: 71px; gap: 14px; }
+.game-dock { position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 4px; border: 1px solid #fffcef; border-radius: 14px; background: #faf7e9ed; box-shadow: 0 5px 0 #9d9a7221, 0 7px 30px #7b856b12; padding: 7px; backdrop-filter: blur(20px); }
+.dock-tool { position: relative; min-width: 65px; padding: 9px 10px 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; color: #879477; background: none; }
+.dock-tool > span { font-size: 8px; color: #8a9278; }
+.dock-tool:hover { background: #eaf0dc; color: #657e49; }
+.tool-count { position: absolute; top: 2px; right: 11px; border-radius: 50%; background: #ebdfbc; color: #a0905a; min-width: 14px; height: 14px; padding: 2px; font-size: 8px; font-style: normal; }
+.stock-button { display: flex; align-items: center; justify-content: center; gap: 10px; background: #c65c3e; border: 1px solid #ba5337; box-shadow: 0 3px 0 #9c4c28; color: #fff4df; border-radius: 9px; padding: 8px 19px 10px 12px; margin: 0 6px 3px; }
+.stock-button > span:first-child { display: flex; align-items: center; justify-content: center; height: 33px; width: 31px; background: #dc825a50; border-radius: 7px; }
+.stock-button > span:last-child { text-align: left; font-size: 13px; font-weight: 550; }
+.stock-button small { display: block; color: #f0c1a0; font-size: 8px; font-weight: 400; margin-top: 4px; }
+.stock-button:hover { background: #b94e32; box-shadow: 0 4px 0 #994224; transform: translateY(-1px); }
+.stock-button:active { box-shadow: 0 1px 0 #994224; transform: translateY(2px); }
+.game-balance { display: flex; gap: 7px; align-items: center; padding: 8px 0; background: none; color: #929a7e; font-size: 8px; max-width: 195px; line-height: 1.6; text-align: left; }
+.game-balance > svg { flex-shrink: 0; color: #a0aa8c; }
+.game-balance:hover { color: #697d51; }
+.house-rules-button { display: flex; align-items: center; gap: 8px; background: none; padding: 8px 0; color: #939b7e; font-size: 9px; }
+.house-rules-button:hover { color: #617947; }
+.scene-loading { position: absolute; inset: 100px 15px 135px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; color: #8d9d75; font-size: 12px; }
+.scene-error p { max-width: 290px; font-size: 11px; text-align: center; line-height: 1.7; }
+.game-app .fridge-unavailable { inset: 130px 25px; }
+.game-app .modal-backdrop { background: #4c583b63; backdrop-filter: blur(8px); }
+.game-app .modal { background: #faf8ed; border-color: #fffbed; border-radius: 14px; box-shadow: 0 8px 0 #4a573533, 0 30px 100px #29311d38; }
+.game-app .modal.wide { width: min(100%, 880px); }
+.game-app .modal h2 { font-size: 31px; }
+.game-app .modal-subtitle { font-size: 12px; color: #828b71; }
+.game-panel-content .panel-period { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 19px; }
+.game-panel-content .grocery-summary { padding: 18px; gap: 27px; border-color: #e1e5d0; }
+.game-panel-content .grocery-summary > div > strong { font-size: 28px; }
+.game-panel-content .ledger-section { margin-top: 26px; }
+.game-panel-content .ledger-toolbar { margin-top: 18px; }
+.game-panel-content .category-tabs { row-gap: 7px; }
+.game-panel-content .settle-layout, .game-panel-content .kitchen-layout { margin-top: 6px; }
+.game-panel-content .repayments-panel { padding: 20px; background: #fcfcf4; }
+.game-panel-content .budget-panel { padding: 25px; background: #f0f1e3; border-color: #dfe5d0; }
+.game-panel-content .spend-amount { font-size: 43px; margin-top: 15px; }
+.game-panel-content .budget-labels { font-size: 11px; }
+.game-panel-content .budget-note { font-size: 11px; color: #859471; margin-bottom: 0; }
+.budget-categories { margin: 19px 0 25px; }
+.budget-categories > button { display: flex; align-items: center; gap: 11px; padding: 11px 0; border-bottom: 1px solid #e3e7d4; width: 100%; background: none; text-align: left; color: #879571; font-size: 11px; }
+.budget-categories > button > strong { margin-left: auto; font-weight: 500; color: #697f50; }
+.budget-categories > button:hover { color: #4a6535; }
+.budget-categories > button > svg { margin-left: 12px; width: 13px; }
+.game-guide { margin: 20px 0 24px; }
+.game-guide p { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; margin: 0; color: #8b967b; font-size: 11px; line-height: 1.8; }
+.game-guide svg { color: #8c9f72; margin-top: 3px; flex-shrink: 0; }
+.game-guide strong { color: #657e4b; font-weight: 550; display: block; }
+.game-app .toast { top: 104px; bottom: auto; font-size: 11px; background: #60724a; border-color: #829467; box-shadow: 0 5px 0 #3f522323, 0 8px 25px #3f522324; }
+.game-app .error-banner { position: fixed; top: 105px; left: 50%; transform: translateX(-50%); z-index: 65; border: 1px solid #eacbb7; border-radius: 9px; width: min(90vw, 560px); padding: 10px 14px; }
+
+@media (min-width: 1650px) {
+  .game-hud { padding-inline: 58px; }
+  .game-intro { left: 60px; top: 177px; }
+  .game-intro h1 { font-size: 58px; }
+  .game-party { right: 62px; top: 180px; }
+  .game-world-status { left: 60px; }
+  .game-demo { left: 60px; }
+  .game-bottom { left: 60px; right: 60px; bottom: 31px; }
+  .world-camera-controls { right: 50px; }
+  .world-fridge-toggle { left: 50px; }
+}
+@media (max-width: 1200px) {
+  .game-hud { padding-inline: 27px; }
+  .game-hud .brand { font-size: 27px; }
+  .game-identity { gap: 13px; }
+  .game-house { font-size: 10px; }
+  .game-house > span { max-width: 128px; }
+  .game-month { top: 94px; }
+  .game-resources { gap: 15px; }
+  .game-intro { left: 30px; top: 159px; }
+  .game-intro h1 { font-size: 41px; }
+  .game-intro .eyebrow { font-size: 7px; letter-spacing: 1.15px; }
+  .game-intro > p { font-size: 10px; }
+  .game-help-link { font-size: 8px; }
+  .game-party { right: 32px; top: 157px; }
+  .kitchen-world { inset: 123px -30px 117px; }
+  .world-camera-controls { right: 58px; }
+  .world-fridge-toggle { left: 58px; }
+  .world-interaction-hint { max-width: 300px; font-size: 8px; }
+  .game-bottom { left: 28px; right: 28px; }
+  .game-balance { display: none; }
+  .house-rules-button { margin-left: auto; font-size: 8px; max-width: 98px; }
+  .game-dock { left: calc(50% - 15px); }
+  .game-world-status { left: 31px; bottom: 240px; }
+  .game-world-status strong { font-size: 18px; }
+  .game-demo { left: 31px; bottom: 176px; }
+}
+@media (max-width: 900px) {
+  .game-home { min-height: 740px; }
+  .game-hud .brand { font-size: 26px; }
+  .game-hud .brand-period { margin-left: -9px; }
+  .game-hud .brand-mark { width: 29px; height: 33px; }
+  .hud-divider { display: none; }
+  .game-identity { align-items: flex-start; flex-direction: column; gap: 9px; }
+  .game-house { padding: 0; font-size: 9px; gap: 5px; }
+  .game-house > svg { width: 13px; }
+  .game-house > span { max-width: 150px; }
+  .game-hud { height: 120px; align-items: flex-start; padding: 25px; }
+  .game-resources { align-items: flex-start; }
+  .game-month { top: 85px; left: auto; right: 25px; transform: none; }
+  .game-intro { top: 150px; left: 26px; }
+  .game-intro h1 { font-size: 38px; margin-top: 14px; }
+  .game-party { right: 27px; top: 163px; }
+  .game-party > span { font-size: 8px; }
+  .game-party .eyebrow { font-size: 6px; }
+  .kitchen-world { inset: 207px -16px 140px; }
+  .world-interaction-hint { bottom: 49px; font-size: 8px; }
+  .world-camera-controls { right: 41px; bottom: 2px; padding: 3px 5px; }
+  .world-fridge-toggle { left: 41px; bottom: 0; }
+  .world-hotspot { font-size: 8px; min-height: 26px; padding: 6px 8px 6px 6px; gap: 5px; }
+  .hotspot-dot { width: 12px; height: 12px; }
+  .hotspot-dot::before, .hotspot-dot::after { left: 3px; top: 5px; }
+  .game-world-status { display: none; }
+  .game-demo { bottom: 108px; left: 26px; border: 0; transform: none; padding: 0; background: none; display: flex; gap: 9px; align-items: center; max-width: none; }
+  .game-demo > span { font-size: 8px; }
+  .game-demo > button { margin: 0; font-size: 8px; }
+  .game-demo > span > svg { width: 12px; }
+  .game-dock { left: 50%; }
+  .game-bottom { bottom: 19px; left: 24px; right: 24px; }
+  .house-rules-button { position: absolute; right: 0; bottom: 87px; max-width: none; }
+  .dock-tool { min-width: 62px; }
+  .stock-button { padding-right: 15px; gap: 8px; }
+  .stock-button > span:last-child { font-size: 12px; }
+  .game-panel-content .category-breakdown { max-width: 100%; margin-left: 0; }
+  .game-panel-content .grocery-summary { gap: 20px 35px; }
+  .game-panel-content .settle-layout, .game-panel-content .kitchen-layout { grid-template-columns: 1fr; }
+  .game-panel-content .settle-balances { grid-row: 1; }
+  .game-panel-content .settle-balances .balance-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; }
+  .game-panel-content .handwritten-note { display: none; }
+  .game-panel-content .transfer-action { width: auto; }
+}
+@media (max-width: 600px) {
+  .game-home { min-height: 720px; }
+  .game-hud { padding: 20px; }
+  .game-hud .brand { font-size: 25px; gap: 7px; }
+  .game-hud .brand-mark { width: 27px; height: 31px; }
+  .game-hud .brand-period { margin-left: -7px; }
+  .game-resources { gap: 10px; }
+  .fund-trigger { padding: 8px 10px 8px 7px; gap: 7px; border-radius: 9px; }
+  .coin-stamp { height: 28px; width: 28px; }
+  .coin-stamp svg { width: 18px; height: 18px; }
+  .fund-trigger small { font-size: 6px; letter-spacing: 0.7px; margin-bottom: 4px; }
+  .fund-trigger strong { font-size: 17px; }
+  .fund-trigger strong > span { font-size: 8px; margin-left: 2px; }
+  .player-button { display: none; }
+  .game-month { right: 20px; top: 84px; }
+  .game-month .month-control { padding: 2px; }
+  .game-month .month-control > span { min-width: 71px; font-size: 9px; }
+  .game-intro { top: 148px; left: 21px; }
+  .game-intro .eyebrow { font-size: 6.5px; letter-spacing: 0.9px; }
+  .game-intro h1 { font-size: 39px; line-height: 1.05; margin-top: 13px; margin-bottom: 11px; }
+  .game-intro > p { font-size: 9px; line-height: 1.75; }
+  .game-help-link { font-size: 0; position: absolute; top: -13px; right: -37px; gap: 0; padding: 7px; border: 1px solid #dce1cc; background: #f6f6e8; border-radius: 50%; }
+  .game-help-link > svg { width: 13px; }
+  .game-help-link > svg:last-child { display: none; }
+  .game-party { top: 156px; right: 21px; }
+  .game-party .eyebrow { font-size: 6px; letter-spacing: 0.8px; }
+  .party-members { margin-top: 10px; gap: 5px; }
+  .party-members .avatar { width: 24px; height: 24px; font-size: 8px; }
+  .party-invite { width: 22px; height: 22px; }
+  .party-invite svg { width: 13px; }
+  .game-party > span { font-size: 7px; }
+  .kitchen-world { inset: 245px -8px 180px; }
+  .world-canvas { inset: -25px 0 -15px; }
+  .world-hotspots { inset: -25px 0 -15px; }
+  .world-hotspot { min-height: 26px; padding: 6px 8px 6px 6px; gap: 5px; font-size: 8px; background: #fdf9edee; border-radius: 6px; }
+  .hotspot-ledger, .hotspot-roommates, .hotspot-settle { display: none; }
+  .world-camera-controls { bottom: -48px; right: 29px; padding: 4px; gap: 0; }
+  .world-camera-controls .icon-button { padding: 6px; }
+  .world-camera-controls > i { margin-inline: 3px; }
+  .world-camera-controls > span { font-size: 7px; min-width: 25px; }
+  .world-fridge-toggle { left: 29px; bottom: -48px; font-size: 9px; padding: 9px; grid-template-columns: 17px auto; gap: 5px; min-height: 36px; }
+  .world-fridge-toggle > svg { width: 13px; }
+  .world-fridge-toggle > span { display: none; }
+  .world-interaction-hint { bottom: -13px; font-size: 7px; max-width: 260px; }
+  .game-demo { bottom: 102px; left: 21px; gap: 7px; }
+  .game-demo > span { font-size: 7px; gap: 4px; }
+  .game-demo > span > svg { width: 11px; }
+  .game-demo > button { font-size: 7px; gap: 3px; }
+  .game-demo > button > svg { width: 11px; }
+  .game-bottom { bottom: 20px; left: 13px; right: 13px; min-height: 63px; }
+  .game-dock { width: 100%; padding: 5px; border-radius: 12px; gap: 1px; justify-content: space-between; }
+  .dock-tool { min-width: 0; flex: 1; padding: 8px 5px 5px; border-radius: 6px; gap: 6px; }
+  .dock-tool > svg { width: 19px; height: 19px; }
+  .dock-tool > span { font-size: 7px; }
+  .tool-count { width: 12px; min-width: 12px; height: 12px; font-size: 7px; padding: 1px; top: 2px; right: 6px; }
+  .stock-button { margin: 0 3px 3px; padding: 8px 9px; gap: 5px; flex-direction: column; min-width: 107px; border-radius: 7px; }
+  .stock-button > span:first-child { background: none; width: 22px; height: 20px; }
+  .stock-button > span:first-child > svg { width: 22px; height: 22px; }
+  .stock-button > span:last-child { font-size: 10px; text-align: center; }
+  .stock-button small { display: none; }
+  .house-rules-button { display: none; }
+  .game-app .modal.wide { width: min(100%, 880px); }
+  .game-app .modal h2 { font-size: 27px; }
+  .game-panel-content .panel-period { gap: 9px; }
+  .game-panel-content .panel-period .button { font-size: 9px; padding-inline: 9px; min-height: 35px; }
+  .game-panel-content .panel-period .month-control { gap: 3px; }
+  .game-panel-content .grocery-summary { gap: 17px 27px; padding: 16px; }
+  .game-panel-content .category-breakdown { gap: 5px; }
+  .game-panel-content .ledger-section { margin-top: 23px; }
+  .game-panel-content .budget-panel { padding: 21px; }
+  .game-panel-content .spend-amount { font-size: 37px; display: flex; flex-wrap: wrap; align-items: baseline; }
+  .game-panel-content .budget-labels { font-size: 10px; flex-direction: row; }
+  .game-panel-content .budget-note { font-size: 10px; }
+  .game-panel-content .ledger-table-head { letter-spacing: 0.3px; font-size: 6px; }
+  .game-panel-content .ledger-table-head, .game-panel-content .expense-row { grid-template-columns: minmax(0, 1fr) 36px 58px 21px; gap: 5px; }
+  .game-panel-content .expense-description { gap: 6px; }
+  .game-panel-content .expense-description .category-icon { width: 25px; }
+  .game-panel-content .expense-description strong { font-size: 9px; }
+  .game-panel-content .expense-description > div > span { gap: 3px; font-size: 7px; }
+  .game-panel-content .split-avatars, .game-panel-content .ledger-table-head > span:nth-child(3) { display: none; }
+  .game-panel-content .paid-by { font-size: 8px; }
+  .game-panel-content .paid-by .avatar { display: none; }
+  .game-panel-content .expense-total { font-size: 10px; }
+  .game-panel-content .section-heading > .button { min-height: 30px; padding: 6px; font-size: 8px; }
+  .game-panel-content .section-heading h2 { font-size: 21px; gap: 7px; }
+  .game-panel-content .section-heading > .button > svg { width: 12px; }
+  .game-panel-content .transfer-action { width: 100%; }
+  .game-panel-content .settle-balances .balance-amount { margin-left: auto; width: auto; padding: 0; }
+  .game-panel-content .balance-row { gap: 5px; flex-wrap: nowrap; }
+  .game-panel-content .member-label > strong { font-size: 9px; }
+  .game-panel-content .balance-amount { font-size: 9px; }
+  .game-panel-content .settle-balances .balance-list { gap: 0 13px; }
+  .game-guide p { font-size: 11px; gap: 12px; }
+  .game-app .toast { top: 110px; font-size: 10px; }
+}
+@media (max-width: 365px) {
+  .game-hud { padding-inline: 16px; }
+  .game-hud .brand { font-size: 22px; }
+  .game-hud .brand-mark { width: 24px; height: 28px; }
+  .fund-trigger { padding-inline: 6px; gap: 5px; }
+  .coin-stamp { width: 25px; height: 25px; }
+  .fund-trigger strong { font-size: 15px; }
+  .game-intro { left: 18px; }
+  .game-intro h1 { font-size: 34px; }
+  .game-intro .eyebrow { font-size: 6px; }
+  .game-party { right: 18px; }
+  .party-members .avatar { width: 21px; height: 21px; font-size: 7px; }
+  .game-party > span { font-size: 6px; }
+  .game-help-link { right: -29px; }
+  .world-camera-controls { right: 24px; }
+  .world-fridge-toggle { left: 24px; padding: 9px 7px; font-size: 8px; }
+  .stock-button { min-width: 95px; }
+  .stock-button > span:last-child { font-size: 9px; }
+  .dock-tool > span { font-size: 6px; }
+  .game-app .modal { padding-inline: 17px; }
+}
