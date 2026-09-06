@@ -391,6 +391,8 @@
   .tool-count { width: 14px; height: 14px; font-size: 8px; top: 2px; right: 6px; }
   .room-panel { left: 10px; right: 10px; bottom: 103px; }
   .game-home[data-panel-open="true"] .kitchen-world { top: 80px; bottom: calc(var(--sheet-height) + 113px); }
+  .game-panel-content .panel-period { align-items: stretch; }
+  .game-panel-content .panel-period .button { flex: 1 1 112px; max-width: max-content; white-space: normal; }
   .game-panel-content .section-heading h2 { font-size: 22px; }
   .game-panel-content .expense-description strong { font-size: 11px; }
   .game-panel-content .expense-total { font-size: 12px; }

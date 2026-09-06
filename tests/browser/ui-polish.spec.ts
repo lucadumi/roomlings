@@ -105,7 +105,8 @@ test.describe('UI polish', () => {
     await expect(rules).toBeFocused()
   })
 
-  for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+  // The intermediate width also covers space reserved by non-overlay scrollbars on wider phones.
+  for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }, { width: 320, height: 568 }]) {
     test(`panels and forms stay usable at ${viewport.width}px`, async ({ page }) => {
       await page.setViewportSize(viewport)
       await page.goto('/')
@@ -145,7 +146,7 @@ test.describe('UI polish', () => {
       await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
       await expect(page.getByRole('region', { name: 'The little house pot.' })).toBeFocused()
       await expectNoOverflow(page.locator('.panel-period'))
-      if (viewport.width === 390) {
+      if (viewport.width >= 374) {
         const month = await page.locator('.room-panel .month-control').boundingBox()
         const edit = await page.getByRole('button', { name: 'Edit monthly budget', exact: true }).boundingBox()
         expect(month).not.toBeNull()
