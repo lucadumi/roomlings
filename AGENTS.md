@@ -30,6 +30,7 @@ Do not rewrite history or discard unrelated changes. Keep the owner's existing k
 - Keep database files, browser session tokens, credentials, build output and test artifacts out of commits.
 - Browser storage reads retain compatibility with the original Coldshare keys. Do not remove that compatibility without a migration plan.
 - Batch static opaque siblings with `batchStaticMeshes`, keeping interactive group boundaries intact. Add individually animated or visibility-controlled meshes to its preserved set.
+- Invalidate cached shadows when a caster moves or changes visibility. Camera-only motion reuses the shadow map; gentle ambient leaf movement refreshes at 4 Hz.
 
 ## Existing commands
 

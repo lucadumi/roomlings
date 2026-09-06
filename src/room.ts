@@ -3,6 +3,8 @@ import {
   PointLight, SphereGeometry, TorusGeometry,
 } from 'three'
 import { memberColors } from '../shared/domain.ts'
+import { daylight, eveningLight } from './lighting.ts'
+import type { ContactShadow } from './lighting.ts'
 
 export type KitchenAction = 'stock' | 'ledger' | 'budget' | 'roommates' | 'settle'
 export type SceneAction = KitchenAction | 'fridge' | 'light' | 'brew'
@@ -22,24 +24,29 @@ export const sceneAnchors: { action: KitchenAction | 'brew'; label: string; posi
 ]
 
 export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
-  const tile = material('#e4e7d9')
-  const tileAlternate = material('#d3dcc6')
+  const tile = material('#e4e7d9', 0.86)
+  const tileAlternate = material('#d3dcc6', 0.86)
   const plaster = material('#efe3c8')
   const trim = material('#ded0b0')
-  const wood = material('#bb895c')
-  const lightWood = material('#d7ad78')
-  const teal = material('#90a59a')
-  const counter = material('#f1e9d7')
+  const wood = material('#bb895c', 0.82)
+  const lightWood = material('#d7ad78', 0.78)
+  const woodGrain = material('#c69c6b', 0.84)
+  const teal = material('#879f91', 0.64)
+  const cabinetPanel = material('#94ac9b', 0.64)
+  const counter = material('#f1e9d7', 0.7)
   const ink = material('#5f6857')
-  const paper = material('#fff5df')
-  const tomato = material('#c7593d')
-  const gold = material('#d4ae50', 0.45)
+  const paper = material('#fff5df', 0.98)
+  const tomato = material('#c7593d', 0.6)
+  const gold = material('#d4ae50', 0.38)
+  gold.metalness = 0.18
   const leaf = material('#789359')
   const leafLight = material('#a2b878')
-  const terracotta = material('#c88a69')
-  const sky = material('#b5d2c8')
-  const linen = material('#ead5b5')
-  const handles = material('#dedcbb', 0.55)
+  const terracotta = material('#c88a69', 0.98)
+  const sky = material(daylight.window)
+  const linen = material('#ead5b5', 1)
+  const handles = material('#e5dfc9', 0.38)
+  handles.metalness = 0.12
+  const contacts: ContactShadow[] = []
   const actors = new Map<SceneAction, Group>()
   const actor = (action: SceneAction, position: [number, number, number]) => {
     const group = new Group()
@@ -70,7 +77,10 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   box(window, [0.065, 1.63, 0.06], [0, 0, 0.115], paper)
   box(window, [2.1, 0.065, 0.06], [0, 0, 0.115], paper)
   box(window, [2.5, 0.12, 0.35], [0, -0.96, 0.05], lightWood, 0.015)
-  const sun = new Mesh(new CylinderGeometry(0.17, 0.17, 0.015, 12), gold)
+  const windowDisc = material(daylight.disc)
+  windowDisc.emissive.set(eveningLight.disc)
+  windowDisc.emissiveIntensity = 0
+  const sun = new Mesh(new CylinderGeometry(0.17, 0.17, 0.015, 12), windowDisc)
   sun.rotation.x = Math.PI / 2
   sun.position.set(0.55, 0.48, 0.105)
   window.add(sun)
@@ -83,12 +93,14 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   const cupboard = new Group()
   cupboard.position.set(2.05, 0, -2.56)
   room.add(cupboard)
+  contacts.push({ position: [2.05, 0.007, -2.56], size: [5.1, 1.65] })
   box(cupboard, [4.77, 1.48, 1.18], [0, 0.85, 0], teal, 0.045)
   box(cupboard, [4.88, 0.15, 1.31], [0, 1.66, 0.015], counter, 0.035)
   box(cupboard, [4.6, 0.17, 0.98], [0, 0.15, -0.02], ink)
   for (let i = 0; i < 5; i++) {
     const x = -1.87 + i * 0.935
     box(cupboard, [0.885, 1.28, 0.065], [x, 0.88, 0.61], teal, 0.025)
+    box(cupboard, [0.735, 1.08, 0.012], [x, 0.86, 0.65], cabinetPanel, 0.006)
     box(cupboard, [0.24, 0.04, 0.08], [x, 1.31, 0.68], handles, 0.014)
   }
   box(cupboard, [1.05, 0.035, 0.78], [1.3, 1.76, 0], handles, 0.025)
@@ -102,6 +114,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   kettle.userData.action = 'brew'
   actors.set('brew', kettle)
   cupboard.add(kettle)
+  cylinder(kettle, 0.21, 0.025, [0, 0.017, 0], ink)
   cylinder(kettle, 0.22, 0.34, [0, 0.2, 0], tomato, 0.18)
   const kettleLid = cylinder(kettle, 0.18, 0.045, [0, 0.39, 0], ink)
   cylinder(kettle, 0.04, 0.065, [0, 0.44, 0], wood)
@@ -109,13 +122,15 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   spout.rotation.z = -0.9
   const kettleHandle = new Mesh(new TorusGeometry(0.19, 0.035, 4, 8, Math.PI), wood)
   kettleHandle.position.set(0, 0.4, 0)
+  kettleHandle.castShadow = true
+  kettleHandle.receiveShadow = true
   kettle.add(kettleHandle)
 
-  const steamMaterial = material('#fff9e9')
-  steamMaterial.transparent = true
-  steamMaterial.opacity = 0.24
-  steamMaterial.depthWrite = false
   const steam = Array.from({ length: 3 }, (_, i) => {
+    const steamMaterial = material('#fff9e9')
+    steamMaterial.transparent = true
+    steamMaterial.opacity = 0
+    steamMaterial.depthWrite = false
     const puff = new Mesh(new SphereGeometry(0.055, 5, 4), steamMaterial)
     puff.position.set(0.34, 0.44 + i * 0.2, 0)
     kettle.add(puff)
@@ -165,15 +180,21 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   table.position.set(0.73, 0, 1.14)
   room.add(table)
   box(table, [3.58, 0.18, 1.86], [0, 1.4, 0], lightWood, 0.065)
+  for (const z of [-0.31, 0.31]) box(table, [3.4, 0.004, 0.008], [0, 1.493, z], woodGrain)
   box(table, [3.25, 0.24, 1.54], [0, 1.23, 0], wood)
-  for (const x of [-1.42, 1.42]) for (const z of [-0.61, 0.61]) box(table, [0.12, 1.2, 0.12], [x, 0.65, z], wood, 0.015)
+  for (const x of [-1.42, 1.42]) for (const z of [-0.61, 0.61]) {
+    box(table, [0.12, 1.2, 0.12], [x, 0.65, z], wood, 0.015)
+    contacts.push({ position: [table.position.x + x, 0.042, table.position.z + z], size: [0.42, 0.42] })
+  }
   box(room, [4.5, 0.018, 2.7], [0.85, 0.022, 1.69], linen, 0.07)
   for (const z of [0.49, 2.9]) {
     box(room, [4.13, 0.007, 0.095], [0.85, 0.037, z], tomato)
     for (let i = 0; i < 22; i++) box(room, [0.025, 0.012, 0.2], [-1.22 + i * 0.195, 0.032, z + (z > 2 ? 0.21 : -0.21)], paper)
   }
   for (const [x, z] of [[0.6, 2.76], [2.95, 1.26]]) {
+    cylinder(room, 0.38, 0.045, [x, 0.765, z], wood)
     cylinder(room, 0.41, 0.12, [x, 0.84, z], teal)
+    contacts.push({ position: [x, 0.042, z], size: [1.05, 0.9] })
     for (let i = 0; i < 3; i++) {
       const angle = (i / 3) * Math.PI * 2
       const leg = cylinder(room, 0.035, 0.78, [x + Math.cos(angle) * 0.24, 0.42, z + Math.sin(angle) * 0.24], wood)
@@ -188,6 +209,8 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   for (const z of [-0.19, 0.2]) {
     const handle = new Mesh(new TorusGeometry(0.2, 0.027, 4, 9, Math.PI), wood)
     handle.position.set(0, 0.77, z)
+    handle.castShadow = true
+    handle.receiveShadow = true
     bag.add(handle)
   }
   const baguette = cylinder(bag, 0.095, 0.78, [0.13, 0.81, 0.04], linen, 0.07)
@@ -227,6 +250,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
     const pot = new Group()
     pot.position.set(...position)
     pot.scale.setScalar(scale)
+    contacts.push({ position: [position[0], position[1] - 0.012, position[2]], size: [0.85 * scale, 0.85 * scale] })
     cylinder(pot, 0.24, 0.5, [0, 0.25, 0], terracotta, 0.32)
     cylinder(pot, 0.31, 0.06, [0, 0.51, 0], terracotta)
     cylinder(pot, 0.28, 0.03, [0, 0.545, 0], wood)
@@ -281,5 +305,5 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   clock.add(hourHand, minuteHand)
   room.add(clock)
 
-  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, bulb, hourHand, minuteHand, kettleLid }
+  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts }
 }
