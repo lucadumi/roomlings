@@ -8,7 +8,7 @@ function kitchen(): Household {
   return {
     id: randomUUID(), name: 'Test kitchen', currency: 'EUR', budget: 45000, inviteCode: 'test-invite',
     demo: false, version: 0, members: ['A', 'B', 'C'].map((name) => ({ id: randomUUID(), name, color: '#888888' })),
-    expenses: [], settlements: [],
+    expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
   }
 }
 

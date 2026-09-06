@@ -6,19 +6,25 @@ import {
   Plus, ReceiptText, RefreshCw, Search, Settings2, Snowflake, Trash2, Users, Wallet, X,
 } from 'lucide-react'
 import {
-  balances, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
-  money, monthlyExpenses, parseMoney, splitAmount, suggestedTransfers,
+  balances, billingDate, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
+  money, monthlyGroceries, parseMoney, splitAmount, suggestedTransfers,
 } from '../shared/domain.ts'
-import type { Category, Expense, Household, Session, Settlement, Transfer } from '../shared/domain.ts'
+import type { Bill, Category, Expense, Household, Session, Settlement, Transfer } from '../shared/domain.ts'
+import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bills.ts'
+import type { BillOccurrence } from '../shared/bills.ts'
 import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, sessionSchema } from './api.ts'
 import type { SavedKitchen } from './api.ts'
-import { Avatar, CategoryIcon, Form, Modal, RoomPanel } from './components.tsx'
+import { Avatar, CategoryIcon, Form, Modal, RoomPanel, SplitParticipants } from './components.tsx'
+import { BillForm, BillPaymentForm, BillsPanel } from './Bills.tsx'
+import { dateTitle, monthTitle } from './format.ts'
 import { GameHome } from './GameHome.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
 
-type Page = 'overview' | 'groceries' | 'settle' | 'kitchen' | 'budget'
-type Dialog = 'expense' | 'create' | 'join' | 'invite' | 'settings' | 'help' | { transfer: Transfer } | { remove: Expense } | { undo: Settlement } | null
+type Page = 'overview' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
+type Dialog = 'expense' | 'bill-create' | 'create' | 'join' | 'invite' | 'settings' | 'help'
+  | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
+  | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } } | null
 const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ?? ''
 let initialSession: Promise<Session> | undefined
 
@@ -37,18 +43,6 @@ function loadSession(): Promise<Session> {
   return initialSession
 }
 
-function monthTitle(month: string, short = false): string {
-  return new Intl.DateTimeFormat('en-GB', { month: short ? 'short' : 'long', year: 'numeric' }).format(new Date(`${month}-15T12:00:00`))
-}
-
-function dateTitle(date: string): string {
-  if (date === localDate()) return 'Today'
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  if (date === localDate(yesterday)) return 'Yesterday'
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`))
-}
-
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const sessionRef = useRef(session)
@@ -62,6 +56,7 @@ export function App() {
   const [formError, setFormError] = useState('')
   const [notice, setNotice] = useState('')
   const [month, setMonth] = useState(localDate().slice(0, 7))
+  const [billMonth, setBillMonth] = useState(localDate().slice(0, 7))
   const [filter, setFilter] = useState<Category | 'all'>('all')
   const [search, setSearch] = useState('')
   const [syncState, setSyncState] = useState<'saved' | 'offline'>('saved')
@@ -76,6 +71,7 @@ export function App() {
     loadSession().then((next) => {
       if (startupAttempt.current !== attempt) return
       setSession(next)
+      setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
       try { setSaved(rememberKitchen(next)) } catch {
         setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
       }
@@ -126,6 +122,7 @@ export function App() {
     }
     history.replaceState(null, '', `${location.pathname}${location.search}`)
     setMonth(localDate().slice(0, 7))
+    setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
     setFilter('all')
     setPage('overview')
     setDialog(null)
@@ -145,6 +142,7 @@ export function App() {
       setNotice(success)
       setDialog(null)
       setSyncState('saved')
+      if (path === '/bills') setBillMonth(household.bills[0].startMonth)
       if (path === '/expenses' && method !== 'DELETE') {
         const added = household.expenses[0]
         setMonth(added.date.slice(0, 7))
@@ -163,14 +161,15 @@ export function App() {
   const memberName = (id: string) => household?.members.find((member) => member.id === id)?.name ?? 'Unknown roommate'
   const exportLedger = () => {
     if (!household) return
-    const rows: (string | number)[][] = [['Type', 'Date', 'Description', 'Amount', 'Currency', 'Paid by / From', 'Split with / To', 'Category']]
+    const rows: (string | number)[][] = [['Type', 'Date', 'Description', 'Amount', 'Currency', 'Paid by / From', 'Split with / To', 'Category', 'Billing month']]
     for (const expense of household.expenses) rows.push([
-      'Expense', expense.date, expense.description, (expense.amount / 100).toFixed(2), household.currency,
-      memberName(expense.paidBy), expense.participants.map(memberName).join('; '), categoryLabels[expense.category],
+      expense.bill ? 'Bill' : 'Expense', expense.date, expense.description, (expense.amount / 100).toFixed(2), household.currency,
+      memberName(expense.paidBy), expense.participants.map(memberName).join('; '), expense.bill ? 'Monthly bill' : categoryLabels[expense.category],
+      expense.bill?.month ?? '',
     ])
     for (const settlement of household.settlements) rows.push([
       'Repayment', settlement.createdAt.slice(0, 10), 'Recorded repayment', (settlement.amount / 100).toFixed(2),
-      household.currency, memberName(settlement.from), memberName(settlement.to), '',
+      household.currency, memberName(settlement.from), memberName(settlement.to), '', '',
     ])
     const url = URL.createObjectURL(new Blob(['\uFEFF', rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
@@ -211,6 +210,7 @@ export function App() {
   }
   const visit = (next: Page) => {
     setPage(next)
+    setFormError('')
     setSearch('')
     setFilter('all')
     if (next === 'overview') setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
@@ -232,7 +232,7 @@ export function App() {
       <div className="game-guide">
         <p><Snowflake size={19} /><span><strong>Peek in the fridge.</strong> Click a door to open it. Click a grocery to find the expenses on that shelf.</span></p>
         <p><Plus size={19} /><span><strong>Unpack a grocery run.</strong> Click the shopping bag. Save an expense and watch the groceries fly into the fridge.</span></p>
-        <p><ReceiptText size={19} /><span><strong>Keep the receipts.</strong> The little book holds your shared shopping history.</span></p>
+        <p><ReceiptText size={19} /><span><strong>Keep the receipts.</strong> The book holds groceries and monthly bills. Record a bill only after someone has paid it.</span></p>
         <p><Wallet size={19} /><span><strong>Watch the house pot.</strong> The coins represent the monthly budget you have left, not points or rewards.</span></p>
         <p><Users size={19} /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
       </div><p className="field-hint">Drag to turn the room. Scroll or pinch to zoom. Selecting an object brings it closer while its details stay beside the room. Use Whole room to pull back, or tap the kettle for a little tea break. Everything is also available from the toolbar. The fridge visualizes purchases, not what is left to eat.</p>
@@ -249,6 +249,34 @@ export function App() {
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
       <ExpenseForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/expenses', body, 'Fridge stocked. Groceries shared. All saved.') }} />
     </Modal>
+    if (dialog === 'bill-create') return <Modal title="A regular part of home." subtitle="Add a monthly bill. Creating a schedule does not create a debt or move money." onClose={close} busy={busy}>
+      <BillForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/bills', body, 'Monthly bill created. Record a payment when someone has paid it.') }} />
+    </Modal>
+    if (typeof dialog === 'object' && 'editBill' in dialog) return <Modal title="Edit a monthly bill." subtitle="Update the default amount, due day and people sharing it." onClose={close} busy={busy}>
+      <BillForm household={household} bill={dialog.editBill} busy={busy} error={footerError} onSubmit={(body) => { void action(`/bills/${dialog.editBill.id}`, body, 'Monthly bill updated. Recorded payments are unchanged.', 'PATCH') }} />
+    </Modal>
+    if (typeof dialog === 'object' && 'payBill' in dialog) {
+      const bill = household.bills.find((bill) => bill.id === dialog.payBill.billId)
+      const current = bill ? billOccurrence(household, bill, dialog.payBill.month) : null
+      const blocked = !current ? 'This bill is no longer scheduled for that month. Close this form and choose an active month.'
+        : current.payment ? 'A payment is already recorded for this bill and month. Close this form to see the recorded expense.' : ''
+      return <Modal title="Record a bill payment." subtitle="Only record money that has actually been paid. Roomlings does not move money." onClose={close} busy={busy}>
+        <BillPaymentForm household={household} memberId={session.memberId} item={current ?? dialog.payBill} busy={busy} blocked={!!blocked}
+          error={blocked ? <p className="form-error" role="alert">{blocked}</p> : footerError}
+          onSubmit={(body) => { void action(`/bills/${dialog.payBill.billId}/payments`, body, 'Bill payment recorded once in the shared ledger.') }} />
+      </Modal>
+    }
+    if (typeof dialog === 'object' && 'pauseBill' in dialog) {
+      const { bill, paused } = dialog.pauseBill
+      return <Modal title={paused ? 'Pause this monthly bill?' : 'Resume this monthly bill?'}
+        subtitle={paused ? `${latestBillRevision(bill).name} will stop recurring from ${monthTitle(billPauseMonth(bill, billingDate(household.billingTimeZone).slice(0, 7)))}. Existing dues and recorded payments stay.`
+          : 'Resume from this month, or the first scheduled month if later. Skipped months will not be added back.'}
+        onClose={close} busy={busy}>
+        {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
+          <button className="button primary" disabled={busy} onClick={() => { void action(`/bills/${bill.id}/pause`, { paused }, paused ? 'Monthly bill paused for future months.' : 'Monthly bill resumed. Skipped months stay skipped.') }}>{paused ? 'Pause monthly bill' : 'Resume monthly bill'}</button>
+        </div>
+      </Modal>
+    }
     if (dialog === 'settings') return <Modal title="A few house rules." subtitle="A shared budget keeps everyone on the same page." onClose={close} busy={busy}>
       <SettingsForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/household', body, 'Your house rules have been updated.', 'PATCH') }} />
     </Modal>
@@ -263,8 +291,10 @@ export function App() {
         {footerError}<button className="button primary full" disabled={busy} onClick={() => { void action('/settlements', { ...transfer }, 'Payment recorded. A little less owing, a little more sharing.') }}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}Yes, record payment</button>
       </Modal>
     }
-    if (typeof dialog === 'object' && 'remove' in dialog) return <Modal title="Remove this grocery run?" subtitle={`"${dialog.remove.description}" will be removed from everyone's ledger. Existing payments will stay and balances will be recalculated.`} onClose={close} busy={busy}>
-      {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/expenses/${dialog.remove.id}`, {}, 'Grocery run removed. Balances have been recalculated.', 'DELETE') }}>{busy ? 'Removing...' : 'Remove grocery run'}</button></div>
+    if (typeof dialog === 'object' && 'remove' in dialog) return <Modal title={dialog.remove.bill ? 'Undo this bill payment record?' : 'Remove this grocery run?'}
+      subtitle={dialog.remove.bill ? 'This removes the expense record and recalculates balances. It does not return money or undo roommate repayments.'
+        : `"${dialog.remove.description}" will be removed from everyone's ledger. Existing payments will stay and balances will be recalculated.`} onClose={close} busy={busy}>
+      {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/expenses/${dialog.remove.id}`, {}, dialog.remove.bill ? 'Bill payment record removed. Balances have been recalculated.' : 'Grocery run removed. Balances have been recalculated.', 'DELETE') }}>{busy ? 'Removing...' : dialog.remove.bill ? 'Undo bill payment record' : 'Remove grocery run'}</button></div>
     </Modal>
     if (typeof dialog === 'object' && 'undo' in dialog) return <Modal title="Undo this recorded payment?" subtitle="This only changes the shared ledger. It will not return money that has already been transferred." onClose={close} busy={busy}>
       {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/settlements/${dialog.undo.id}`, {}, 'Recorded payment undone.', 'DELETE') }}>{busy ? 'Saving...' : 'Undo payment record'}</button></div>
@@ -279,7 +309,7 @@ export function App() {
     </div>{renderDialog()}
   </div>
 
-  const expenses = monthlyExpenses(household, month)
+  const expenses = monthlyGroceries(household, month)
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0)
   const remaining = household.budget - total
   const progress = Math.min(total / household.budget, 1)
@@ -324,27 +354,35 @@ export function App() {
     <GameHome
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
-      expenseCount={expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
+      expenseCount={expenses.length} receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
       stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
-      panelOpen={page !== 'overview'} activeTool={page === 'groceries' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
+      panelOpen={page !== 'overview'} activeTool={page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
       onAction={interact} onCreate={() => openDialog('create')} onInvite={() => openDialog('invite')}
       onSettings={() => openDialog('settings')} onHelp={() => openDialog('help')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
     {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button></div>}
     {page !== 'overview' && !dialog && <RoomPanel
-      title={{ groceries: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.' }[page]}
-      subtitle={{ groceries: 'Every little thing you brought home, all in one place.', settle: 'Real repayments, without the awkward conversations.', kitchen: 'One kitchen. Different tastes. Always a fair share.', budget: 'The coins in your jar show how much of this month is left to enjoy.' }[page]}
+      title={{ groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.' }[page]}
+      subtitle={{ groceries: 'Every little thing you brought home, all in one place.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Real repayments, without the awkward conversations.', kitchen: 'One kitchen. Different tastes. Always a fair share.', budget: 'The coins in your jar show how much of this month is left to enjoy.' }[page]}
+      view={page === 'bills' ? `bills:${billMonth}` : page}
       onClose={() => visit('overview')}
     ><div className="game-panel-content">
+        {(page === 'groceries' || page === 'bills') && <nav className="receipt-tabs" aria-label="Receipt book sections">
+          <button type="button" disabled={busy} aria-pressed={page === 'groceries'} onClick={() => visit('groceries')}>Groceries</button>
+          <button type="button" disabled={busy} aria-pressed={page === 'bills'} onClick={() => visit('bills')}>Bills</button>
+        </nav>}
+        {page === 'bills' && <BillsPanel household={household} month={billMonth} onMonth={setBillMonth} busy={busy}
+          onCreate={() => openDialog('bill-create')} onEdit={(bill) => openDialog({ editBill: bill })} onPay={(item) => openDialog({ payBill: item })}
+          onPause={(bill, paused) => openDialog({ pauseBill: { bill, paused } })} onRemove={(expense) => openDialog({ remove: expense })} onExport={exportLedger} />}
         {page === 'groceries' && <><div className="panel-period">{monthControls}<button className="button primary small-button" onClick={() => openDialog('expense')}><Plus size={15} />Add grocery run</button></div><div className="grocery-summary"><div><span className="eyebrow">SPENT TOGETHER</span><strong>{money(total, household.currency)}</strong></div><div><span className="eyebrow">GROCERY RUNS</span><strong>{expenses.length.toString().padStart(2, '0')}</strong></div><div className="category-breakdown">{categories.filter((category) => totals[category] > 0).map((category) => <button key={category} onClick={() => setFilter(category)} className={`breakdown-item ${category}`}><CategoryIcon category={category} size={16} /><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong></button>)}</div></div>{ledger}</>}
         {page === 'budget' && <><div className="panel-period">{monthControls}<button className="button secondary small-button" onClick={() => openDialog('settings')}><Settings2 size={15} />Edit monthly budget</button></div><section className="budget-panel"><div className="card-topline"><span className="eyebrow">SPENT TOGETHER</span><Leaf size={19} /></div><div className="spend-amount">{money(total, household.currency)}<span>of {money(household.budget, household.currency)}</span></div><div className="budget-track" role="meter" aria-label="Monthly grocery spending" aria-valuemin={0} aria-valuemax={household.budget} aria-valuenow={Math.min(total, household.budget)} aria-valuetext={`${money(total, household.currency)} spent out of ${money(household.budget, household.currency)}`}><div style={{ width: `${progress * 100}%` }} className={remaining < 0 ? 'over-budget' : ''} /></div><div className="budget-labels"><strong className={remaining < 0 ? 'negative' : ''}>{money(Math.abs(remaining), household.currency)} {remaining < 0 ? 'over budget' : 'left to enjoy'}</strong><span>{expenses.length} grocery runs</span></div><p className="budget-note">{remaining < 0 ? 'The pot is empty for this month. Maybe a pantry dinner tonight?' : 'A little room for the essentials. And a little treat.'}</p></section><div className="budget-categories">{categories.map((category) => <button key={category} onClick={() => { visit('groceries'); setFilter(category) }}><span className={`category-icon ${category}`}><CategoryIcon category={category} /></span><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong><ArrowRight size={15} /></button>)}</div><p className="field-hint">The jar represents your remaining monthly budget, not a bank account. The app never moves money.</p></>}
-        {page === 'settle' && <div className="settle-layout"><div><section className="repayments-panel"><div className="section-heading"><div><span className="eyebrow">ALL-TIME BALANCES, SIMPLIFIED</span><h2>A shorter way to square.</h2></div><span className="round-stamp"><CheckCheck size={24} /></span></div><p className="section-description">Instead of paying back every grocery run, make these {transfers.length || 'zero'} {transfers.length === 1 ? 'payment' : 'payments'}. Calculated automatically, down to the last cent.</p>
+        {page === 'settle' && <div className="settle-layout"><div><section className="repayments-panel"><div className="section-heading"><div><span className="eyebrow">ALL-TIME BALANCES, SIMPLIFIED</span><h2>A shorter way to square.</h2></div><span className="round-stamp"><CheckCheck size={24} /></span></div><p className="section-description">Instead of paying back every shared expense, make these {transfers.length || 'zero'} {transfers.length === 1 ? 'payment' : 'payments'}. Calculated automatically, down to the last cent.</p>
           {transfers.map((transfer) => <div className="transfer-row" key={`${transfer.from}-${transfer.to}`}><div className="transfer-people"><Avatar member={household.members.find((member) => member.id === transfer.from)!} small /><strong>{memberName(transfer.from)}</strong><ArrowRight size={17} /><Avatar member={household.members.find((member) => member.id === transfer.to)!} small /><strong>{memberName(transfer.to)}</strong></div><div className="transfer-action"><strong>{money(transfer.amount, household.currency)}</strong><button className="button secondary small-button" onClick={() => openDialog({ transfer })}><Check size={14} />Record paid</button></div></div>)}
           {!transfers.length && <div className="empty-state"><CheckCheck size={42} className="sage-text" /><h3>All square. How lovely.</h3><p>No one owes a thing. There is probably a dinner to celebrate.</p></div>}
           <div className="info-note"><CircleHelp size={17} /><p>Roomlings does not send money. Pay your roommate however you like, then record it here. Cent remainders are shared deterministically, so the ledger always adds up.</p></div></section>
           <section className="payment-history"><div className="section-heading"><h2>All paid, all good.</h2><span className="small-muted">Payment history</span></div>{household.settlements.length ? household.settlements.map((settlement) => <div className="history-row" key={settlement.id}><span className="history-check"><Check size={17} /></span><div><strong>{memberName(settlement.from)} paid {memberName(settlement.to)}</strong><span>{dateTitle(settlement.createdAt.slice(0, 10))}</span></div><strong>{money(settlement.amount, household.currency)}</strong><button className="text-button" onClick={() => openDialog({ undo: settlement })}>Undo</button></div>) : <p className="muted-paragraph">Recorded payments will find a home here.</p>}</section></div><section className="household-panel settle-balances"><div className="card-topline"><span className="eyebrow">WHERE EVERYONE STANDS</span></div>{balanceList}<div className="handwritten-note">Fair shares.<br />Full plates.</div></section></div>}
-        {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>{saved.filter((kitchen) => kitchen.token !== session.token).length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{saved.filter((kitchen) => kitchen.token !== session.token).map((kitchen) => <button key={kitchen.token} disabled={busy} onClick={() => { void switchKitchen(kitchen) }}><Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></span><ArrowRight size={14} /></button>)}</div>}<p className="small-muted">Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.</p></section></div>}
+        {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => !expense.bill && expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>{saved.filter((kitchen) => kitchen.token !== session.token).length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{saved.filter((kitchen) => kitchen.token !== session.token).map((kitchen) => <button key={kitchen.token} disabled={busy} onClick={() => { void switchKitchen(kitchen) }}><Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></span><ArrowRight size={14} /></button>)}</div>}<p className="small-muted">Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.</p></section></div>}
     </div></RoomPanel>}
     {notice && <div className="toast" role="status"><Check size={17} /><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {renderDialog()}
@@ -360,7 +398,6 @@ function ExpenseForm({ household, memberId, busy, error, onSubmit }: { household
   const [date, setDate] = useState(localDate())
   const [localError, setLocalError] = useState('')
   const cents = parseMoney(amount)
-  const shares = cents && participants.length ? splitAmount(cents, participants) : null
   return <Form onSubmit={() => {
     if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
     if (!participants.length) { setLocalError('Choose at least one roommate to split with.'); return }
@@ -370,8 +407,7 @@ function ExpenseForm({ household, memberId, busy, error, onSubmit }: { household
     <label className="field">What did you pick up?<input required maxLength={100} placeholder="e.g. The big weekly shop" value={description} onChange={(event) => setDescription(event.target.value)} disabled={busy} /></label>
     <div className="field-row"><label className="field">Total ({household.currency})<input required inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></label><label className="field">Date<input type="date" required value={date} max={localDate()} onChange={(event) => setDate(event.target.value)} disabled={busy} /></label></div>
     <div className="field-row"><label className="field">Paid by<select value={paidBy} onChange={(event) => setPaidBy(event.target.value)} disabled={busy}>{household.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label><label className="field">On which shelf?<select value={category} onChange={(event) => setCategory(event.target.value as Category)} disabled={busy}>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}</select></label></div>
-    <fieldset className="split-fieldset"><legend>Share it with</legend><div className="participant-options">{household.members.map((member) => <label className={`participant-option${participants.includes(member.id) ? ' chosen' : ''}`} key={member.id}><input type="checkbox" checked={participants.includes(member.id)} disabled={busy} onChange={(event) => setParticipants((previous) => event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id))} /><Avatar member={member} small /><span>{member.name}</span>{participants.includes(member.id) && <Check size={13} />}</label>)}</div></fieldset>
-    {shares && <div className="split-preview">{household.members.filter((member) => participants.includes(member.id)).map((member) => <span key={member.id}>{member.name} <strong>{money(shares.get(member.id) ?? 0, household.currency)}</strong></span>)}</div>}
+    <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
     {(localError || error) && <div>{localError && <p className="form-error" role="alert">{localError}</p>}{error}</div>}
     <button className="button primary full" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <Plus size={17} />} {busy ? 'Adding to the kitchen...' : 'Add & split the groceries'}</button>
     <p className="form-footnote">Shared equally, with any spare cents split fairly.</p>
@@ -418,11 +454,11 @@ function SettingsForm({ household, busy, error, onSubmit }: { household: Househo
   const [budget, setBudget] = useState((household.budget / 100).toFixed(2))
   const [currency, setCurrency] = useState<string>(household.currency)
   const [localError, setLocalError] = useState('')
-  const currencyLocked = household.expenses.length > 0 || household.settlements.length > 0
+  const currencyLocked = household.expenses.length > 0 || household.settlements.length > 0 || household.bills.length > 0
   return <Form onSubmit={() => { const amount = parseMoney(budget); if (!amount) { setLocalError('Enter a positive budget with up to two decimal places.'); return }; setLocalError(''); onSubmit({ name, budget: amount, currency }) }}>
     <label className="field">Kitchen name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /></label>
     <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<select value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label></div>
-    <p className="field-hint">The monthly target applies to every month. {currencyLocked && 'Currency stays fixed after the first expense to keep your ledger accurate.'}</p>
+    <p className="field-hint">The monthly grocery target applies to every month. {currencyLocked && 'Currency stays fixed after adding expenses or monthly bills.'}</p>
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
   </Form>
 }

@@ -61,7 +61,7 @@ export class Store {
       id: randomUUID(), name, currency, budget, demo, version: 0,
       inviteCode: randomBytes(12).toString('base64url'),
       members: [{ id: memberId, name: memberName, color: memberColors[0] }],
-      expenses: [], settlements: [],
+      expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
     }
     if (demo) {
       household.members.push(...['Jules', 'Sam', 'Alex'].map((name, index) => ({

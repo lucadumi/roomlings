@@ -12,18 +12,66 @@ export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value)
   const parsed = new Date(`${value}T12:00:00Z`)
   return Number.isFinite(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value
 }, 'Please choose a valid date.')
+export const monthSchema = z.string().regex(/^(?:19\d{2}|[2-9]\d{3})-(?:0[1-9]|1[0-2])$/, 'Choose a valid billing month.')
+export const timeZoneSchema = z.string().min(1).max(100).refine((timeZone) => {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone })
+    return true
+  } catch (error) {
+    if (error instanceof RangeError) return false
+    throw error
+  }
+}, 'Choose a valid billing time zone.')
+export const participantsSchema = z.array(id).min(1, 'Choose someone to split with.').max(12)
+  .refine((ids) => new Set(ids).size === ids.length, 'Choose each roommate only once.')
 
 export const memberSchema = z.object({ id, name: nameSchema, color: z.string() })
 export const expenseInputSchema = z.object({
   description: z.string().trim().min(1, 'Give this grocery run a name.').max(100),
   amount: centsSchema,
   paidBy: id,
-  participants: z.array(id).min(1, 'Choose someone to split with.').max(12)
-    .refine((ids) => new Set(ids).size === ids.length, 'Choose each roommate only once.'),
+  participants: participantsSchema,
   category: z.enum(categories),
   date: dateSchema,
 })
-export const expenseSchema = expenseInputSchema.extend({ id, createdAt: z.string().datetime() })
+const billPaymentReferenceSchema = z.object({ billId: id, month: monthSchema, dueDate: dateSchema })
+  .refine((reference) => reference.dueDate.startsWith(`${reference.month}-`), 'The due date must belong to the billing month.')
+export const expenseSchema = expenseInputSchema.extend({
+  id, createdAt: z.string().datetime(), bill: billPaymentReferenceSchema.optional(),
+})
+export const billEditInputSchema = z.object({
+  name: nameSchema, amount: centsSchema, dueDay: z.number().int().min(1).max(31), participants: participantsSchema,
+})
+export const billCreateInputSchema = billEditInputSchema.omit({ dueDay: true }).extend({
+  firstDueDate: dateSchema.refine((date) => date >= '1900-01-01', 'Choose a first due date from 1900 onward.'),
+  timeZone: timeZoneSchema.default('UTC'),
+})
+export const billPaymentInputSchema = z.object({
+  month: monthSchema, amount: centsSchema, paidBy: id, participants: participantsSchema, date: dateSchema,
+})
+export const billRevisionSchema = billEditInputSchema.extend({ fromMonth: monthSchema })
+export const billPauseSchema = z.object({ fromMonth: monthSchema, untilMonth: monthSchema.nullable() })
+  .refine((pause) => pause.untilMonth === null || pause.untilMonth > pause.fromMonth, 'A pause must end after it starts.')
+export const billSchema = z.object({
+  id, createdAt: z.string().datetime(), startMonth: monthSchema,
+  revisions: z.array(billRevisionSchema).min(1), pauses: z.array(billPauseSchema),
+}).superRefine((bill, context) => {
+  if (bill.revisions[0]?.fromMonth !== bill.startMonth) {
+    context.addIssue({ code: 'custom', message: 'A bill needs its original monthly schedule.', path: ['revisions'] })
+  }
+  for (let index = 1; index < bill.revisions.length; index++) {
+    if (bill.revisions[index].fromMonth <= bill.revisions[index - 1].fromMonth) {
+      context.addIssue({ code: 'custom', message: 'Bill revisions must have distinct, ordered months.', path: ['revisions', index] })
+    }
+  }
+  for (let index = 0; index < bill.pauses.length; index++) {
+    const pause = bill.pauses[index]
+    const previous = bill.pauses[index - 1]
+    if (pause.fromMonth < bill.startMonth || (previous && (previous.untilMonth === null || pause.fromMonth < previous.untilMonth))) {
+      context.addIssue({ code: 'custom', message: 'Bill pauses must not overlap or precede the bill.', path: ['pauses', index] })
+    }
+  }
+})
 export const settlementSchema = z.object({
   id,
   from: id,
@@ -42,6 +90,32 @@ export const householdSchema = z.object({
   members: z.array(memberSchema).min(1).max(12),
   expenses: z.array(expenseSchema),
   settlements: z.array(settlementSchema),
+  bills: z.array(billSchema).max(100).default(() => []),
+  billingTimeZone: timeZoneSchema.default('UTC'),
+}).superRefine((household, context) => {
+  const bills = new Map(household.bills.map((bill) => [bill.id, bill]))
+  const members = new Set(household.members.map((member) => member.id))
+  if (bills.size !== household.bills.length) {
+    context.addIssue({ code: 'custom', message: 'Monthly bills need unique identifiers.', path: ['bills'] })
+  }
+  household.bills.forEach((bill, index) => {
+    if (bill.revisions.some((revision) => revision.participants.some((participant) => !members.has(participant)))) {
+      context.addIssue({ code: 'custom', message: 'A bill references an unknown roommate.', path: ['bills', index] })
+    }
+  })
+  const payments = new Set<string>()
+  household.expenses.forEach((expense, index) => {
+    if (!expense.bill) return
+    const key = `${expense.bill.billId}:${expense.bill.month}`
+    const bill = bills.get(expense.bill.billId)
+    if (!bill || expense.bill.month < bill.startMonth || payments.has(key)) {
+      context.addIssue({ code: 'custom', message: 'A bill payment must reference one unique scheduled month.', path: ['expenses', index] })
+    }
+    if (!members.has(expense.paidBy) || expense.participants.some((participant) => !members.has(participant))) {
+      context.addIssue({ code: 'custom', message: 'A bill payment references an unknown roommate.', path: ['expenses', index] })
+    }
+    payments.add(key)
+  })
 })
 
 export type Member = z.infer<typeof memberSchema>
@@ -49,6 +123,11 @@ export type ExpenseInput = z.infer<typeof expenseInputSchema>
 export type Expense = z.infer<typeof expenseSchema>
 export type Settlement = z.infer<typeof settlementSchema>
 export type Household = z.infer<typeof householdSchema>
+export type Bill = z.infer<typeof billSchema>
+export type BillRevision = z.infer<typeof billRevisionSchema>
+export type BillEditInput = z.infer<typeof billEditInputSchema>
+export type BillCreateInput = z.infer<typeof billCreateInputSchema>
+export type BillPaymentInput = z.infer<typeof billPaymentInputSchema>
 export type Transfer = Pick<Settlement, 'from' | 'to' | 'amount'>
 export type Session = { token: string; memberId: string; household: Household }
 
@@ -128,8 +207,19 @@ export function localDate(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+export function billingDate(timeZone: string, date = new Date()): string {
+  const parts = new Map(new Intl.DateTimeFormat('en-CA', {
+    timeZone, calendar: 'gregory', numberingSystem: 'latn', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date).map((part) => [part.type, part.value]))
+  return dateSchema.parse(`${parts.get('year')}-${parts.get('month')}-${parts.get('day')}`)
+}
+
 export function monthlyExpenses(household: Household, month: string): Expense[] {
   return household.expenses.filter((expense) => expense.date.startsWith(`${month}-`))
+}
+
+export function monthlyGroceries(household: Household, month: string): Expense[] {
+  return monthlyExpenses(household, month).filter((expense) => !expense.bill)
 }
 
 export function escapeCsv(value: string | number): string {
