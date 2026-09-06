@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowRight, Check, CheckCheck,
-  ChevronLeft, ChevronRight, CircleHelp, Copy, Download, Home, Leaf, Link, LoaderCircle,
+  ChevronLeft, ChevronRight, CircleHelp, Download, Home, KeyRound, Leaf, Link, LoaderCircle,
   Plus, ReceiptText, RefreshCw, Search, Settings2, Snowflake, Trash2, Users, Wallet, X,
 } from 'lucide-react'
 import {
@@ -14,7 +14,8 @@ import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bi
 import type { BillOccurrence } from '../shared/bills.ts'
 import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, sessionSchema } from './api.ts'
 import type { SavedKitchen } from './api.ts'
-import { Avatar, CategoryIcon, Form, Modal, RoomPanel, SplitParticipants } from './components.tsx'
+import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel, SplitParticipants } from './components.tsx'
+import { AccessDialog, RecoveryForm } from './Access.tsx'
 import { BillForm, BillPaymentForm, BillsPanel } from './Bills.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import { GameHome } from './GameHome.tsx'
@@ -22,10 +23,11 @@ import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
 
 type Page = 'overview' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
-type Dialog = 'expense' | 'bill-create' | 'create' | 'join' | 'invite' | 'settings' | 'help'
+type Dialog = 'expense' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'help'
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
   | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } } | null
 const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ?? ''
+const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
 let initialSession: Promise<Session> | undefined
 
 function loadSession(): Promise<Session> {
@@ -49,7 +51,7 @@ export function App() {
   sessionRef.current = session
   const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
-  const [dialog, setDialog] = useState<Dialog>(initialInvite ? 'join' : null)
+  const [dialog, setDialog] = useState<Dialog>(initialInvite ? 'join' : initialRecovery ? 'recover' : null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -70,6 +72,7 @@ export function App() {
     setError('')
     loadSession().then((next) => {
       if (startupAttempt.current !== attempt) return
+      sessionRef.current = next
       setSession(next)
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
       try { setSaved(rememberKitchen(next)) } catch {
@@ -91,18 +94,36 @@ export function App() {
   }, [notice])
   useEffect(() => { setFormError('') }, [dialog])
 
+  const expireSession = useCallback((token: string, message: string) => {
+    if (sessionRef.current?.token !== token) return
+    startupAttempt.current++
+    initialSession = undefined
+    sessionRef.current = null
+    setSession(null)
+    setLoading(false)
+    setBusy(false)
+    setDialog(null)
+    setPage('overview')
+    setStockEvent(null)
+    setFormError('')
+    setError(message)
+    setSyncState('offline')
+  }, [])
+
   const refresh = useCallback(async () => {
     const current = sessionRef.current
     if (!current) return
     try {
       const fresh = await getHousehold(current.token)
+      if (sessionRef.current?.token !== current.token) return
       setSession((previous) => previous?.token === current.token && fresh.household.version >= previous.household.version ? { ...previous, ...fresh } : previous)
       setSyncState('saved')
     } catch (failure) {
+      if (sessionRef.current?.token !== current.token) return
       setSyncState('offline')
-      if (failure instanceof RequestError && failure.status === 401) setError(failure.message)
+      if (failure instanceof RequestError && failure.status === 401) expireSession(current.token, failure.message)
     }
-  }, [])
+  }, [expireSession])
   useEffect(() => {
     if (!session?.token) return
     const interval = window.setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
@@ -114,6 +135,7 @@ export function App() {
   const adoptSession = (next: Session) => {
     startupAttempt.current++
     setLoading(false)
+    sessionRef.current = next
     setSession(next)
     initialSession = Promise.resolve(next)
     setError('')
@@ -137,6 +159,7 @@ export function App() {
     setFormError('')
     try {
       const result = await request<{ household: unknown }>(path, { token: session.token, body: { ...body, version: session.household.version }, method })
+      if (sessionRef.current?.token !== session.token) return
       const household = householdSchema.parse(result.household)
       setSession((previous) => previous?.token === session.token && household.version >= previous.household.version ? { ...previous, household } : previous)
       setNotice(success)
@@ -151,9 +174,16 @@ export function App() {
         setPage('overview')
       }
     } catch (failure) {
+      if (sessionRef.current?.token !== session.token) return
+      if (failure instanceof RequestError && failure.status === 401) {
+        expireSession(session.token, failure.message)
+        return
+      }
       setFormError(failure instanceof Error ? failure.message : 'The change could not be saved.')
       if (failure instanceof RequestError && failure.status === 409) await refresh()
-    } finally { setBusy(false) }
+    } finally {
+      if (sessionRef.current?.token === session.token) setBusy(false)
+    }
   }
 
   const openDialog = (next: Dialog) => { setFormError(''); setDialog(next) }
@@ -186,7 +216,8 @@ export function App() {
     try {
       const next = sessionSchema.parse(await request(endpoint, { body }))
       adoptSession(next)
-      setNotice(endpoint === '/join' ? 'You are in. Welcome to the kitchen!' : 'A fresh start for your shared kitchen.')
+      setNotice(endpoint === '/recover' ? 'Welcome back. Your original roommate identity has been restored.'
+        : endpoint === '/join' ? 'You are in. Welcome to the kitchen!' : 'A fresh start for your shared kitchen.')
     } catch (failure) {
       setFormError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
     } finally { setBusy(false) }
@@ -241,11 +272,18 @@ export function App() {
     if (dialog === 'create') return <Modal key="create" title="Make room for your people." subtitle="Start a fresh kitchen, then invite your roommates. You can switch back to saved kitchens from The roommates." onClose={close} busy={busy}>
       <CreateForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/households', body) }} />
       <button className="text-button centered" disabled={busy} onClick={() => openDialog('join')}>Already have an invitation? Join a kitchen <ArrowRight size={14} /></button>
+      <button className="text-button centered" disabled={busy} onClick={() => openDialog('recover')}>Recover existing access <KeyRound size={14} /></button>
     </Modal>
     if (dialog === 'join') return <Modal key="join" title="There is a place for you." subtitle="Use the invitation your roommate shared. Everyone with the link can join and edit the shared ledger." onClose={close} busy={busy}>
       <JoinForm initialInvite={initialInvite} busy={busy} error={footerError} onSubmit={(body) => { void newSession('/join', body) }} />
+      <button className="text-button centered" disabled={busy} onClick={() => openDialog('recover')}>Recover existing access <KeyRound size={14} /></button>
+    </Modal>
+    if (dialog === 'recover') return <Modal key="recover" title="Come back as yourself." subtitle="Restore your existing roommate identity without creating another member." onClose={close} busy={busy}>
+      <RecoveryForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/recover', body) }} />
     </Modal>
     if (!household || !session) return null
+    if (dialog === 'access') return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
+      onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session.token, message)} />
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
       <ExpenseForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/expenses', body, 'Fridge stocked. Groceries shared. All saved.') }} />
     </Modal>
@@ -305,7 +343,7 @@ export function App() {
   if (!household || !session) return <div className="welcome-screen">
     <div className="brand"><span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span></div>
     <div className="welcome-content"><span className="eyebrow">A HAPPIER SHARED KITCHEN</span><h1>A full fridge.<br /><em>A fair share.</em></h1>
-      {loading ? <p className="inline"><LoaderCircle className="spin" size={19} /> Opening the kitchen...</p> : <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button primary" onClick={initialize}>Try again</button><button className="button secondary" onClick={() => openDialog('join')}>Join a kitchen</button><button className="text-button" onClick={() => openDialog('create')}>Create a kitchen</button></div></>}
+      {loading ? <p className="inline"><LoaderCircle className="spin" size={19} /> Opening the kitchen...</p> : <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button primary" onClick={initialize}>Try again</button><button className="button secondary" onClick={() => openDialog('recover')}>Recover access</button><button className="button secondary" onClick={() => openDialog('join')}>Join a kitchen</button><button className="text-button" onClick={() => openDialog('create')}>Create a kitchen</button></div></>}
     </div>{renderDialog()}
   </div>
 
@@ -375,6 +413,10 @@ export function App() {
         {page === 'bills' && <BillsPanel household={household} month={billMonth} onMonth={setBillMonth} busy={busy}
           onCreate={() => openDialog('bill-create')} onEdit={(bill) => openDialog({ editBill: bill })} onPay={(item) => openDialog({ payBill: item })}
           onPause={(bill, paused) => openDialog({ pauseBill: { bill, paused } })} onRemove={(expense) => openDialog({ remove: expense })} onExport={exportLedger} />}
+        {page === 'kitchen' && <div className="access-entry">
+          <button className="button secondary full" disabled={busy} onClick={() => openDialog('access')}><KeyRound size={16} />Recovery and devices</button>
+          <button className="text-button" disabled={busy} onClick={() => openDialog('recover')}>Use a recovery code</button>
+        </div>}
         {page === 'groceries' && <><div className="panel-period">{monthControls}<button className="button primary small-button" onClick={() => openDialog('expense')}><Plus size={15} />Add grocery run</button></div><div className="grocery-summary"><div><span className="eyebrow">SPENT TOGETHER</span><strong>{money(total, household.currency)}</strong></div><div><span className="eyebrow">GROCERY RUNS</span><strong>{expenses.length.toString().padStart(2, '0')}</strong></div><div className="category-breakdown">{categories.filter((category) => totals[category] > 0).map((category) => <button key={category} onClick={() => setFilter(category)} className={`breakdown-item ${category}`}><CategoryIcon category={category} size={16} /><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong></button>)}</div></div>{ledger}</>}
         {page === 'budget' && <><div className="panel-period">{monthControls}<button className="button secondary small-button" onClick={() => openDialog('settings')}><Settings2 size={15} />Edit monthly budget</button></div><section className="budget-panel"><div className="card-topline"><span className="eyebrow">SPENT TOGETHER</span><Leaf size={19} /></div><div className="spend-amount">{money(total, household.currency)}<span>of {money(household.budget, household.currency)}</span></div><div className="budget-track" role="meter" aria-label="Monthly grocery spending" aria-valuemin={0} aria-valuemax={household.budget} aria-valuenow={Math.min(total, household.budget)} aria-valuetext={`${money(total, household.currency)} spent out of ${money(household.budget, household.currency)}`}><div style={{ width: `${progress * 100}%` }} className={remaining < 0 ? 'over-budget' : ''} /></div><div className="budget-labels"><strong className={remaining < 0 ? 'negative' : ''}>{money(Math.abs(remaining), household.currency)} {remaining < 0 ? 'over budget' : 'left to enjoy'}</strong><span>{expenses.length} grocery runs</span></div><p className="budget-note">{remaining < 0 ? 'The pot is empty for this month. Maybe a pantry dinner tonight?' : 'A little room for the essentials. And a little treat.'}</p></section><div className="budget-categories">{categories.map((category) => <button key={category} onClick={() => { visit('groceries'); setFilter(category) }}><span className={`category-icon ${category}`}><CategoryIcon category={category} /></span><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong><ArrowRight size={15} /></button>)}</div><p className="field-hint">The jar represents your remaining monthly budget, not a bank account. The app never moves money.</p></>}
         {page === 'settle' && <div className="settle-layout"><div><section className="repayments-panel"><div className="section-heading"><div><span className="eyebrow">ALL-TIME BALANCES, SIMPLIFIED</span><h2>A shorter way to square.</h2></div><span className="round-stamp"><CheckCheck size={24} /></span></div><p className="section-description">Instead of paying back every shared expense, make these {transfers.length || 'zero'} {transfers.length === 1 ? 'payment' : 'payments'}. Calculated automatically, down to the last cent.</p>
@@ -464,15 +506,10 @@ function SettingsForm({ household, busy, error, onSubmit }: { household: Househo
 }
 
 function Invite({ household, busy, error, onRotate }: { household: Household; busy: boolean; error: ReactNode; onRotate: () => void }) {
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState('')
   const link = `${location.origin}${location.pathname}#join=${encodeURIComponent(household.inviteCode)}`
-  return <div className="invite-content"><label className="field">Your private kitchen invitation<input readOnly value={link} onFocus={(event) => event.target.select()} /></label><button className="button primary full" onClick={() => {
-    if (!navigator.clipboard) { setCopyError('Clipboard access needs HTTPS or localhost. Select the invitation above and copy it manually.'); return }
-    navigator.clipboard.writeText(link).then(() => { setCopied(true); setCopyError('') }).catch(() => setCopyError('Your browser could not copy the link. Select the field above and copy it manually.'))
-  }}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? 'Invitation copied' : 'Copy invitation'}</button>
+  return <div className="invite-content"><CopyField label="Your private kitchen invitation" value={link} buttonLabel="Copy invitation" copiedLabel="Invitation copied" />
     {location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? <p className="field-hint">This is a local development link. To invite other devices, run the production build on a shared HTTPS host and copy its invitation instead.</p> : null}
-    {copyError && <p className="form-error" role="alert">{copyError}</p>}{error}<div className="invite-rotate"><p>Need to retire an old invitation? A new one stops future joins through the old link. Existing roommates keep access.</p><button className="text-button" disabled={busy} onClick={onRotate}><RefreshCw size={14} />Make a fresh invitation</button></div></div>
+    {error}<div className="invite-rotate"><p>Need to retire an old invitation? A new one stops future joins through the old link. Existing roommates keep access.</p><button className="text-button" disabled={busy} onClick={onRotate}><RefreshCw size={14} />Make a fresh invitation</button></div></div>
 }
 
 function ShoppingBagIllustration() {

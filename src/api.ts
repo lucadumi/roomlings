@@ -67,7 +67,8 @@ export function rememberKitchen(session: Session): SavedKitchen[] {
   const next = [{
     token: session.token, householdId: session.household.id, memberId: session.memberId,
     name: session.household.name, memberName: member.name,
-  }, ...saved.filter((kitchen) => kitchen.token !== session.token)]
+  }, ...saved.filter((kitchen) => kitchen.token !== session.token
+    && (kitchen.householdId !== session.household.id || kitchen.memberId !== session.memberId))]
   localStorage.setItem(savedKitchensKey, JSON.stringify(next))
   saveToken(session.token)
   return next
