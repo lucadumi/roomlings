@@ -7,7 +7,16 @@ export default defineConfig({
   workers: 1,
   // Hosted runners render WebGL in software, so multi-step flows take longer.
   timeout: process.env.CI ? 90_000 : 45_000,
-  use: { baseURL: 'http://127.0.0.1:5173', ...devices['Desktop Chrome'], trace: 'retain-on-failure' },
+  reporter: 'list',
+  use: {
+    baseURL: 'http://127.0.0.1:5173',
+    ...devices['Desktop Chrome'],
+    // Keep action, DOM, and network traces without continuously capturing software-rendered frames.
+    trace: process.env.CI
+      ? { mode: 'retain-on-failure', screenshots: false, snapshots: true, sources: true }
+      : 'retain-on-failure',
+    screenshot: 'only-on-failure',
+  },
   webServer: {
     command: 'npm run dev',
     url: 'http://127.0.0.1:5173/api/health',

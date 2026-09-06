@@ -68,6 +68,8 @@ Commit messages are short imperative sentences, with no body paragraphs or trail
 
 The GitHub workflow runs the existing domain, API, persistence, browser, and production-build commands for pull requests and updates to `main`. More contributor conventions are in [AGENTS.md](AGENTS.md).
 
+Browser interactions run as focused scenarios with fresh contexts. CI retains action, DOM and network traces plus a screenshot on failure, without continuously recording the software-rendered 3D canvas.
+
 ## Interaction references
 
 The peripheral controls draw on [Apple's ornament placement guidance](https://developer.apple.com/design/human-interface-guidelines/ornaments), adapted as a web layout pattern rather than a native visionOS component. The object-selection and inspector relationship also takes inspiration from [Tiny Room Planner](https://github.com/crayonzgrim/3d-room-planner). The kitchen's low-poly art and procedural models remain its own.

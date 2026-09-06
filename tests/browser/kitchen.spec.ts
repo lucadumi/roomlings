@@ -8,6 +8,7 @@ async function frameRoom(page: Page) {
   await page.evaluate(() => new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   }))
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-framing', 'whole')
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
 }
 
@@ -159,39 +160,53 @@ test('budgets, category filtering, month navigation, and complete ledger export'
   expect(csv.split('\r\n')).toHaveLength(7)
 })
 
-test('the room offers functional object interactions, lighting, camera controls, and labels', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 960 })
-  await page.goto('/')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
-  await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
-  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'true')
-  await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
-  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'false')
-  await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-  await expect(page.locator('.world-camera-controls')).toContainText('120%')
-  await frameRoom(page)
-  await expect(page.locator('.world-camera-controls')).toContainText('100%')
-  await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
-  await expect(page.locator('.world-hotspots')).toBeHidden()
-  await page.getByRole('button', { name: 'Show object labels', exact: true }).click()
-  await page.locator('.hotspot-stock').click()
-  await expect(page.getByRole('dialog')).toContainText('What is in the bag?')
-  await page.keyboard.press('Escape')
-  await frameRoom(page)
-  await page.locator('.hotspot-ledger').click()
-  await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await frameRoom(page)
-  await page.locator('.hotspot-budget').click()
-  await expect(page.getByRole('region', { name: 'The little house pot.' })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await frameRoom(page)
-  await page.locator('.hotspot-roommates').click()
-  await expect(page.getByRole('region', { name: 'Your kind of people.' })).toBeVisible()
-  await page.keyboard.press('Escape')
-  await frameRoom(page)
-  await page.locator('.hotspot-settle').click()
-  await expect(page.getByRole('region', { name: 'Keep it even.' })).toBeVisible()
+test.describe('room controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.goto('/')
+    await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  })
+
+  test('lighting switches between daylight and evening', async ({ page }) => {
+    await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'true')
+    await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'false')
+  })
+
+  test('zoom can return to a whole-room view', async ({ page }) => {
+    await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+    await expect(page.locator('.world-camera-controls')).toContainText('120%')
+    await frameRoom(page)
+    await expect(page.locator('.world-camera-controls')).toContainText('100%')
+  })
+
+  test('object labels can be hidden and restored', async ({ page }) => {
+    await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+    await expect(page.locator('.world-hotspots')).toBeHidden()
+    await page.getByRole('button', { name: 'Show object labels', exact: true }).click()
+    await expect(page.locator('.world-hotspots')).toBeVisible()
+  })
+
+  const hotspots = [
+    { action: 'stock', role: 'dialog', title: 'What is in the bag?' },
+    { action: 'ledger', role: 'region', title: 'The receipt book.' },
+    { action: 'budget', role: 'region', title: 'The little house pot.' },
+    { action: 'roommates', role: 'region', title: 'Your kind of people.' },
+    { action: 'settle', role: 'region', title: 'Keep it even.' },
+  ] as const
+
+  for (const { action, role, title } of hotspots) {
+    test(`${action} opens its tool and returns to the room`, async ({ page }) => {
+      await frameRoom(page)
+      await page.locator(`.hotspot-${action}`).click()
+      await expect(page.getByRole(role, { name: title, exact: true })).toBeVisible()
+      await expect(page.locator('.kitchen-world')).toHaveAttribute('data-focus', action)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole(role, { name: title, exact: true })).toHaveCount(0)
+      await frameRoom(page)
+    })
+  }
 })
 
 test('the ledger remains usable when WebGL is unavailable', async ({ page }) => {
