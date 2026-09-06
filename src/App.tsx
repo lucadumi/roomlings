@@ -10,7 +10,7 @@ import {
   money, monthlyExpenses, parseMoney, splitAmount, suggestedTransfers,
 } from '../shared/domain.ts'
 import type { Category, Expense, Household, Session, Settlement, Transfer } from '../shared/domain.ts'
-import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, saveToken, sessionSchema } from './api.ts'
+import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, sessionSchema } from './api.ts'
 import type { SavedKitchen } from './api.ts'
 import { Avatar, CategoryIcon, Form, Modal, RoomPanel } from './components.tsx'
 import { GameHome } from './GameHome.tsx'
@@ -24,13 +24,15 @@ let initialSession: Promise<Session> | undefined
 
 function loadSession(): Promise<Session> {
   if (!initialSession) {
-    initialSession = (async () => {
+    const pending: Promise<Session> = (async () => {
       const token = readToken()
       if (token) return { token, ...await getHousehold(token) }
-      const demo = await createDemo()
-      saveToken(demo.token)
-      return demo
-    })().catch((error: unknown) => { initialSession = undefined; throw error })
+      return createDemo()
+    })().catch((error: unknown) => {
+      if (initialSession === pending) initialSession = undefined
+      throw error
+    })
+    initialSession = pending
   }
   return initialSession
 }
@@ -51,6 +53,7 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
+  const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
   const [dialog, setDialog] = useState<Dialog>(initialInvite ? 'join' : null)
   const [loading, setLoading] = useState(true)
@@ -67,16 +70,22 @@ export function App() {
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ target: 'room', id: 0 })
 
   const initialize = useCallback(() => {
+    const attempt = ++startupAttempt.current
     setLoading(true)
     setError('')
     loadSession().then((next) => {
+      if (startupAttempt.current !== attempt) return
       setSession(next)
       try { setSaved(rememberKitchen(next)) } catch {
         setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
       }
     }).catch((failure: unknown) => {
+      if (startupAttempt.current !== attempt) return
       setError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
-    }).finally(() => setLoading(false))
+    }).finally(() => {
+      if (startupAttempt.current === attempt) setLoading(false)
+    })
+    return () => { startupAttempt.current++ }
   }, [])
   useEffect(initialize, [initialize])
   useEffect(() => {
@@ -107,6 +116,8 @@ export function App() {
   }, [session?.token, refresh])
 
   const adoptSession = (next: Session) => {
+    startupAttempt.current++
+    setLoading(false)
     setSession(next)
     initialSession = Promise.resolve(next)
     setError('')
@@ -226,11 +237,12 @@ export function App() {
         <p><Users size={19} /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
       </div><p className="field-hint">Drag to turn the room. Scroll or pinch to zoom. Selecting an object brings it closer while its details stay beside the room. Use Whole room to pull back, or tap the kettle for a little tea break. Everything is also available from the toolbar. The fridge visualizes purchases, not what is left to eat.</p>
     </Modal>
-    if (dialog === 'create') return <Modal title="Make room for your people." subtitle="Start a fresh kitchen, then invite your roommates. You can switch back to saved kitchens from The roommates." onClose={close} busy={busy}>
+    // Keep welcome-screen forms mounted when the loaded kitchen replaces the welcome content.
+    if (dialog === 'create') return <Modal key="create" title="Make room for your people." subtitle="Start a fresh kitchen, then invite your roommates. You can switch back to saved kitchens from The roommates." onClose={close} busy={busy}>
       <CreateForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/households', body) }} />
       <button className="text-button centered" disabled={busy} onClick={() => openDialog('join')}>Already have an invitation? Join a kitchen <ArrowRight size={14} /></button>
     </Modal>
-    if (dialog === 'join') return <Modal title="There is a place for you." subtitle="Use the invitation your roommate shared. Everyone with the link can join and edit the shared ledger." onClose={close} busy={busy}>
+    if (dialog === 'join') return <Modal key="join" title="There is a place for you." subtitle="Use the invitation your roommate shared. Everyone with the link can join and edit the shared ledger." onClose={close} busy={busy}>
       <JoinForm initialInvite={initialInvite} busy={busy} error={footerError} onSubmit={(body) => { void newSession('/join', body) }} />
     </Modal>
     if (!household || !session) return null
