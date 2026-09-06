@@ -1,24 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { APIRequestContext } from '@playwright/test'
-import { sessionSchema } from '../../src/api.ts'
-import type { SavedKitchen } from '../../src/api.ts'
-import type { Session } from '../../shared/domain.ts'
-
-async function sampleSession(request: APIRequestContext): Promise<Session> {
-  const response = await request.post('/api/demo', { data: {} })
-  await expect(response).toBeOK()
-  return sessionSchema.parse(await response.json())
-}
-
-function savedKitchen(session: Session): SavedKitchen {
-  return {
-    token: session.token,
-    householdId: session.household.id,
-    memberId: session.memberId,
-    name: session.household.name,
-    memberName: session.household.members[0].name,
-  }
-}
+import { sampleSession, savedKitchen } from './fixtures.ts'
 
 test('the Roomlings rebrand restores existing Coldshare households without replacing them', async ({ page, request }) => {
   const original = await sampleSession(request)

@@ -15,6 +15,7 @@ import { buildRoom, sceneAnchors } from './room.ts'
 import type { KitchenAction, SceneAction } from './room.ts'
 import { baseCameraOffset, cameraFraming, cameraProjection, focusLabels } from './camera.ts'
 import type { FocusRequest, SceneFocus } from './camera.ts'
+import { batchStaticMeshes } from './batchStaticMeshes.ts'
 
 type Props = {
   paused: boolean
@@ -273,6 +274,10 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
     box(iceTray, [0.78, 0.12, 0.55], [0.2, 2.76, 0], blue, 0.015)
     for (let i = 0; i < 6; i++) box(iceTray, [0.18, 0.06, 0.18], [-0.04 + (i % 3) * 0.24, 2.84, -0.12 + Math.floor(i / 3) * 0.24], porcelain, 0.015)
     kitchen.add(iceTray)
+    // These meshes change individually; animated groups keep their own transforms.
+    batchStaticMeshes(room, new Set([
+      ...scenery.coins, ...scenery.receipts, ...scenery.steam, scenery.kettleLid,
+    ]))
 
     const flyingShapes = {
       produce: new DodecahedronGeometry(0.2, 0),

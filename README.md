@@ -35,6 +35,7 @@ The browser suite uses Playwright Chromium. If it is not installed, run `npx pla
 - Object-focused camera transitions, drag-to-turn, wheel and pinch zoom, a whole-room framing control, day/evening lighting, and a kettle that responds to a tap. The phone view starts close enough to explore instead of shrinking the entire room into a thumbnail.
 - Finance tools open beside the room on desktop and above the action dock on phones. The camera keeps the selected object in the visible area while the scene continues behind the UI. Keyboard-accessible controls provide alternatives to direct object picking.
 - Receipt rows include the payer and expandable per-person shares. Camera transitions finish before idle animation pauses behind a panel, keeping forms responsive without losing the room.
+- Static opaque geometry is batched within its existing groups to reduce rendering work. Moving doors, groceries, coins, receipt stacks, transparent surfaces and object-picking boundaries stay independent.
 - Reduced-motion support and a clear WebGL fallback that keeps the complete shared ledger usable.
 - Automatically simplified repayment suggestions, confirmation when recording an actual payment, and reversal of incorrect records. **Roomlings does not move money or connect to a bank.**
 - CSV export of the entire ledger, including recorded repayments.

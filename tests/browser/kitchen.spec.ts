@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
+import { sessionSchema } from '../../src/api.ts'
+import { localDate } from '../../shared/domain.ts'
+import { createHousehold, savedKitchen } from './fixtures.ts'
 
 async function frameRoom(page: Page) {
   await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
@@ -66,39 +69,83 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   expect(pageErrors).toEqual([])
 })
 
-test('a new kitchen can be joined from a separate browser session', async ({ page, browser }) => {
+test('creating a kitchen exposes its invitation in the UI', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Make it yours' }).click()
   await page.getByLabel('What do you call home?').fill('The browser house')
   await page.getByLabel('Your name', { exact: true }).fill('Charlie')
   await page.getByRole('button', { name: 'Create our kitchen' }).click()
   await expect(page.locator('.game-demo')).toHaveCount(0)
+  await expect(page.locator('.game-house')).toContainText('The browser house')
+  await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
   await page.getByRole('button', { name: 'Invite a roommate', exact: false }).first().click()
   const invitation = await page.getByLabel('Your private kitchen invitation').inputValue()
+  expect(new URL(invitation).hash).toMatch(/^#join=.+/)
+})
+
+test('a new kitchen can be joined from a separate browser session', async ({ page, browser, request, baseURL }) => {
+  if (!baseURL) throw new Error('The shared-kitchen scenario needs a configured base URL.')
+  const owner = await createHousehold(request, 'The browser house', 'Charlie')
+  const invitation = new URL('/', baseURL)
+  invitation.hash = `join=${encodeURIComponent(owner.household.inviteCode)}`
   const context = await browser.newContext()
-  const roommate = await context.newPage()
-  await roommate.goto(invitation)
-  await roommate.getByLabel('Your name', { exact: true }).fill('Dana')
-  await roommate.getByRole('button', { name: 'Join the kitchen', exact: true }).click()
-  await expect(roommate.locator('.game-house')).toContainText('The browser house')
-  await roommate.getByRole('button', { name: 'Stock the fridge, add a grocery run', exact: true }).click()
-  await roommate.getByLabel('What did you pick up?').fill('Shared groceries')
-  await roommate.getByLabel('Total (EUR)').fill('10')
-  await roommate.getByRole('button', { name: 'Add & split the groceries' }).click()
-  await page.reload()
+  try {
+    const roommate = await context.newPage()
+    await roommate.goto(invitation.toString())
+    await roommate.getByLabel('Your name', { exact: true }).fill('Dana')
+    await roommate.getByRole('button', { name: 'Join the kitchen', exact: true }).click()
+    await expect(roommate.locator('.game-house')).toContainText('The browser house')
+    await roommate.getByRole('button', { name: 'Stock the fridge, add a grocery run', exact: true }).click()
+    await roommate.getByLabel('What did you pick up?').fill('Shared groceries')
+    await roommate.getByLabel('Total (EUR)').fill('10')
+    await roommate.getByRole('button', { name: 'Add & split the groceries' }).click()
+    await expect(roommate.getByRole('dialog')).toHaveCount(0)
+  } finally {
+    await context.close()
+  }
+  await page.addInitScript(({ token, kitchen }) => {
+    localStorage.setItem('roomlings.session', token)
+    localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
+  }, { token: owner.token, kitchen: savedKitchen(owner) })
+  await page.goto('/')
+  await expect(page.locator('.game-house')).toContainText('The browser house')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByText('Shared groceries', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  await expect(page.locator('.expense-row').filter({ hasText: 'Shared groceries' })).toContainText('Paid by Dana')
+})
+
+test('saved households restore the original roommate and shared expenses after switching', async ({ page, request }) => {
+  const original = await createHousehold(request, 'The saved house', 'Charlie')
+  const other = await createHousehold(request, 'Another home', 'Riley')
+  const joined = await request.post('/api/join', { data: { inviteCode: original.household.inviteCode, name: 'Dana' } })
+  await expect(joined).toBeOK()
+  const roommate = sessionSchema.parse(await joined.json())
+  const expense = await request.post('/api/expenses', {
+    headers: { Authorization: `Bearer ${roommate.token}` },
+    data: {
+      description: 'Saved shared groceries', amount: 1000, category: 'produce', date: localDate(),
+      paidBy: roommate.memberId, participants: roommate.household.members.map((member) => member.id),
+      version: roommate.household.version,
+    },
+  })
+  await expect(expense).toBeOK()
+  await page.addInitScript(({ original, other }) => {
+    localStorage.setItem('roomlings.session', original.token)
+    localStorage.setItem('roomlings.kitchens', JSON.stringify([original, other]))
+  }, { original: savedKitchen(original), other: savedKitchen(other) })
+  await page.goto('/')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
-  await page.getByRole('button', { name: 'The Sunday House Return as You' }).click()
-  await expect(page.locator('.game-demo')).toBeVisible()
+  await page.getByRole('button', { name: 'Another home Return as Riley' }).click()
+  await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Riley')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
-  await page.getByRole('button', { name: 'The browser house Return as Charlie' }).click()
+  await page.getByRole('button', { name: 'The saved house Return as Charlie' }).click()
   await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
-  await expect(page.getByText('Shared groceries', { exact: true })).toBeVisible()
-  await context.close()
+  const restored = page.locator('.expense-row').filter({ hasText: 'Saved shared groceries' })
+  await expect(restored).toBeVisible()
+  await expect(restored).toContainText('Paid by Dana')
+  await expect(restored).toContainText('2 shares')
 })
 
 test('mobile layout has no horizontal overflow and supports keyboard dialogs', async ({ page }) => {
