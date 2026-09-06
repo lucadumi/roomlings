@@ -5,19 +5,20 @@ import {
 import { memberColors } from '../shared/domain.ts'
 
 export type KitchenAction = 'stock' | 'ledger' | 'budget' | 'roommates' | 'settle'
-export type SceneAction = KitchenAction | 'fridge' | 'light'
+export type SceneAction = KitchenAction | 'fridge' | 'light' | 'brew'
 export type Shapes = {
   material: (color: string, roughness?: number) => MeshStandardMaterial
   box: (parent: Group, dimensions: [number, number, number], position: [number, number, number], material: MeshStandardMaterial, radius?: number) => Mesh
   cylinder: (parent: Group, radius: number, height: number, position: [number, number, number], material: MeshStandardMaterial, top?: number) => Mesh
 }
 
-export const sceneAnchors: { action: KitchenAction; label: string; position: [number, number, number] }[] = [
+export const sceneAnchors: { action: KitchenAction | 'brew'; label: string; position: [number, number, number] }[] = [
   { action: 'stock', label: 'Stock the fridge', position: [-0.45, 2.85, 1.08] },
   { action: 'ledger', label: 'Receipt book', position: [0.8, 1.6, 2.1] },
   { action: 'budget', label: 'The house pot', position: [0, 2.75, -2.35] },
   { action: 'roommates', label: 'Your people', position: [3.7, 4.65, -3.15] },
   { action: 'settle', label: 'Settle up', position: [2.35, 1.9, 1.45] },
+  { action: 'brew', label: 'Put the kettle on', position: [1.65, 2.5, -2.45] },
 ]
 
 export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
@@ -98,9 +99,11 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   for (const x of [-0.67, -0.23]) for (const z of [-0.21, 0.2]) cylinder(cupboard, 0.135, 0.016, [x, 1.79, z], handles)
   const kettle = new Group()
   kettle.position.set(-0.46, 1.8, 0.08)
+  kettle.userData.action = 'brew'
+  actors.set('brew', kettle)
   cupboard.add(kettle)
   cylinder(kettle, 0.22, 0.34, [0, 0.2, 0], tomato, 0.18)
-  cylinder(kettle, 0.18, 0.045, [0, 0.39, 0], ink)
+  const kettleLid = cylinder(kettle, 0.18, 0.045, [0, 0.39, 0], ink)
   cylinder(kettle, 0.04, 0.065, [0, 0.44, 0], wood)
   const spout = cylinder(kettle, 0.07, 0.3, [0.22, 0.26, 0], tomato, 0.04)
   spout.rotation.z = -0.9
@@ -278,5 +281,5 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   clock.add(hourHand, minuteHand)
   room.add(clock)
 
-  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, bulb, hourHand, minuteHand }
+  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, bulb, hourHand, minuteHand, kettleLid }
 }

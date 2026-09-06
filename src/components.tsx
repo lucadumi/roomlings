@@ -58,6 +58,31 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
   </div>
 }
 
+export function RoomPanel({ title, subtitle, children, onClose }: {
+  title: string; subtitle: string; children: ReactNode; onClose: () => void
+}) {
+  const panel = useRef<HTMLElement>(null)
+  const titleId = useId()
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    const previous = document.activeElement
+    panel.current?.focus({ preventScroll: true })
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) closeRef.current()
+    }
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('keydown', escape)
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true })
+    }
+  }, [])
+  return <aside className="room-panel" role="region" aria-labelledby={titleId} ref={panel} tabIndex={-1}>
+    <header className="room-panel-header"><div><span className="eyebrow">A LITTLE HOUSEKEEPING</span><h2 id={titleId}>{title}</h2></div><button className="icon-button" aria-label="Close panel" onClick={onClose}><X size={20} /></button></header>
+    <div className="room-panel-scroll"><p className="room-panel-subtitle">{subtitle}</p>{children}</div>
+  </aside>
+}
+
 export function Form({ children, onSubmit }: { children: ReactNode; onSubmit: () => void }) {
   return <form onSubmit={(event: FormEvent) => { event.preventDefault(); onSubmit() }}>{children}</form>
 }

@@ -1,10 +1,39 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { OrthographicCamera, Vector3 } from 'three'
+import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
+import { sessionSchema } from '../../src/api.ts'
+import { localDate } from '../../shared/domain.ts'
+import { createHousehold, savedKitchen } from './fixtures.ts'
+
+async function frameRoom(page: Page) {
+  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-framing', 'whole')
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
+}
+
+async function clickRoomPoint(page: Page, position: [number, number, number]) {
+  const box = await page.locator('.world-canvas').boundingBox()
+  if (!box) throw new Error('The kitchen canvas is not visible.')
+  const framing = cameraFraming(box.width, box.height, 'room', true)
+  const aspect = box.width / box.height
+  const camera = new OrthographicCamera(-framing.halfHeight * aspect, framing.halfHeight * aspect, framing.halfHeight, -framing.halfHeight, 0.1, 100)
+  const center = new Vector3(...framing.center)
+  camera.position.copy(center).add(new Vector3(...baseCameraOffset))
+  camera.lookAt(center)
+  camera.updateMatrixWorld()
+  const projected = new Vector3(...position).project(camera)
+  await page.mouse.click(box.x + (projected.x * 0.5 + 0.5) * box.width, box.y + (-projected.y * 0.5 + 0.5) * box.height)
+}
 
 test('fridge, expenses, repayment records, and reload persistence', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Make yourself at home.' })).toBeVisible()
+  await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Close the fridge' }).click()
   await expect(page.getByRole('button', { name: 'Peek inside' })).toBeVisible()
@@ -16,11 +45,15 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByText('Browser test tomatoes', { exact: true })).toBeVisible()
+  const grocery = page.locator('.expense-row').filter({ hasText: 'Browser test tomatoes' })
+  await expect(grocery).toContainText('Paid by You')
+  await grocery.locator('summary').click()
+  await expect(grocery.locator('.expense-share')).toHaveCount(4)
   await page.reload()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByText('Browser test tomatoes', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
-  await page.getByRole('button', { name: 'Settle up', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  await page.locator('.game-dock').getByRole('button', { name: 'Settle up', exact: true }).click()
   await page.getByRole('button', { name: 'Record paid', exact: true }).first().click()
   await expect(page.getByRole('dialog')).toContainText('does not move money')
   await page.getByRole('button', { name: 'Yes, record payment' }).click()
@@ -28,7 +61,7 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   await page.getByRole('button', { name: 'Undo', exact: true }).click()
   await page.getByRole('button', { name: 'Undo payment record' }).click()
   await expect(page.locator('.history-row')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await page.getByRole('button', { name: 'Remove Browser test tomatoes', exact: true }).click()
   await page.getByRole('button', { name: 'Remove grocery run', exact: true }).click()
@@ -36,45 +69,89 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   expect(pageErrors).toEqual([])
 })
 
-test('a new kitchen can be joined from a separate browser session', async ({ page, browser }) => {
+test('creating a kitchen exposes its invitation in the UI', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Make it yours' }).click()
   await page.getByLabel('What do you call home?').fill('The browser house')
   await page.getByLabel('Your name', { exact: true }).fill('Charlie')
   await page.getByRole('button', { name: 'Create our kitchen' }).click()
   await expect(page.locator('.game-demo')).toHaveCount(0)
+  await expect(page.locator('.game-house')).toContainText('The browser house')
+  await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
   await page.getByRole('button', { name: 'Invite a roommate', exact: false }).first().click()
   const invitation = await page.getByLabel('Your private kitchen invitation').inputValue()
+  expect(new URL(invitation).hash).toMatch(/^#join=.+/)
+})
+
+test('a new kitchen can be joined from a separate browser session', async ({ page, browser, request, baseURL }) => {
+  if (!baseURL) throw new Error('The shared-kitchen scenario needs a configured base URL.')
+  const owner = await createHousehold(request, 'The browser house', 'Charlie')
+  const invitation = new URL('/', baseURL)
+  invitation.hash = `join=${encodeURIComponent(owner.household.inviteCode)}`
   const context = await browser.newContext()
-  const roommate = await context.newPage()
-  await roommate.goto(invitation)
-  await roommate.getByLabel('Your name', { exact: true }).fill('Dana')
-  await roommate.getByRole('button', { name: 'Join the kitchen', exact: true }).click()
-  await expect(roommate.locator('.game-house')).toContainText('The browser house')
-  await roommate.getByRole('button', { name: 'Stock the fridge, add a grocery run', exact: true }).click()
-  await roommate.getByLabel('What did you pick up?').fill('Shared groceries')
-  await roommate.getByLabel('Total (EUR)').fill('10')
-  await roommate.getByRole('button', { name: 'Add & split the groceries' }).click()
-  await page.reload()
+  try {
+    const roommate = await context.newPage()
+    await roommate.goto(invitation.toString())
+    await roommate.getByLabel('Your name', { exact: true }).fill('Dana')
+    await roommate.getByRole('button', { name: 'Join the kitchen', exact: true }).click()
+    await expect(roommate.locator('.game-house')).toContainText('The browser house')
+    await roommate.getByRole('button', { name: 'Stock the fridge, add a grocery run', exact: true }).click()
+    await roommate.getByLabel('What did you pick up?').fill('Shared groceries')
+    await roommate.getByLabel('Total (EUR)').fill('10')
+    await roommate.getByRole('button', { name: 'Add & split the groceries' }).click()
+    await expect(roommate.getByRole('dialog')).toHaveCount(0)
+  } finally {
+    await context.close()
+  }
+  await page.addInitScript(({ token, kitchen }) => {
+    localStorage.setItem('roomlings.session', token)
+    localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
+  }, { token: owner.token, kitchen: savedKitchen(owner) })
+  await page.goto('/')
+  await expect(page.locator('.game-house')).toContainText('The browser house')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByText('Shared groceries', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  await expect(page.locator('.expense-row').filter({ hasText: 'Shared groceries' })).toContainText('Paid by Dana')
+})
+
+test('saved households restore the original roommate and shared expenses after switching', async ({ page, request }) => {
+  const original = await createHousehold(request, 'The saved house', 'Charlie')
+  const other = await createHousehold(request, 'Another home', 'Riley')
+  const joined = await request.post('/api/join', { data: { inviteCode: original.household.inviteCode, name: 'Dana' } })
+  await expect(joined).toBeOK()
+  const roommate = sessionSchema.parse(await joined.json())
+  const expense = await request.post('/api/expenses', {
+    headers: { Authorization: `Bearer ${roommate.token}` },
+    data: {
+      description: 'Saved shared groceries', amount: 1000, category: 'produce', date: localDate(),
+      paidBy: roommate.memberId, participants: roommate.household.members.map((member) => member.id),
+      version: roommate.household.version,
+    },
+  })
+  await expect(expense).toBeOK()
+  await page.addInitScript(({ original, other }) => {
+    localStorage.setItem('roomlings.session', original.token)
+    localStorage.setItem('roomlings.kitchens', JSON.stringify([original, other]))
+  }, { original: savedKitchen(original), other: savedKitchen(other) })
+  await page.goto('/')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
-  await page.getByRole('button', { name: 'The Sunday House Return as You' }).click()
-  await expect(page.locator('.game-demo')).toBeVisible()
+  await page.getByRole('button', { name: 'Another home Return as Riley' }).click()
+  await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Riley')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
-  await page.getByRole('button', { name: 'The browser house Return as Charlie' }).click()
+  await page.getByRole('button', { name: 'The saved house Return as Charlie' }).click()
   await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
-  await expect(page.getByText('Shared groceries', { exact: true })).toBeVisible()
-  await context.close()
+  const restored = page.locator('.expense-row').filter({ hasText: 'Saved shared groceries' })
+  await expect(restored).toBeVisible()
+  await expect(restored).toContainText('Paid by Dana')
+  await expect(restored).toContainText('2 shares')
 })
 
 test('mobile layout has no horizontal overflow and supports keyboard dialogs', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Make yourself at home.' })).toBeVisible()
+  await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.getByRole('button', { name: 'Stock the fridge, add a grocery run', exact: true }).click()
@@ -112,7 +189,7 @@ test('budgets, category filtering, month navigation, and complete ledger export'
   await expect(page.getByRole('meter')).toHaveAttribute('aria-valuenow', '0')
   await page.getByRole('button', { name: 'Next month', exact: true }).click()
   await expect(page.getByRole('meter')).not.toHaveAttribute('aria-valuenow', '0')
-  await page.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await page.locator('.category-tabs').getByRole('button', { name: 'Fruit & veg', exact: true }).click()
   await expect(page.locator('.expense-row')).toHaveCount(2)
@@ -130,35 +207,53 @@ test('budgets, category filtering, month navigation, and complete ledger export'
   expect(csv.split('\r\n')).toHaveLength(7)
 })
 
-test('the room offers functional object interactions, lighting, camera controls, and labels', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 960 })
-  await page.goto('/')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
-  await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
-  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'true')
-  await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
-  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'false')
-  await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-  await expect(page.locator('.world-camera-controls')).toContainText('120%')
-  await page.getByRole('button', { name: 'Reset kitchen view', exact: true }).click()
-  await expect(page.locator('.world-camera-controls')).toContainText('100%')
-  await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
-  await expect(page.locator('.world-hotspots')).toBeHidden()
-  await page.getByRole('button', { name: 'Show object labels', exact: true }).click()
-  await page.locator('.hotspot-stock').click()
-  await expect(page.getByRole('dialog')).toContainText('What is in the bag?')
-  await page.keyboard.press('Escape')
-  await page.locator('.hotspot-ledger').click()
-  await expect(page.getByRole('dialog')).toContainText('The receipt book.')
-  await page.keyboard.press('Escape')
-  await page.locator('.hotspot-budget').click()
-  await expect(page.getByRole('dialog')).toContainText('The little house pot.')
-  await page.keyboard.press('Escape')
-  await page.locator('.hotspot-roommates').click()
-  await expect(page.getByRole('dialog')).toContainText('Your kind of people.')
-  await page.keyboard.press('Escape')
-  await page.locator('.hotspot-settle').click()
-  await expect(page.getByRole('dialog')).toContainText('Keep it even.')
+test.describe('room controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.goto('/')
+    await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  })
+
+  test('lighting switches between daylight and evening', async ({ page }) => {
+    await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'true')
+    await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'false')
+  })
+
+  test('zoom can return to a whole-room view', async ({ page }) => {
+    await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+    await expect(page.locator('.world-camera-controls')).toContainText('120%')
+    await frameRoom(page)
+    await expect(page.locator('.world-camera-controls')).toContainText('100%')
+  })
+
+  test('object labels can be hidden and restored', async ({ page }) => {
+    await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+    await expect(page.locator('.world-hotspots')).toBeHidden()
+    await page.getByRole('button', { name: 'Show object labels', exact: true }).click()
+    await expect(page.locator('.world-hotspots')).toBeVisible()
+  })
+
+  const hotspots = [
+    { action: 'stock', role: 'dialog', title: 'What is in the bag?' },
+    { action: 'ledger', role: 'region', title: 'The receipt book.' },
+    { action: 'budget', role: 'region', title: 'The little house pot.' },
+    { action: 'roommates', role: 'region', title: 'Your kind of people.' },
+    { action: 'settle', role: 'region', title: 'Keep it even.' },
+  ] as const
+
+  for (const { action, role, title } of hotspots) {
+    test(`${action} opens its tool and returns to the room`, async ({ page }) => {
+      await frameRoom(page)
+      await page.locator(`.hotspot-${action}`).click()
+      await expect(page.getByRole(role, { name: title, exact: true })).toBeVisible()
+      await expect(page.locator('.kitchen-world')).toHaveAttribute('data-focus', action)
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole(role, { name: title, exact: true })).toHaveCount(0)
+      await frameRoom(page)
+    })
+  }
 })
 
 test('the ledger remains usable when WebGL is unavailable', async ({ page }) => {
@@ -181,16 +276,18 @@ test('the grocery bag and receipt book meshes work without clickable labels', as
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/')
   await expect(page.locator('.hotspot-stock')).toBeVisible()
+  await frameRoom(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
-  await page.mouse.click(655, 474)
+  await clickRoomPoint(page, [-0.4, 1.92, 1.37])
   await expect(page.getByRole('dialog')).toContainText('What is in the bag?')
   await page.getByLabel('What did you pick up?').fill('Groceries from the 3D bag')
   await page.getByLabel('Total (EUR)').fill('8.70')
   await page.getByRole('button', { name: 'Add & split the groceries' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('status')).toContainText('Fridge stocked')
-  await page.mouse.click(714, 530)
-  await expect(page.getByRole('dialog')).toContainText('The receipt book.')
+  await frameRoom(page)
+  await clickRoomPoint(page, [0.96, 1.64, 1.65])
+  await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
 
@@ -210,13 +307,119 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
   const drawCalls = () => page.evaluate(() => Number(Reflect.get(window, 'roomlingsTestDrawCalls')))
   await expect.poll(drawCalls).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await page.evaluate(() => new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-  }))
+  await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const pausedAt = await drawCalls()
   await page.waitForTimeout(250)
   expect(await drawCalls()).toBe(pausedAt)
   await page.keyboard.press('Escape')
   await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
+})
+
+test('the phone view gives the room most of the screen and keeps panels below it', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
+  const canvas = await page.locator('.world-canvas').boundingBox()
+  expect(canvas).not.toBeNull()
+  expect(canvas!.height / 844).toBeGreaterThan(0.7)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  const solidSamples = await page.evaluate(() => new Promise<number>((resolve, reject) => {
+    requestAnimationFrame(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>('.world-canvas canvas')
+      const gl = canvas?.getContext('webgl2')
+      if (!gl) { reject(new Error('The scene did not create a WebGL2 context.')); return }
+      const pixel = new Uint8Array(4)
+      let solid = 0
+      for (const x of [0.2, 0.4, 0.6, 0.8]) {
+        for (const y of [0.2, 0.4, 0.6, 0.8]) {
+          gl.readPixels(Math.floor(gl.drawingBufferWidth * x), Math.floor(gl.drawingBufferHeight * y), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+          if (pixel[3] > 230) solid++
+        }
+      }
+      resolve(solid)
+    })
+  }))
+  expect(solidSamples).toBeGreaterThanOrEqual(8)
+  await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  const sceneBox = await page.locator('.kitchen-world').boundingBox()
+  const panelBox = await page.getByRole('region', { name: 'The little house pot.' }).boundingBox()
+  expect(sceneBox!.y + sceneBox!.height).toBeLessThanOrEqual(panelBox!.y)
+  await page.getByRole('button', { name: 'The roommates', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Your kind of people.' })).toBeVisible()
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-focus', 'roommates')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+})
+
+test('wheel zoom and the kettle respond without changing the household ledger', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  const before = await page.locator('.fund-trigger strong').innerText()
+  await page.mouse.move(550, 330)
+  await page.mouse.wheel(0, -180)
+  await expect(page.locator('.world-camera-controls')).not.toContainText('100%')
+  await page.locator('.world-kettle-toggle').click()
+  await expect(page.locator('.world-kettle-toggle')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-focus', 'brew')
+  await expect(page.locator('.fund-trigger strong')).toHaveText(before)
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  await expect(page.locator('.world-kettle-toggle')).toHaveAttribute('aria-pressed', 'false', { timeout: 15_000 })
+})
+
+test('header and footer wrappers are transparent while their controls keep their own surfaces', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  for (const selector of ['.game-hud', '.game-bottom']) {
+    await expect(page.locator(selector)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(page.locator(selector)).toHaveCSS('background-image', 'none')
+  }
+  await expect(page.locator('.game-dock')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(page.locator('.fund-trigger')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  const canvas = await page.locator('.world-canvas').boundingBox()
+  expect(canvas!.y).toBeLessThanOrEqual(0)
+  expect(canvas!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height)
+  await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  for (const selector of ['.game-hud', '.game-bottom']) {
+    await expect(page.locator(selector)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(page.locator(selector)).toHaveCSS('background-image', 'none')
+  }
+  const focusedCanvas = await page.locator('.world-canvas').boundingBox()
+  expect(focusedCanvas!.x).toBe(0)
+  expect(focusedCanvas!.y).toBe(0)
+  expect(focusedCanvas!.width).toBe(page.viewportSize()!.width)
+  expect(focusedCanvas!.height).toBe(page.viewportSize()!.height)
+})
+
+test('touch gestures zoom and turn the room without opening an object', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+  const touch = await page.context().newCDPSession(page)
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: 130, y: 350, id: 1 }, { x: 230, y: 350, id: 2 }],
+  })
+  await touch.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: 105, y: 350, id: 1 }, { x: 255, y: 350, id: 2 }],
+  })
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await expect(page.locator('.world-camera-controls')).toContainText('150%')
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.mouse.move(170, 380)
+  await page.mouse.down()
+  await page.mouse.move(170, 430, { steps: 20 })
+  await page.mouse.up()
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await touch.detach()
 })
