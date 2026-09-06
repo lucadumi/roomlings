@@ -5,9 +5,12 @@ import { z } from 'zod'
 import {
   balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
   centsSchema, currencies, expenseInputSchema, memberColors, nameSchema,
+  shoppingCheckoutSchema, shoppingClaimSchema, shoppingItemEditSchema, shoppingItemInputSchema,
+  shoppingItemLimit, shoppingItemVersionSchema, shoppingPickSchema, shoppingRunLimit,
 } from '../shared/domain.ts'
-import type { Bill, Expense, Household } from '../shared/domain.ts'
+import type { Bill, Expense, Household, ShoppingItem } from '../shared/domain.ts'
 import { billOccurrence, reviseBill, setBillPaused } from '../shared/bills.ts'
+import { canEditShoppingItem, checkoutItems } from '../shared/shopping.ts'
 import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
 import type { Store } from './store.ts'
 
@@ -59,11 +62,11 @@ export function createApp(store: Store) {
     if (result === null) throw new ApiError(401, expiredSession)
     return result
   }
-  const mutate = (req: Request, res: Response, change: (household: Household) => void) => {
-    const { household } = authenticated(req)
+  const mutate = (req: Request, res: Response, change: (household: Household, memberId: string) => void) => {
+    const { household, memberId } = authenticated(req)
     const { version } = versionSchema.parse(req.body)
     if (version !== household.version) throw new ApiError(409, 'A roommate just changed the kitchen. It has been refreshed; please try again.')
-    change(household)
+    change(household, memberId)
     household.version++
     store.save(household)
     res.json({ household })
@@ -76,12 +79,24 @@ export function createApp(store: Store) {
   }
   const addExpense = (household: Household, expense: Omit<Expense, 'id' | 'createdAt'>) => {
     if (household.expenses.length >= 20_000) throw new ApiError(409, 'This kitchen has reached its expense limit. Export the ledger and start a new kitchen.')
-    household.expenses.unshift({ ...expense, id: randomUUID(), createdAt: new Date().toISOString() })
+    const saved = { ...expense, id: randomUUID(), createdAt: new Date().toISOString() }
+    household.expenses.unshift(saved)
+    return saved
   }
   const findBill = (household: Household, id: string): Bill => {
     const bill = household.bills.find((bill) => bill.id === id)
     if (!bill) throw new ApiError(404, 'That monthly bill was not found in this kitchen.')
     return bill
+  }
+  const findShoppingItem = (household: Household, id: string, version: number): ShoppingItem => {
+    const item = household.shopping.items.find((item) => item.id === id)
+    if (!item) throw new ApiError(404, 'That item is no longer on this kitchen list.')
+    if (item.version !== version) throw new ApiError(409, 'This shopping item changed. Review the latest details and try again.')
+    return item
+  }
+  const changeShoppingItem = (item: ShoppingItem) => {
+    item.version++
+    item.updatedAt = new Date().toISOString()
   }
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
@@ -146,6 +161,69 @@ export function createApp(store: Store) {
     const index = household.expenses.findIndex((expense) => expense.id === req.params.id)
     if (index === -1) throw new ApiError(404, 'That expense is no longer in the ledger.')
     household.expenses.splice(index, 1)
+  }))
+  app.post('/api/shopping/items', (req, res) => mutate(req, res, (household, memberId) => {
+    const input = shoppingItemInputSchema.parse(req.body)
+    if (household.shopping.items.length >= shoppingItemLimit) throw new ApiError(409, 'The shopping list is full. Finish a run or remove unused items first.')
+    const now = new Date().toISOString()
+    household.shopping.items.push({
+      ...input, id: randomUUID(), createdBy: memberId, createdAt: now, updatedAt: now,
+      version: 0, claimedBy: null, pickedUp: false,
+    })
+  }))
+  app.patch('/api/shopping/items/:id', (req, res) => mutate(req, res, (household, memberId) => {
+    const input = shoppingItemEditSchema.parse(req.body)
+    const item = findShoppingItem(household, req.params.id, input.itemVersion)
+    if (!canEditShoppingItem(item, memberId)) throw new ApiError(409, 'Return this item to the list and release another shopper\'s claim before editing it.')
+    Object.assign(item, { name: input.name, quantity: input.quantity, notes: input.notes })
+    changeShoppingItem(item)
+  }))
+  app.delete('/api/shopping/items/:id', (req, res) => mutate(req, res, (household, memberId) => {
+    const { itemVersion } = shoppingItemVersionSchema.parse(req.body)
+    const item = findShoppingItem(household, req.params.id, itemVersion)
+    if (!canEditShoppingItem(item, memberId)) throw new ApiError(409, 'Return this item to the list and release another shopper\'s claim before removing it.')
+    household.shopping.items = household.shopping.items.filter((entry) => entry.id !== item.id)
+  }))
+  app.post('/api/shopping/items/:id/claim', (req, res) => mutate(req, res, (household, memberId) => {
+    const input = shoppingClaimSchema.parse(req.body)
+    const item = findShoppingItem(household, req.params.id, input.itemVersion)
+    if (input.claimed) {
+      if (item.claimedBy !== null) throw new ApiError(409, 'This item is already claimed. Review who is buying it before taking over.')
+      item.claimedBy = memberId
+    } else {
+      if (item.claimedBy === null) throw new ApiError(409, 'This item is already available to everyone.')
+      item.claimedBy = null
+      item.pickedUp = false
+    }
+    changeShoppingItem(item)
+  }))
+  app.post('/api/shopping/items/:id/pick', (req, res) => mutate(req, res, (household, memberId) => {
+    const input = shoppingPickSchema.parse(req.body)
+    const item = findShoppingItem(household, req.params.id, input.itemVersion)
+    if (item.claimedBy !== null && item.claimedBy !== memberId) throw new ApiError(409, 'Another roommate is buying this item. Release their claim before taking over.')
+    if (item.pickedUp === input.pickedUp) throw new ApiError(409, 'This item already has that basket status. Refresh the list.')
+    if (input.pickedUp) item.claimedBy = memberId
+    item.pickedUp = input.pickedUp
+    changeShoppingItem(item)
+  }))
+  app.post('/api/shopping/checkout', (req, res) => mutate(req, res, (household, memberId) => {
+    const input = shoppingCheckoutSchema.parse(req.body)
+    if (household.shopping.runs.some((run) => run.id === input.checkoutId)) throw new ApiError(409, 'This shopping run has already been recorded. Refresh the list to see its receipt.')
+    if (household.shopping.runs.length >= shoppingRunLimit) throw new ApiError(409, 'This kitchen has reached its shopping history limit. Export the ledger and start a new kitchen.')
+    requireRoommates(household, input.participants, input.paidBy)
+    const selected = checkoutItems(household, memberId, input.items)
+    if (!selected) throw new ApiError(409, 'Your basket changed. Review the items and their quantities before recording this run.')
+    const expense = addExpense(household, {
+      description: input.description, amount: input.amount, paidBy: input.paidBy,
+      participants: input.participants, category: input.category, date: input.date, shoppingRunId: input.checkoutId,
+    })
+    const selectedIds = new Set(selected.map((item) => item.id))
+    household.shopping.items = household.shopping.items.filter((item) => !selectedIds.has(item.id))
+    household.shopping.runs.unshift({
+      id: input.checkoutId, expenseId: expense.id, name: expense.description,
+      completedBy: memberId, completedAt: expense.createdAt,
+      items: selected.map(({ id, name, quantity, notes, createdBy, createdAt }) => ({ id, name, quantity, notes, createdBy, createdAt })),
+    })
   }))
   app.post('/api/bills', (req, res) => mutate(req, res, (household) => {
     const input = billCreateInputSchema.parse(req.body)

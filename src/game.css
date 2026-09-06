@@ -264,8 +264,8 @@
 .game-app .modal h2 { color: #486435; font-size: 28px; }
 .game-app .modal-subtitle { font-size: 12px; color: #627d4e; line-height: 1.8; }
 .game-app .field { color: #577443; font-size: 12px; }
-.game-app .field input, .game-app .field select { font-size: 13px; min-height: 44px; background: #fffff8; border-color: #ccdcbc; color: #3f632d; }
-.game-app .field input:disabled, .game-app .field select:disabled { background: #eef2e5; border-color: #dbe4ce; color: #768467; cursor: not-allowed; opacity: 1; }
+.game-app .field input, .game-app .field select, .game-app .field textarea { font-size: 13px; min-height: 44px; background: #fffff8; border-color: #ccdcbc; color: #3f632d; }
+.game-app .field input:disabled, .game-app .field select:disabled, .game-app .field textarea:disabled { background: #eef2e5; border-color: #dbe4ce; color: #768467; cursor: not-allowed; opacity: 1; }
 .game-app .field input::placeholder { color: #7c9369; font-size: 12px; }
 .game-app .modal .button { font-size: 12px; min-height: var(--control-height); }
 .game-app .field-hint, .game-app .form-footnote { color: #6f865b; font-size: 10px; }
@@ -401,7 +401,7 @@
   .game-app .modal-backdrop { padding: 11px; align-items: flex-end; }
   .game-app .modal { padding: 25px 22px; max-height: calc(100dvh - 28px); border-radius: 14px; }
   .game-app .modal h2 { font-size: 27px; }
-  .game-app .field input, .game-app .field select { font-size: 16px; }
+  .game-app .field input, .game-app .field select, .game-app .field textarea { font-size: 16px; }
   .game-app .field-row { gap: 10px; }
   .game-app .field-row .field { font-size: 12px; }
   .game-panel-content .search-input input { font-size: 16px; }

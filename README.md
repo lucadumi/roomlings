@@ -1,6 +1,6 @@
 # Roomlings
 
-A game-like shared kitchen for groceries, monthly bills and fair repayments. Built with React, Three.js, Express and SQLite. **Roomlings records payments; it never moves money.**
+A game-like shared kitchen for shopping lists, groceries, monthly bills and fair repayments. **Roomlings records payments; it never moves money.**
 
 ## Run locally
 
@@ -15,7 +15,7 @@ Open http://localhost:5173 (API: port 4311). Start with the private sample kitch
 
 ## Use
 
-- **Shopping bag:** add groceries and split them in integer cents.
+- **Shopping bag:** add and claim items, fill your basket, then record one paid grocery run. Items archive only after saving; ticking them creates no debt.
 - **Receipt book:** browse groceries or create, edit and pause monthly bills in **Bills**. Confirm the actual amount and payer to record one expense per bill/month.
 - **House pot and fridge:** grocery-only spending and purchases. Bills share the same balances and repayments, not the grocery budget.
 - **Envelope:** record or undo roommate repayments. Export the complete ledger from the receipt book.
