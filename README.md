@@ -13,6 +13,16 @@ npm run dev
 
 Open http://localhost:5173 (API: port 4311). Start with the private sample kitchen, or choose **Make it yours** and invite your roommates.
 
+## A little tour
+
+Open http://localhost:5173/welcome for **Step inside**, a scroll-driven tour of the same low-poly kitchen. Native scrolling moves from the whole room to the groceries, receipt book and house pot, then back home. Chapter links, keyboard navigation, reduced motion and an illustrated WebGL fallback keep the story accessible.
+
+The tour does not create a kitchen session, access kitchen session storage or call the API. It remembers its scroll position only in the current browser history entry. **Open kitchen** takes you to the existing app at `/`, retaining your saved kitchen and invitation behavior. The landing does not replace the app's current entry point.
+
+For a separate worktree preview, run `npm run build`, then `PORT=4322 npm start` from that worktree. Its ignored `data/` directory stays separate from the original checkout. Open http://localhost:4322/welcome. Browser coverage can target this already-running preview with `PLAYWRIGHT_BASE_URL=http://127.0.0.1:4322 npm run test:browser`.
+
+Scroll and camera references: the local Scroll Worlds and Object Studio experiments, [ATMOS](https://www.awwwards.com/case-study-atmos.html), and [Igloo Inc.](https://www.awwwards.com/igloo-inc-case-study.html). Roomlings uses its own kitchen geometry, local fonts and native scrolling, not third-party artwork or a scroll-hijacking library.
+
 ## Use
 
 - **Shopping bag:** add groceries and split them in integer cents.
