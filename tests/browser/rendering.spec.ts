@@ -1,29 +1,91 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
-test('the full-size kitchen stays within its static-geometry draw-call budget', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 960 })
+async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
     let draws = 0
+    let shadowDraws = 0
+    const framebuffers = new WeakMap<WebGL2RenderingContext, WebGLFramebuffer | null>()
+    const bindFramebuffer = WebGL2RenderingContext.prototype.bindFramebuffer
+    Object.defineProperty(WebGL2RenderingContext.prototype, 'bindFramebuffer', {
+      value(this: WebGL2RenderingContext, target: number, framebuffer: WebGLFramebuffer | null) {
+        if (target === this.FRAMEBUFFER || target === this.DRAW_FRAMEBUFFER) framebuffers.set(this, framebuffer)
+        return Reflect.apply(bindFramebuffer, this, [target, framebuffer])
+      },
+    })
     for (const method of ['drawElements', 'drawArrays'] as const) {
       const original = WebGL2RenderingContext.prototype[method]
       Object.defineProperty(WebGL2RenderingContext.prototype, method, {
         value(this: WebGL2RenderingContext, ...args: number[]) {
           draws++
+          if (framebuffers.get(this)) shadowDraws++
           return Reflect.apply(original, this, args)
         },
       })
     }
     Object.defineProperty(window, 'roomlingsFrameDrawCalls', { get: () => draws })
+    Object.defineProperty(window, 'roomlingsShadowDrawCalls', { get: () => shadowDraws })
   })
+  return () => page.evaluate(() => ({
+    draws: Number(Reflect.get(window, 'roomlingsFrameDrawCalls')),
+    shadows: Number(Reflect.get(window, 'roomlingsShadowDrawCalls')),
+  }))
+}
+
+test('the full-size kitchen stays within its static-geometry draw-call budget', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await trackDrawing(page)
   await page.goto('/')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
-  const draws = await page.evaluate(() => new Promise<number>((resolve) => {
+  const draws = await page.evaluate(() => new Promise<number[]>((resolve) => {
     requestAnimationFrame(() => {
-      const start = Number(Reflect.get(window, 'roomlingsFrameDrawCalls'))
-      requestAnimationFrame(() => resolve(Number(Reflect.get(window, 'roomlingsFrameDrawCalls')) - start))
+      const frames: number[] = []
+      let previous = Number(Reflect.get(window, 'roomlingsFrameDrawCalls'))
+      const sample = () => {
+        const current = Number(Reflect.get(window, 'roomlingsFrameDrawCalls'))
+        frames.push(current - previous)
+        previous = current
+        if (frames.length === 8) resolve(frames)
+        else requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
     })
   }))
-  expect(draws).toBeGreaterThan(100)
-  expect(draws).toBeLessThanOrEqual(350)
+  expect(Math.min(...draws)).toBeGreaterThan(100)
+  expect(Math.max(...draws)).toBeLessThanOrEqual(350)
+})
+
+test('reduced-motion rooms stop idle drawing and refresh cached shadows only when an object moves', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.clock.setFixedTime(new Date())
+  const drawing = await trackDrawing(page)
+  await page.goto('/')
+  const room = page.locator('.kitchen-world')
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
+  const idle = await drawing()
+  expect(idle.draws).toBeGreaterThan(0)
+  expect(idle.shadows).toBeGreaterThan(0)
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+  expect(await drawing()).toEqual(idle)
+
+  await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+  await expect(page.locator('.world-camera-controls')).toContainText('120%')
+  await expect.poll(async () => (await drawing()).draws).toBeGreaterThan(idle.draws)
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
+  const zoomed = await drawing()
+  expect(zoomed.shadows).toBe(idle.shadows)
+
+  await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
+  await expect.poll(async () => (await drawing()).draws).toBeGreaterThan(zoomed.draws)
+  await expect(room).toHaveAttribute('data-evening', 'true')
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
+  expect((await drawing()).shadows).toBe(idle.shadows)
+
+  await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
+  await expect.poll(async () => (await drawing()).shadows).toBeGreaterThan(idle.shadows)
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
+  await expect(page.getByRole('button', { name: 'Peek inside', exact: true })).toBeVisible()
 })

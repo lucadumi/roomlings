@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Coffee, Eye, EyeOff, Maximize, Minus, Moon, Move, Plus, Snowflake, Sun } from 'lucide-react'
 import {
-  ACESFilmicToneMapping, AmbientLight, BoxGeometry, CanvasTexture, ConeGeometry, CylinderGeometry,
-  DirectionalLight, DodecahedronGeometry, Group, HemisphereLight, MathUtils,
-  Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFSoftShadowMap,
+  ACESFilmicToneMapping, BoxGeometry, Color, ConeGeometry, CylinderGeometry,
+  DodecahedronGeometry, Group, MathUtils,
+  Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFShadowMap,
   PlaneGeometry, PointLight, Raycaster, Scene, SphereGeometry, SRGBColorSpace,
   Vector2, Vector3, WebGLRenderer,
 } from 'three'
@@ -16,6 +16,8 @@ import type { KitchenAction, SceneAction } from './room.ts'
 import { baseCameraOffset, cameraFraming, cameraProjection, focusLabels } from './camera.ts'
 import type { FocusRequest, SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
+import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
+import { dampTo, frameSeconds } from './motion.ts'
 
 type Props = {
   paused: boolean
@@ -88,9 +90,9 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       setUnavailable(true)
       return
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = PCFSoftShadowMap
+    renderer.shadowMap.type = PCFShadowMap
     renderer.outputColorSpace = SRGBColorSpace
     renderer.toneMapping = ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.05
@@ -101,21 +103,12 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
     const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 100)
     camera.position.set(9, 9.5, 13)
     camera.lookAt(-0.1, 1.65, -0.05)
-    const skyLight = new HemisphereLight(0xfffff3, 0xb1b69d, 1.7)
-    scene.add(skyLight, new AmbientLight(0xffffff, 0.3))
-    const sunlight = new DirectionalLight(0xfff5d5, 2.7)
-    sunlight.position.set(-3, 9, 6)
-    sunlight.castShadow = true
-    sunlight.shadow.mapSize.set(1024, 1024)
-    sunlight.shadow.camera.left = -8
-    sunlight.shadow.camera.right = 8
-    sunlight.shadow.camera.top = 8
-    sunlight.shadow.camera.bottom = -8
-    sunlight.shadow.normalBias = 0.035
-    scene.add(sunlight)
-    const fill = new DirectionalLight(0xffffff, 1)
-    fill.position.set(5, 2, -3)
-    scene.add(fill)
+    const { group: lighting, sunlight, skyLight, fill } = createRoomLights()
+    scene.add(lighting)
+    const dayWindow = new Color(daylight.window)
+    const eveningWindow = new Color(eveningLight.window)
+    const dayDisc = new Color(daylight.disc)
+    const eveningDisc = new Color(eveningLight.disc)
     const room = new Group()
     scene.add(room)
     const kitchen = new Group()
@@ -128,13 +121,14 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       materials.push(result)
       return result
     }
-    const sage = material('#a3b49a')
-    const lightSage = material('#b6c5ab')
+    const sage = material('#9eb399', 0.6)
+    const lightSage = material('#b1c4a7', 0.6)
     const edge = material('#8b9d82')
-    const porcelain = material('#f2f1dd')
+    const porcelain = material('#f2f1dd', 0.65)
     const inside = material('#dce3d0')
     const dark = material('#59674f')
-    const silver = material('#e9e8d9', 0.55)
+    const silver = material('#e9e8d9', 0.34)
+    silver.metalness = 0.18
     const milk = material('#f8f3de')
     const blue = material('#72979b')
     const red = material('#d35739')
@@ -148,7 +142,7 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       const geometry = radius ? new RoundedBoxGeometry(...dimensions, 1, radius) : new BoxGeometry(...dimensions)
       const mesh = new Mesh(geometry, mat)
       mesh.position.set(...position)
-      mesh.castShadow = true
+      mesh.castShadow = !mat.transparent && Math.min(...dimensions) > 0.018
       mesh.receiveShadow = true
       parent.add(mesh)
       return mesh
@@ -156,7 +150,8 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
     const cylinder = (parent: Group, radius: number, height: number, position: [number, number, number], mat: MeshStandardMaterial, top = radius) => {
       const mesh = new Mesh(new CylinderGeometry(top, radius, height, 8), mat)
       mesh.position.set(...position)
-      mesh.castShadow = true
+      mesh.castShadow = !mat.transparent && radius >= 0.025 && height > 0.02
+      mesh.receiveShadow = true
       parent.add(mesh)
       return mesh
     }
@@ -294,18 +289,14 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       room.add(item)
       return item
     })
-    const shadowCanvas = document.createElement('canvas')
-    shadowCanvas.width = shadowCanvas.height = 128
-    const context = shadowCanvas.getContext('2d')
-    if (context) {
-      const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64)
-      gradient.addColorStop(0, 'rgba(72,80,54,0.23)')
-      gradient.addColorStop(1, 'rgba(72,80,54,0)')
-      context.fillStyle = gradient
-      context.fillRect(0, 0, 128, 128)
-    }
-    const shadowTexture = new CanvasTexture(shadowCanvas)
-    const shadowMaterial = new MeshBasicMaterial({ map: shadowTexture, transparent: true, depthWrite: false })
+    const shadowTexture = createContactShadowTexture()
+    const contacts = addContactShadows(room, shadowTexture, [
+      ...scenery.contacts,
+      { position: [kitchen.position.x, 0.007, kitchen.position.z], size: [2.55, 2.1] },
+    ])
+    const shadowMaterial = new MeshBasicMaterial({
+      map: shadowTexture, color: '#535d45', opacity: 0.2, transparent: true, depthWrite: false, toneMapped: false,
+    })
     const shadow = new Mesh(new PlaneGeometry(16, 13), shadowMaterial)
     shadow.rotation.x = -Math.PI / 2
     shadow.position.set(0, -0.29, 0.4)
@@ -333,13 +324,21 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
     let stockStarted = -10_000
     let stockCategory: Category = 'produce'
     let lastFocusId = -1
-    let activeUntil = performance.now() + 1000
+    let activeUntil = performance.now() + (reducedMotion.matches ? 0 : 1000)
     let brewStarted = -20_000
     let wasBrewing = false
     let wasMoving = false
+    let wasAnimating = false
     let wasPaused = false
     let visualKey = ''
     let halfHeight = 4.6
+    let cameraPitch = 0
+    let lightingMix = 0
+    let brewIntensity = 0
+    let steamPhase = 0
+    let shadowsDirty = true
+    let lastShadowFrame = -Infinity
+    let displayedMinute = -1
     const viewport = { width: 1, height: 1 }
     const framingArea = { x: 0, y: 0, width: 1, height: 1 }
     const raycaster = new Raycaster()
@@ -352,8 +351,10 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
     const actorsY = new Map([...scenery.actors].map(([action, actor]) => [action, actor.position.y]))
     const wake = (duration = 900) => {
       needsFrame = true
-      activeUntil = Math.max(activeUntil, performance.now() + duration)
+      activeUntil = Math.max(activeUntil, performance.now() + (reducedMotion.matches ? 0 : duration))
     }
+    const motionPreferenceChanged = () => { activeUntil = performance.now(); wake() }
+    reducedMotion.addEventListener('change', motionPreferenceChanged)
     const focusOn = (target: SceneFocus) => {
       currentControls.focus = target
       currentControls.wholeRoom = false
@@ -514,7 +515,7 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
     renderer.domElement.addEventListener('webglcontextlost', onContextLost)
     const animate = (now: number) => {
       frame = requestAnimationFrame(animate)
-      const delta = Math.min((now - last) / 1000, 0.1)
+      const delta = frameSeconds(last, now)
       last = now
       const latest = state.current
       if (!visible || document.hidden) return
@@ -523,14 +524,17 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
         focusOn(latest.focusRequest.target)
       }
       const nextVisualKey = JSON.stringify([latest.counts, latest.selected, latest.fundFraction, latest.memberCount, latest.expenseCount, latest.stockEvent])
-      if (nextVisualKey !== visualKey) { visualKey = nextVisualKey; wake() }
+      if (nextVisualKey !== visualKey) { visualKey = nextVisualKey; shadowsDirty = true; wake() }
+      if (!latest.paused && Math.floor(Date.now() / 60_000) !== displayedMinute) wake(0)
       const isBrewing = now - brewStarted < 12_000
       if (isBrewing !== wasBrewing) { wasBrewing = isBrewing; setBrewing(isBrewing); wake(300) }
-      const resting = latest.paused && !needsFrame && !wasMoving && now > activeUntil
+      const resting = (latest.paused || reducedMotion.matches) && !needsFrame && !wasMoving && !wasAnimating && now > activeUntil
       if (resting !== wasPaused) { wasPaused = resting; setRenderingPaused(resting) }
-      // Let camera and input animations finish, then stop idle work behind a panel.
+      // Finish transitions before pausing for a panel or reduced motion.
       if (resting) return
       needsFrame = false
+      let shadowsMoving = false
+      let transitioning = false
       if (needsResize) {
         renderer.setSize(viewport.width, viewport.height)
         needsResize = false
@@ -552,10 +556,14 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       }
       for (const [index, door] of doors.entries()) {
         const target = currentControls.open ? (index ? -1.72 : -1.97) : 0
-        door.rotation.y = reducedMotion.matches ? target : MathUtils.damp(door.rotation.y, target, 7 - index, delta)
+        const rotation = reducedMotion.matches ? target : dampTo(door.rotation.y, target, 7 - index, delta)
+        shadowsMoving ||= door.rotation.y !== rotation
+        transitioning ||= rotation !== target
+        door.rotation.y = rotation
       }
-      room.rotation.y = reducedMotion.matches ? targetRotation : MathUtils.damp(room.rotation.y, targetRotation, 9, delta)
-      if (Math.abs(room.rotation.y - targetRotation) < 0.001) room.rotation.y = targetRotation
+      const rotation = reducedMotion.matches ? targetRotation : dampTo(room.rotation.y, targetRotation, 9, delta)
+      shadowsMoving ||= room.rotation.y !== rotation
+      room.rotation.y = rotation
       room.updateMatrixWorld(true)
       const area = latest.panelOpen ? framingArea : { x: 0, y: 0, width: viewport.width, height: viewport.height }
       const framing = cameraFraming(area.width, area.height, currentControls.focus, currentControls.wholeRoom)
@@ -563,22 +571,19 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       if (reducedMotion.matches) cameraCenter.copy(desiredCenter)
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
-      desiredCamera.copy(cameraCenter).add(vector.set(baseCameraOffset[0], baseCameraOffset[1] + targetPitch, baseCameraOffset[2]))
-      if (reducedMotion.matches) camera.position.copy(desiredCamera)
-      else camera.position.lerp(desiredCamera, 1 - Math.exp(-10 * delta))
-      if (camera.position.distanceTo(desiredCamera) < 0.002) camera.position.copy(desiredCamera)
+      cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
+      desiredCamera.copy(cameraCenter).add(vector.set(baseCameraOffset[0], baseCameraOffset[1] + cameraPitch, baseCameraOffset[2]))
+      camera.position.copy(desiredCamera)
       camera.lookAt(cameraCenter)
-      halfHeight = reducedMotion.matches ? framing.halfHeight : MathUtils.damp(halfHeight, framing.halfHeight, 9, delta)
-      if (Math.abs(halfHeight - framing.halfHeight) < 0.002) halfHeight = framing.halfHeight
-      camera.zoom = reducedMotion.matches ? currentControls.zoom : MathUtils.damp(camera.zoom, currentControls.zoom, 8, delta)
-      if (Math.abs(camera.zoom - currentControls.zoom) < 0.002) camera.zoom = currentControls.zoom
+      halfHeight = reducedMotion.matches ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
+      camera.zoom = reducedMotion.matches ? currentControls.zoom : dampTo(camera.zoom, currentControls.zoom, 8, delta, 0.002)
       const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
       camera.left = projection.left
       camera.right = projection.right
       camera.top = projection.top
       camera.bottom = projection.bottom
       camera.updateProjectionMatrix()
-      const moving = cameraCenter.distanceTo(desiredCenter) > 0.002 || camera.position.distanceTo(desiredCamera) > 0.002
+      const moving = cameraCenter.distanceTo(desiredCenter) > 0.002 || cameraPitch !== targetPitch
         || halfHeight !== framing.halfHeight || camera.zoom !== currentControls.zoom || room.rotation.y !== targetRotation
       if (moving !== wasMoving) { wasMoving = moving; setCameraMoving(moving) }
       if (moving) activeUntil = Math.max(activeUntil, now + 120)
@@ -589,12 +594,17 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
         const scale = highlighted ? 1 : 0.88
         const age = (now - entrance) / 1000
         const bounce = reducedMotion.matches ? 0 : Math.sin(Math.min(age, 1) * Math.PI * 2) * Math.max(0, 1 - age) * 0.09
+        const nextScale = reducedMotion.matches ? scale : dampTo(item.group.scale.x, scale, 8, delta)
+        transitioning ||= item.group.visible && (nextScale !== scale || (!reducedMotion.matches && age < 1))
+        shadowsMoving ||= item.group.visible && (item.group.position.y !== item.baseline + bounce || item.group.scale.x !== nextScale)
         item.group.position.y = item.baseline + bounce
-        item.group.scale.lerp(vector.setScalar(scale), reducedMotion.matches ? 1 : Math.min(delta * 8, 1))
+        item.group.scale.setScalar(nextScale)
       }
       for (const [index, item] of flyingGroceries.entries()) {
         const age = (now - stockStarted) / 1000 - index * 0.18
-        item.visible = !reducedMotion.matches && age >= 0 && age < 1.65
+        const visible = !reducedMotion.matches && age >= 0 && age < 1.65
+        shadowsMoving ||= item.visible !== visible || visible
+        item.visible = visible
         if (!item.visible) continue
         const t = MathUtils.clamp(age / 1.65, 0, 1)
         const ease = t * t * (3 - 2 * t)
@@ -609,7 +619,9 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       }
       scenery.coins.forEach((coin, index) => {
         const target = index < Math.ceil(MathUtils.clamp(latest.fundFraction, 0, 1) * 12) ? 1 : 0
-        const scale = reducedMotion.matches ? target : MathUtils.damp(coin.scale.x, target, 9, delta)
+        const scale = reducedMotion.matches ? target : dampTo(coin.scale.x, target, 9, delta)
+        shadowsMoving ||= coin.scale.x !== scale
+        transitioning ||= scale !== target
         coin.scale.setScalar(scale < 0.001 ? 0 : scale)
         coin.visible = scale > 0.001
       })
@@ -617,20 +629,32 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       scenery.receipts.forEach((receipt, index) => { receipt.visible = index < latest.expenseCount })
       scenery.receiptLines.visible = latest.expenseCount > 0
       scenery.receiptLines.position.y = 0.043 + Math.min(latest.expenseCount, 10) * 0.012
+      const brewTarget = isBrewing && !reducedMotion.matches ? 1 : 0
+      brewIntensity = reducedMotion.matches ? 0 : dampTo(brewIntensity, brewTarget, 4, delta)
+      transitioning ||= brewIntensity !== brewTarget
+      steamPhase = (steamPhase + delta / MathUtils.lerp(3.5, 1.7, brewIntensity)) % 1
       scenery.steam.forEach((puff, index) => {
-        const phase = ((now / (isBrewing ? 1700 : 3500) + index * 0.29) % 1)
+        const phase = (steamPhase + index / 3) % 1
+        const fade = Math.sin(phase * Math.PI)
         puff.visible = !reducedMotion.matches
-        puff.position.y = 0.44 + phase * (isBrewing ? 1.05 : 0.65)
+        puff.position.y = 0.44 + phase * MathUtils.lerp(0.65, 1.05, brewIntensity)
         puff.position.x = 0.33 + Math.sin(phase * 4) * 0.06
-        puff.scale.setScalar(0.4 + Math.sin(phase * Math.PI) * (isBrewing ? 2 : 1.3))
+        puff.scale.setScalar(0.4 + fade * MathUtils.lerp(1.3, 2, brewIntensity))
+        puff.material.opacity = fade * fade * MathUtils.lerp(0.18, 0.3, brewIntensity)
       })
-      scenery.kettleLid.position.y = 0.39 + (isBrewing && !reducedMotion.matches ? Math.abs(Math.sin(now / 80)) * 0.016 : 0)
+      const lidHeight = 0.39 + Math.abs(Math.sin(now / 140)) * 0.012 * brewIntensity
+      shadowsMoving ||= scenery.kettleLid.position.y !== lidHeight
+      scenery.kettleLid.position.y = lidHeight
       scenery.plants.forEach((plant, index) => { plant.rotation.z = reducedMotion.matches ? 0 : Math.sin(now / 2500 + index) * 0.025 })
       const hoveredTarget = hoverRef.current
       for (const [action, actor] of scenery.actors) {
         const lifted = hoveredTarget && 'action' in hoveredTarget && hoveredTarget.action === action
         const base = actorsY.get(action) ?? 0
-        actor.position.y = reducedMotion.matches ? base : MathUtils.damp(actor.position.y, base + (lifted && action !== 'light' ? 0.06 : 0), 10, delta)
+        const previousY = actor.position.y
+        const previousRotation = actor.rotation.z
+        const targetY = base + (lifted && action !== 'light' && !reducedMotion.matches ? 0.06 : 0)
+        actor.position.y = reducedMotion.matches ? base : dampTo(actor.position.y, targetY, 10, delta)
+        transitioning ||= actor.position.y !== targetY
         if (action === 'stock' && now - stockStarted < 2400 && !reducedMotion.matches) {
           const age = (now - stockStarted) / 1000
           actor.position.y = base + Math.abs(Math.sin(age * 7)) * Math.max(0, 1 - age / 2.4) * 0.13
@@ -638,17 +662,31 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
         } else if (action === 'stock') {
           actor.rotation.z = 0
         }
+        shadowsMoving ||= actor.position.y !== previousY || actor.rotation.z !== previousRotation
       }
-      sunlight.intensity = MathUtils.damp(sunlight.intensity, currentControls.evening ? 0.7 : 2.7, 4, delta)
-      skyLight.intensity = MathUtils.damp(skyLight.intensity, currentControls.evening ? 0.85 : 1.7, 4, delta)
-      scenery.light.intensity = MathUtils.damp(scenery.light.intensity, currentControls.evening ? 10 : 0, 4, delta)
-      scenery.bulb.emissiveIntensity = currentControls.evening ? 1.7 : 0.12
-      scenery.sky.color.set(currentControls.evening ? '#697a90' : '#b5d2c8')
+      const targetLighting = currentControls.evening ? 1 : 0
+      lightingMix = reducedMotion.matches ? targetLighting : dampTo(lightingMix, targetLighting, 4, delta)
+      transitioning ||= lightingMix !== targetLighting
+      sunlight.intensity = MathUtils.lerp(daylight.sun, eveningLight.sun, lightingMix)
+      skyLight.intensity = MathUtils.lerp(daylight.sky, eveningLight.sky, lightingMix)
+      fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, lightingMix)
+      scenery.light.intensity = MathUtils.lerp(daylight.lamp, eveningLight.lamp, lightingMix)
+      scenery.bulb.emissiveIntensity = MathUtils.lerp(daylight.bulb, eveningLight.bulb, lightingMix)
+      scenery.sky.color.lerpColors(dayWindow, eveningWindow, lightingMix)
+      scenery.windowDisc.color.lerpColors(dayDisc, eveningDisc, lightingMix)
+      scenery.windowDisc.emissiveIntensity = lightingMix * 0.35
       const time = new Date()
+      displayedMinute = Math.floor(time.getTime() / 60_000)
       scenery.hourHand.rotation.z = -((time.getHours() % 12 + time.getMinutes() / 60) / 12) * Math.PI * 2
       scenery.minuteHand.rotation.z = -(time.getMinutes() / 60) * Math.PI * 2
       iceTray.visible = latest.counts.other === 0
-      interiorLight.intensity = currentControls.open ? 0.6 : 0
+      const fridgeLight = currentControls.open ? 0.6 : 0
+      interiorLight.intensity = reducedMotion.matches ? fridgeLight : dampTo(interiorLight.intensity, fridgeLight, 8, delta)
+      transitioning ||= interiorLight.intensity !== fridgeLight
+      wasAnimating = transitioning
+      // Cache the shadow pass between interactions; the small idle leaf sway only needs a 4 Hz refresh.
+      sunlight.shadow.needsUpdate = shadowsDirty || shadowsMoving || (!reducedMotion.matches && now - lastShadowFrame >= 250)
+      if (sunlight.shadow.needsUpdate) { lastShadowFrame = now; shadowsDirty = false }
       renderer.render(scene, camera)
       for (const anchor of sceneAnchors) {
         const label = labels.current.get(anchor.action)
@@ -666,6 +704,7 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       cancelAnimationFrame(frame)
       observer.disconnect()
       visibility.disconnect()
+      reducedMotion.removeEventListener('change', motionPreferenceChanged)
       renderer.domElement.removeEventListener('pointerdown', down)
       renderer.domElement.removeEventListener('pointermove', move)
       renderer.domElement.removeEventListener('pointerup', up)
@@ -673,9 +712,11 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       renderer.domElement.removeEventListener('pointercancel', cancel)
       renderer.domElement.removeEventListener('wheel', wheel)
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost)
-      scene.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
+      const geometries = new Set<BufferGeometry>([...Object.values(flyingShapes), contacts.geometry])
+      scene.traverse((object) => { if (object instanceof Mesh) geometries.add(object.geometry) })
+      geometries.forEach((geometry) => geometry.dispose())
       materials.forEach((mat) => mat.dispose())
-      Object.values(flyingShapes).forEach((geometry) => geometry.dispose())
+      contacts.material.dispose()
       shadowMaterial.dispose()
       shadowTexture.dispose()
       sunlight.shadow.dispose()

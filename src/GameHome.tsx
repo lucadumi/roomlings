@@ -56,15 +56,15 @@ export function GameHome({
       <div className="game-identity">
         <div className="brand"><span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span></div>
         <i className="hud-divider" />
-        <button className="game-house" onClick={() => onAction('roommates')}><Home size={17} /><span>{household.name}</span><span className={`connection-dot ${syncState}`} aria-label={syncState === 'saved' ? 'Kitchen saved' : 'Kitchen offline'} /></button>
+        <button className="game-house control-surface" onClick={() => onAction('roommates')} aria-pressed={activeTool === 'roommates'}><Home size={17} /><span>{household.name}</span><span className={`connection-dot ${syncState}`} aria-label={syncState === 'saved' ? 'Kitchen saved' : 'Kitchen offline'} /></button>
       </div>
       <div className="game-month" hidden={panelOpen}>{monthControls}</div>
       <div className="game-resources">
-        <button className={`fund-trigger${remaining < 0 ? ' low-fund' : ''}`} onClick={() => onAction('budget')} aria-label="View the house pot">
+        <button className={`fund-trigger${remaining < 0 ? ' low-fund' : ''}`} onClick={() => onAction('budget')} aria-label="View the house pot" aria-pressed={activeTool === 'budget'}>
           <span className="coin-stamp"><Coins size={23} /></span>
           <span><small>HOUSE POT</small><strong>{money(Math.abs(remaining), household.currency)} <span>{remaining < 0 ? 'over' : 'left'}</span></strong></span>
         </button>
-        <button className="player-button" onClick={() => onAction('roommates')} aria-label={`The roommates, playing as ${viewer.name}`}><Avatar member={viewer} /></button>
+        <button className="player-button" onClick={() => onAction('roommates')} aria-label={`The roommates, playing as ${viewer.name}`} aria-pressed={activeTool === 'roommates'}><Avatar member={viewer} /></button>
       </div>
     </header>
     <h1 className="sr-only">{household.name}: your shared kitchen</h1>
@@ -75,16 +75,16 @@ export function GameHome({
     </SceneBoundary>
     <div className="room-caption">
       <span className="room-label"><Snowflake size={15} /><strong>The kitchen</strong><span>{expenseCount} grocery {expenseCount === 1 ? 'run' : 'runs'}</span></span>
-      <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates">{household.members.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate"><Plus size={16} /></button></div>
+      <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{household.members.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
     </div>
-    {household.demo && <div className="game-demo"><span>Sample kitchen</span><button onClick={onCreate}>Make it yours <ArrowRight size={13} /></button></div>}
-    <div className="house-tools"><button className="icon-button" onClick={onHelp} aria-label="How to play"><CircleHelp size={19} /></button><button className="icon-button" onClick={onSettings} aria-label="House rules"><Settings2 size={19} /></button></div>
+    {household.demo && <div className="game-demo"><span>Sample kitchen</span><button className="control-surface" onClick={onCreate} aria-haspopup="dialog">Make it yours <ArrowRight size={13} /></button></div>}
+    <div className="house-tools"><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>
     <div className="game-bottom">
-      <button className="game-balance" onClick={() => onAction('settle')} aria-label="Your household balance"><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>
+      <button className="game-balance control-surface" onClick={() => onAction('settle')} aria-label="Your household balance" aria-pressed={activeTool === 'settle'}><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>
       <nav className="game-dock" aria-label="Kitchen tools">
         <button className="dock-tool" onClick={() => onAction('ledger')} aria-label="Grocery runs" aria-pressed={activeTool === 'ledger'}><ReceiptText size={21} /><span>Receipts</span></button>
         <button className="dock-tool" onClick={() => onAction('budget')} aria-label="Monthly budget" aria-pressed={activeTool === 'budget'}><Coins size={21} /><span>House pot</span></button>
-        <button className="stock-button" onClick={() => onAction('stock')} aria-label="Stock the fridge, add a grocery run"><span><Plus size={23} /></span><span>Stock the fridge<small>Add a grocery run</small></span></button>
+        <button className="stock-button" onClick={() => onAction('stock')} aria-label="Stock the fridge, add a grocery run" aria-haspopup="dialog"><span><Plus size={23} /></span><span>Stock the fridge<small>Add a grocery run</small></span></button>
         <button className="dock-tool" onClick={() => onAction('settle')} aria-label="Settle up" aria-pressed={activeTool === 'settle'}><Wallet size={21} /><span>Settle up</span>{transferCount > 0 && <i className="tool-count">{transferCount}</i>}</button>
         <button className="dock-tool" onClick={() => onAction('roommates')} aria-label="The roommates" aria-pressed={activeTool === 'roommates'}><Users size={21} /><span>People</span></button>
       </nav>
