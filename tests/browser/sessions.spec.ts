@@ -1,14 +1,6 @@
 import { expect, test } from '@playwright/test'
-import type { Page, Route } from '@playwright/test'
 import { sessionSchema } from '../../src/api.ts'
-import { createHousehold, sampleSession, savedKitchen } from './fixtures.ts'
-
-async function pauseRequest(page: Page, url: string) {
-  let receiveRoute!: (route: Route) => void
-  const pending = new Promise<Route>((resolve) => { receiveRoute = resolve })
-  await page.route(url, receiveRoute)
-  return { pending }
-}
+import { createHousehold, pauseRequest, sampleSession, savedKitchen } from './fixtures.ts'
 
 test('an invitation keeps its draft and focus when the kitchen finishes loading', async ({ page, request }) => {
   const owner = await createHousehold(request, 'The invitation house', 'Charlie')

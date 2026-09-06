@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
-import { Apple, Check, Coffee, Cookie, Egg, ShoppingBasket, X } from 'lucide-react'
+import { Apple, Check, Coffee, Cookie, Copy, Egg, ShoppingBasket, X } from 'lucide-react'
 import { money, splitAmount } from '../shared/domain.ts'
 import type { Category, Member } from '../shared/domain.ts'
 
@@ -109,6 +109,39 @@ export function RoomPanel({ title, subtitle, children, onClose, view }: {
 
 export function Form({ children, onSubmit }: { children: ReactNode; onSubmit: () => void }) {
   return <form onSubmit={(event: FormEvent) => { event.preventDefault(); onSubmit() }}>{children}</form>
+}
+
+export function CopyField({ label, value, buttonLabel, copiedLabel }: {
+  label: string; value: string; buttonLabel: string; copiedLabel: string
+}) {
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
+  const currentValue = useRef(value)
+  const copyAttempt = useRef(0)
+  currentValue.current = value
+  useEffect(() => {
+    copyAttempt.current++
+    setCopied(false)
+    setError('')
+    return () => { copyAttempt.current++ }
+  }, [value])
+  return <>
+    <label className="field">{label}<input readOnly value={value} autoComplete="off" spellCheck={false} onFocus={(event) => event.target.select()} /></label>
+    <button type="button" className="button primary full" onClick={() => {
+      const attempt = ++copyAttempt.current
+      setCopied(false)
+      setError('')
+      if (!navigator.clipboard) { setError('Clipboard access needs HTTPS or localhost. Select the field above and copy it manually.'); return }
+      navigator.clipboard.writeText(value).then(() => {
+        if (currentValue.current !== value || copyAttempt.current !== attempt) return
+        setCopied(true)
+        setError('')
+      }).catch(() => {
+        if (currentValue.current === value && copyAttempt.current === attempt) setError('Your browser could not copy this value. Select the field above and copy it manually.')
+      })
+    }}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? copiedLabel : buttonLabel}</button>
+    {error && <p className="form-error" role="alert">{error}</p>}
+  </>
 }
 
 export function SplitParticipants({ members, selected, onChange, amount, currency, disabled }: {

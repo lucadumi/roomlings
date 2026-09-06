@@ -1,5 +1,5 @@
 import express from 'express'
-import type { ErrorRequestHandler, Request, Response } from 'express'
+import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
@@ -8,6 +8,7 @@ import {
 } from '../shared/domain.ts'
 import type { Bill, Expense, Household } from '../shared/domain.ts'
 import { billOccurrence, reviseBill, setBillPaused } from '../shared/bills.ts'
+import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
 import type { Store } from './store.ts'
 
 class ApiError extends Error {
@@ -18,6 +19,22 @@ class ApiError extends Error {
 const createSchema = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema })
 const joinSchema = z.object({ inviteCode: z.string().min(8).max(80), name: nameSchema })
 const versionSchema = z.object({ version: z.number().int().nonnegative() })
+const expiredSession = 'This browser session has expired or was revoked. Recover access or join again with your invitation.'
+
+function rateLimit(maximum: number, window: number, message: string): RequestHandler {
+  const attempts = new Map<string, { count: number; expires: number }>()
+  return (req, _res, next) => {
+    if (req.method === 'GET') return next()
+    const key = req.ip ?? 'local'
+    const now = Date.now()
+    for (const [ip, limit] of attempts) if (limit.expires <= now) attempts.delete(ip)
+    const limit = attempts.get(key) ?? { count: 0, expires: now + window }
+    limit.count++
+    attempts.set(key, limit)
+    if (limit.count > maximum) return next(new ApiError(429, message))
+    next()
+  }
+}
 
 export function createApp(store: Store) {
   const app = express()
@@ -29,25 +46,18 @@ export function createApp(store: Store) {
   })
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next() })
   app.use('/api', express.json({ limit: '32kb' }))
-  const attempts = new Map<string, { count: number; expires: number }>()
-  app.use('/api', (req, _res, next) => {
-    if (req.method === 'GET') return next()
-    const key = req.ip ?? 'local'
-    const now = Date.now()
-    for (const [ip, limit] of attempts) if (limit.expires < now) attempts.delete(ip)
-    const limit = attempts.get(key) ?? { count: 0, expires: now + 60_000 }
-    limit.count++
-    attempts.set(key, limit)
-    if (limit.count > 120) return next(new ApiError(429, 'A lot is happening in this kitchen. Wait a minute and try again.'))
-    next()
-  })
+  app.use('/api', rateLimit(120, 60_000, 'A lot is happening in this kitchen. Wait a minute and try again.'))
 
   const authenticated = (req: Request) => {
     const header = req.get('authorization')
     const token = header?.startsWith('Bearer ') ? header.slice(7) : ''
     const session = token ? store.authenticate(token) : null
-    if (!session) throw new ApiError(401, 'This kitchen session has expired. Join again with your invitation.')
+    if (!session) throw new ApiError(401, expiredSession)
     return session
+  }
+  const availableAccess = <T>(result: T | null): T => {
+    if (result === null) throw new ApiError(401, expiredSession)
+    return result
   }
   const mutate = (req: Request, res: Response, change: (household: Household) => void) => {
     const { household } = authenticated(req)
@@ -94,7 +104,39 @@ export function createApp(store: Store) {
     store.save(household)
     res.status(201).json(store.session(household, member.id))
   })
-  app.get('/api/household', (req, res) => res.json(authenticated(req)))
+  app.post('/api/recover', rateLimit(20, 60_000, 'Too many recovery attempts. Wait a minute and try again.'), (req, res) => {
+    const input = recoverInputSchema.parse(req.body)
+    const restored = store.recover(input.code, input.label)
+    if (!restored) throw new ApiError(401, 'That recovery code is invalid or has been replaced. Check the complete code and try again.')
+    res.status(201).json(restored)
+  })
+  app.get('/api/access', (req, res) => {
+    res.json(availableAccess(store.accessState(authenticated(req))))
+  })
+  app.patch('/api/access/device', (req, res) => {
+    const session = authenticated(req)
+    const { label } = deviceNameInputSchema.parse(req.body)
+    res.json(availableAccess(store.renameCurrentDevice(session, label)))
+  })
+  app.post('/api/access/recovery', (req, res) => {
+    const session = authenticated(req)
+    const input = recoveryRotationInputSchema.parse(req.body)
+    const result = availableAccess(store.rotateRecovery(session, input))
+    if (result === 'conflict') throw new ApiError(409, 'Recovery settings changed in another browser. Refresh them and try again.')
+    res.json(result)
+  })
+  app.delete('/api/access/devices/:id', (req, res) => {
+    const session = authenticated(req)
+    const id = z.string().uuid().parse(req.params.id)
+    const result = availableAccess(store.revokeDevice(session, id))
+    if (result === 'current') throw new ApiError(409, 'Use another signed-in browser to revoke this session.')
+    if (result === 'missing') throw new ApiError(404, 'That browser session was not found for your roommate identity.')
+    res.json(result)
+  })
+  app.get('/api/household', (req, res) => {
+    const { household, memberId } = authenticated(req)
+    res.json({ household, memberId })
+  })
   app.post('/api/expenses', (req, res) => mutate(req, res, (household) => {
     const expense = expenseInputSchema.parse(req.body)
     requireRoommates(household, expense.participants, expense.paidBy)

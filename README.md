@@ -19,6 +19,7 @@ Open http://localhost:5173 (API: port 4311). Start with the private sample kitch
 - **Receipt book:** browse groceries or create, edit and pause monthly bills in **Bills**. Confirm the actual amount and payer to record one expense per bill/month.
 - **House pot and fridge:** grocery-only spending and purchases. Bills share the same balances and repayments, not the grocery budget.
 - **Envelope:** record or undo roommate repayments. Export the complete ledger from the receipt book.
+- **The roommates:** manage browser sessions and recovery codes. Use **Recover existing access** or `/#recover` on another browser.
 
 Bill dates use the first creator's time zone. Edits preserve earlier months and recorded payments. Pauses stop future months; resuming never backfills skipped months. Short months use their last day.
 
@@ -34,8 +35,8 @@ Bill dates use the first creator's time zone. Edits preserve earlier months and 
 ## Data and sharing
 
 - Back up `data/kitchen.sqlite`. `.env.example` documents `PORT`, `HOST` and `DATA_DIR`; the development proxy in `vite.config.ts` targets port 4311.
-- Keep invitations and browser sessions private. All roommates can edit the ledger. Keep the same browser/origin to retain your identity; legacy `coldshare.*` keys remain supported.
-- For other devices, build and run behind HTTPS and access controls. Never expose the development server. There is no bank integration or account-recovery flow.
+- Keep invitations, session tokens and recovery codes private. All roommates can edit the ledger. Codes work until replaced; losing both the code and all active sessions requires rejoining as a new roommate. Legacy `coldshare.*` keys remain supported.
+- For other devices, build and run behind HTTPS and access controls. Never expose the development server.
 
 ## Contributing
 
