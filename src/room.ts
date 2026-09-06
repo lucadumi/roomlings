@@ -3,8 +3,10 @@ import {
   PointLight, SphereGeometry, TorusGeometry,
 } from 'three'
 import { memberColors } from '../shared/domain.ts'
+import type { RoomStyle } from '../shared/domain.ts'
 import { daylight, eveningLight } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
+import { roomPresets } from './roomStyles.ts'
 
 export type KitchenAction = 'stock' | 'ledger' | 'budget' | 'roommates' | 'settle'
 export type SceneAction = KitchenAction | 'fridge' | 'light' | 'brew'
@@ -23,10 +25,12 @@ export const sceneAnchors: { action: KitchenAction | 'brew'; label: string; posi
   { action: 'brew', label: 'Put the kettle on', position: [1.65, 2.5, -2.45] },
 ]
 
-export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
-  const tile = material('#e4e7d9', 0.86)
-  const tileAlternate = material('#d3dcc6', 0.86)
-  const plaster = material('#efe3c8')
+export function buildRoom(room: Group, { material, box, cylinder }: Shapes, style: RoomStyle = 'original') {
+  const palette = roomPresets[style].colors
+  const tile = material(palette.floor, 0.86)
+  const tileAlternate = material(palette.floorAlternate, 0.86)
+  const plaster = material(palette.wall)
+  const wallTrim = material(palette.trim)
   const trim = material('#ded0b0')
   const wood = material('#bb895c', 0.82)
   const lightWood = material('#d7ad78', 0.78)
@@ -66,10 +70,10 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   }
   box(room, [10.5, 4.65, 0.16], [0, 2.2, -3.32], plaster, 0.055)
   box(room, [0.16, 4.65, 3.3], [-5.16, 2.2, -1.75], plaster, 0.055)
-  box(room, [10.37, 0.13, 0.055], [0, 0.15, -3.21], trim)
-  box(room, [0.06, 0.13, 3.2], [-5.055, 0.15, -1.72], trim)
-  for (let x = 0; x < 10; x++) box(room, [0.015, 1.18, 0.015], [-4.6 + x * 1.02, 0.8, -3.227], trim)
-  box(room, [10.3, 0.07, 0.055], [0, 1.43, -3.21], trim)
+  box(room, [10.37, 0.13, 0.055], [0, 0.15, -3.21], wallTrim)
+  box(room, [0.06, 0.13, 3.2], [-5.055, 0.15, -1.72], wallTrim)
+  for (let x = 0; x < 10; x++) box(room, [0.015, 1.18, 0.015], [-4.6 + x * 1.02, 0.8, -3.227], wallTrim)
+  box(room, [10.3, 0.07, 0.055], [0, 1.43, -3.21], wallTrim)
 
   const window = actor('light', [0.85, 3.26, -3.2])
   box(window, [2.3, 1.85, 0.1], [0, 0, 0], wood, 0.045)
@@ -305,5 +309,6 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes) {
   clock.add(hourHand, minuteHand)
   room.add(clock)
 
-  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts }
+  const styleMaterials = { wall: plaster, trim: wallTrim, floor: tile, floorAlternate: tileAlternate }
+  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts, styleMaterials }
 }

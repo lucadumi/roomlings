@@ -184,7 +184,7 @@ export class Store {
   create(name: string, memberName: string, currency: Household['currency'], budget: number, demo = false): Session {
     const memberId = randomUUID()
     const household: Household = {
-      id: randomUUID(), name, currency, budget, demo, version: 0,
+      id: randomUUID(), name, currency, budget, roomStyle: 'original', demo, version: 0,
       inviteCode: randomBytes(12).toString('base64url'),
       members: [{ id: memberId, name: memberName, color: memberColors[0] }],
       expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',

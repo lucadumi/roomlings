@@ -84,6 +84,14 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   expect((await drawing()).shadows).toBe(idle.shadows)
 
+  await page.getByRole('button', { name: 'Room style', exact: true }).click()
+  await page.getByRole('radio', { name: 'Sage', exact: true }).check()
+  await page.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(room).toHaveAttribute('data-room-style', 'sage')
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
+  expect((await drawing()).shadows).toBe(idle.shadows)
+
   await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
   await expect.poll(async () => (await drawing()).shadows).toBeGreaterThan(idle.shadows)
   await expect(room).toHaveAttribute('data-rendering', 'paused')

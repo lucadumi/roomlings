@@ -9,7 +9,7 @@ import {
 } from 'three'
 import type { BufferGeometry } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import type { Category } from '../shared/domain.ts'
+import type { Category, RoomStyle } from '../shared/domain.ts'
 import { categoryLabels } from '../shared/domain.ts'
 import { buildRoom, sceneAnchors } from './room.ts'
 import type { KitchenAction, SceneAction } from './room.ts'
@@ -18,8 +18,10 @@ import type { FocusRequest, SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
+import { applyRoomStyle, roomPresets } from './roomStyles.ts'
 
 type Props = {
+  roomStyle: RoomStyle
   paused: boolean
   panelOpen: boolean
   focusRequest: FocusRequest
@@ -57,12 +59,12 @@ type WorldControls = {
   brew: () => void
 }
 
-export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
+export default function KitchenWorld({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<KitchenAction | 'brew', HTMLButtonElement>())
   const controls = useRef<WorldControls | null>(null)
-  const state = useRef({ paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
+  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -75,7 +77,7 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
   const [renderingPaused, setRenderingPaused] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [brewing, setBrewing] = useState(false)
-  state.current = { paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
+  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
   hoverRef.current = hovered
 
   useEffect(() => {
@@ -121,9 +123,11 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       materials.push(result)
       return result
     }
-    const sage = material('#9eb399', 0.6)
-    const lightSage = material('#b1c4a7', 0.6)
-    const edge = material('#8b9d82')
+    let displayedStyle = state.current.roomStyle
+    const palette = roomPresets[displayedStyle].colors
+    const sage = material(palette.fridge, 0.6)
+    const lightSage = material(palette.fridgeDoor, 0.6)
+    const edge = material(palette.fridgeEdge)
     const porcelain = material('#f2f1dd', 0.65)
     const inside = material('#dce3d0')
     const dark = material('#59674f')
@@ -155,7 +159,8 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       parent.add(mesh)
       return mesh
     }
-    const scenery = buildRoom(room, { material, box, cylinder })
+    const scenery = buildRoom(room, { material, box, cylinder }, displayedStyle)
+    const styleMaterials = { ...scenery.styleMaterials, fridge: sage, fridgeDoor: lightSage, fridgeEdge: edge }
     box(kitchen, [0.14, 3.48, 1.7], [-1.02, 1.97, 0], sage, 0.035)
     box(kitchen, [0.14, 3.48, 1.7], [1.02, 1.97, 0], sage, 0.035)
     box(kitchen, [2, 3.48, 0.14], [0, 1.97, -0.78], sage, 0.035)
@@ -519,6 +524,12 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
       last = now
       const latest = state.current
       if (!visible || document.hidden) return
+      if (latest.roomStyle !== displayedStyle) {
+        // Color-only finishes reuse both the geometry and the cached shadow map.
+        applyRoomStyle(styleMaterials, latest.roomStyle)
+        displayedStyle = latest.roomStyle
+        wake(0)
+      }
       if (latest.focusRequest.id !== lastFocusId) {
         lastFocusId = latest.focusRequest.id
         focusOn(latest.focusRequest.target)
@@ -747,7 +758,7 @@ export default function KitchenWorld({ paused, panelOpen, focusRequest, counts, 
   }
 
   return (
-    <div className="kitchen-world" ref={stage} data-evening={evening} data-focus={focused} data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
+    <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={focused} data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
       <div className="world-canvas" ref={host} role="img" aria-label="Interactive low-poly shared kitchen. Select objects to move closer. The bag stocks the fridge, the book opens expenses, the jar shows the budget, and the noticeboard holds your roommates. Drag to turn the room, scroll or pinch to zoom." />
       {unavailable && <div className="fridge-unavailable"><Snowflake size={42} /><strong>Your kitchen, minus the 3D.</strong><p>This browser could not display the fridge. All expenses and balances still work.</p></div>}
       {!unavailable && <>

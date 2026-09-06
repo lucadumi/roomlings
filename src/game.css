@@ -90,7 +90,7 @@
 .party-invite { width: var(--control-compact-height); height: var(--control-compact-height); display: flex; align-items: center; justify-content: center; color: #6e8454; border: 1px dashed #a7b990; background: #f4f7e8; border-radius: 50%; }
 .party-invite:hover:not(:disabled) { background: #e7eed8; border-style: solid; }
 .house-tools { position: absolute; top: 90px; right: 28px; display: flex; gap: 6px; z-index: 8; }
-.game-demo { position: absolute; top: 90px; right: 123px; z-index: 8; display: flex; align-items: center; gap: 9px; color: #69775b; font-size: 10px; }
+.game-demo { position: absolute; top: 90px; right: 165px; z-index: 8; display: flex; align-items: center; gap: 9px; color: #69775b; font-size: 10px; }
 .game-demo > button { display: flex; align-items: center; gap: 4px; min-height: var(--control-compact-height); padding: 5px 8px; color: #a45537; font-size: 11px; font-weight: 550; }
 .game-demo > button:hover:not(:disabled) { color: #843d24; }
 .kitchen-world { position: absolute; top: var(--world-top); right: 0; bottom: var(--world-bottom); left: 0; z-index: 1; transition: right 380ms cubic-bezier(0.2, 0.7, 0.2, 1), bottom 380ms cubic-bezier(0.2, 0.7, 0.2, 1); }
@@ -293,7 +293,7 @@
   .room-caption { left: 22px; gap: 9px; }
   .room-label > span { display: none; }
   .house-tools { right: 22px; }
-  .game-demo { right: 112px; font-size: 9px; }
+  .game-demo { right: 154px; font-size: 9px; }
   .world-fridge-toggle { left: 22px; }
   .world-kettle-toggle { left: 181px; }
   .world-interaction-hint { font-size: 10px; }
@@ -325,6 +325,7 @@
 }
 @media (max-width: 800px) {
   .game-app { --sheet-height: min(47dvh, 425px); }
+  .game-demo { top: 142px; right: 22px; }
   .room-panel { top: auto; bottom: 105px; left: 15px; right: 15px; width: auto; height: var(--sheet-height); border-radius: 15px; }
   .room-panel-header { padding: 16px 18px 14px; align-items: center; }
   .room-panel-header h2 { font-size: 26px; }
@@ -370,7 +371,7 @@
   .game-demo { right: 16px; top: 89px; gap: 7px; font-size: 9px; }
   .game-demo > button { font-size: 10px; gap: 3px; }
   .game-demo > button > svg { width: 12px; }
-  .house-tools { top: 143px; right: 15px; flex-direction: column; gap: 7px; }
+  .house-tools { --control-compact-height: 44px; top: 164px; right: 15px; gap: 7px; }
   .world-hotspot { width: 31px; height: 31px; }
   .hotspot-label { font-size: 11px; bottom: 40px; }
   .world-view-label { top: 18px; font-size: 11px; max-width: calc(100% - 100px); white-space: normal; text-align: center; justify-content: center; }
