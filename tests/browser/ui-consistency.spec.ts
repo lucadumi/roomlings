@@ -189,25 +189,35 @@ test.describe('UI consistency', () => {
       for (const { first, second, gap } of gaps) {
         expect(gap, `${first} / ${second} at ${width}px`).toBeGreaterThanOrEqual(12)
       }
-      const section = await fixture.locator('.access-section').last().boundingBox()
-      const forms = await fixture.locator('.access-content > form').evaluateAll((elements) => elements.map((element) => {
-        const { top, bottom } = element.getBoundingClientRect()
-        return { top, bottom }
-      }))
-      expect(forms).toHaveLength(2)
-      expect(forms[1].top - forms[0].bottom).toBeGreaterThanOrEqual(24)
-      const backFromForm = await fixture.getByRole('button', { name: 'Back from form', exact: true }).boundingBox()
-      const backFromSection = await fixture.getByRole('button', { name: 'Back from section', exact: true }).boundingBox()
-      expect(backFromForm).not.toBeNull()
-      expect(backFromSection).not.toBeNull()
-      expect(section).not.toBeNull()
-      expect(backFromForm!.y - forms[1].bottom).toBeGreaterThanOrEqual(12)
-      expect(backFromSection!.y - section!.y - section!.height).toBeGreaterThanOrEqual(12)
-      const verify = await fixture.getByRole('button', { name: 'Verify and sign in', exact: true }).boundingBox()
-      const resendRow = await fixture.locator('.button-row').first().boundingBox()
-      expect(verify).not.toBeNull()
-      expect(resendRow).not.toBeNull()
-      expect(resendRow!.y - verify!.y - verify!.height).toBeGreaterThanOrEqual(12)
+      // Read every stack box in one layout pass. Separate reads let the room settling
+      // above the fixture move an element between two measurements.
+      const stack = await fixture.evaluate((element) => {
+        const box = (node: Element | null | undefined) => {
+          if (!node) return null
+          const { top, bottom } = node.getBoundingClientRect()
+          return { top, bottom }
+        }
+        const labelled = (label: string) => [...element.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === label)
+        const sections = [...element.querySelectorAll('.access-section')]
+        return {
+          section: box(sections[sections.length - 1]),
+          forms: [...element.querySelectorAll('.access-content > form')].map((form) => box(form)!),
+          backFromForm: box(labelled('Back from form')),
+          backFromSection: box(labelled('Back from section')),
+          verify: box(labelled('Verify and sign in')),
+          resendRow: box(element.querySelector('.button-row')),
+        }
+      })
+      expect(stack.forms).toHaveLength(2)
+      expect(stack.forms[1].top - stack.forms[0].bottom).toBeGreaterThanOrEqual(24)
+      expect(stack.section).not.toBeNull()
+      expect(stack.backFromForm).not.toBeNull()
+      expect(stack.backFromSection).not.toBeNull()
+      expect(stack.verify).not.toBeNull()
+      expect(stack.resendRow).not.toBeNull()
+      expect(stack.backFromForm!.top - stack.forms[1].bottom).toBeGreaterThanOrEqual(12)
+      expect(stack.backFromSection!.top - stack.section!.bottom).toBeGreaterThanOrEqual(12)
+      expect(stack.resendRow!.top - stack.verify!.bottom).toBeGreaterThanOrEqual(12)
       for (const row of await fixture.locator('.button-row').all()) {
         const buttons = row.getByRole('button')
         const first = await buttons.first().boundingBox()
