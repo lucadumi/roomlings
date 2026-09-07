@@ -53,6 +53,7 @@ export function GameHome({
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onCreate, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
 }: Props) {
   const viewer = household.members.find((member) => member.id === memberId)!
+  const activeMembers = household.members.filter((member) => !member.inactive)
   return <main className="game-home" id="main" data-panel-open={panelOpen} inert={inert} aria-hidden={inert || undefined}>
     <header className="game-hud">
       <div className="game-identity">
@@ -72,12 +73,12 @@ export function GameHome({
     <h1 className="sr-only">{household.name}: your shared kitchen</h1>
     <SceneBoundary>
       <Suspense fallback={<div className="scene-loading"><LoaderCircle size={28} className="spin" /><span>Putting the kettle on...</span></div>}>
-        <KitchenWorld key={household.id} roomStyle={household.roomStyle} paused={inert || panelOpen} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={household.members.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
+        <KitchenWorld key={household.id} roomStyle={household.roomStyle} paused={inert || panelOpen} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
       </Suspense>
     </SceneBoundary>
     <div className="room-caption">
       <span className="room-label"><Snowflake size={15} /><strong>The kitchen</strong><span>{expenseCount} grocery {expenseCount === 1 ? 'run' : 'runs'}</span></span>
-      <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{household.members.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
+      <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{activeMembers.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
     </div>
     {household.demo && <div className="game-demo"><span>Sample kitchen</span><button className="control-surface" onClick={onCreate} aria-haspopup="dialog">Make it yours <ArrowRight size={13} /></button></div>}
     <div className="house-tools"><button className="icon-button control-surface" onClick={onRoomStyle} aria-label="Room style" title="Room style" aria-haspopup="dialog"><Palette size={19} /></button><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>

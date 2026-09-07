@@ -6,13 +6,15 @@ import { householdSchema, localDate, memberColors, nameSchema } from '../shared/
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
+import { AccountStore } from './accounts-store.ts'
 
 export type AuthenticatedSession = { household: Household; memberId: string; sessionId: string }
 
 export class Store {
   private db: DatabaseSync
+  readonly accounts: AccountStore
 
-  constructor(filename: string) {
+  constructor(filename: string, options: { now?: () => number } = {}) {
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true })
     this.db = new DatabaseSync(filename)
     try {
@@ -26,6 +28,7 @@ export class Store {
         );
       `)
       this.migrateAccess()
+      this.accounts = new AccountStore(this.db, this, options.now)
     } catch (error) {
       this.db.close()
       throw error
@@ -97,7 +100,7 @@ export class Store {
     if (!row) return null
     const household = this.get(String(row.household_id))
     const memberId = String(row.member_id)
-    if (!household?.members.some((member) => member.id === memberId)) return null
+    if (!household?.members.some((member) => member.id === memberId && !member.inactive)) return null
     const now = new Date()
     this.db.prepare('UPDATE sessions SET last_used_at = ? WHERE hash = ? AND (last_used_at IS NULL OR last_used_at < ?)')
       .run(now.toISOString(), hash, new Date(now.getTime() - 60_000).toISOString())
@@ -105,7 +108,7 @@ export class Store {
   }
 
   session(household: Household, memberId: string, label = 'Saved browser'): Session {
-    if (!household.members.some((member) => member.id === memberId)) throw new Error('A browser session needs an existing roommate.')
+    if (!household.members.some((member) => member.id === memberId && !member.inactive)) throw new Error('A browser session needs an active roommate.')
     const checkedLabel = nameSchema.parse(label)
     const token = randomBytes(32).toString('base64url')
     const now = new Date().toISOString()
@@ -166,7 +169,7 @@ export class Store {
       if (!recovery) return null
       const household = this.get(String(recovery.household_id))
       const memberId = String(recovery.member_id)
-      if (!household?.members.some((member) => member.id === memberId)) return null
+      if (!household?.members.some((member) => member.id === memberId && !member.inactive)) return null
       return this.session(household, memberId, checkedLabel)
     })
   }

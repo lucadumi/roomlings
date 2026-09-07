@@ -3,21 +3,19 @@ import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'exp
 import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
-  balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
+  activeMemberLimit, balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
   centsSchema, currencies, expenseInputSchema, memberColors, nameSchema, roomStyleSchema,
   shoppingCheckoutSchema, shoppingClaimSchema, shoppingItemEditSchema, shoppingItemInputSchema,
-  shoppingItemLimit, shoppingItemVersionSchema, shoppingPickSchema, shoppingRunLimit,
+  retainedMemberLimit, shoppingItemLimit, shoppingItemVersionSchema, shoppingPickSchema, shoppingRunLimit,
 } from '../shared/domain.ts'
 import type { Bill, Expense, Household, ShoppingItem } from '../shared/domain.ts'
 import { billOccurrence, reviseBill, setBillPaused } from '../shared/bills.ts'
 import { canEditShoppingItem, checkoutItems } from '../shared/shopping.ts'
 import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
 import type { Store } from './store.ts'
-
-class ApiError extends Error {
-  status: number
-  constructor(status: number, message: string) { super(message); this.status = status }
-}
+import { ApiError } from './errors.ts'
+import { accountCookieName, installAccounts } from './accounts-api.ts'
+import type { AccountOptions } from './accounts-api.ts'
 
 const createSchema = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema })
 const joinSchema = z.object({ inviteCode: z.string().min(8).max(80), name: nameSchema })
@@ -39,7 +37,7 @@ function rateLimit(maximum: number, window: number, message: string): RequestHan
   }
 }
 
-export function createApp(store: Store) {
+export function createApp(store: Store, options: AccountOptions = {}) {
   const app = express()
   app.disable('x-powered-by')
   app.use((_req, res, next) => {
@@ -51,19 +49,24 @@ export function createApp(store: Store) {
   app.use('/api', express.json({ limit: '32kb' }))
   app.use('/api', rateLimit(120, 60_000, 'A lot is happening in this kitchen. Wait a minute and try again.'))
 
-  const authenticated = (req: Request) => {
+  const accounts = installAccounts(app, store, options)
+  const legacyAuthenticated = (req: Request) => {
     const header = req.get('authorization')
     const token = header?.startsWith('Bearer ') ? header.slice(7) : ''
     const session = token ? store.authenticate(token) : null
     if (!session) throw new ApiError(401, expiredSession)
     return session
   }
+  const authenticated = (req: Request, res: Response) => req.get('authorization') !== undefined
+    || !req.headers.cookie?.split(';').some((entry) => entry.trim().startsWith(`${accountCookieName}=`))
+    ? legacyAuthenticated(req)
+    : accounts.kitchen(req, res)
   const availableAccess = <T>(result: T | null): T => {
     if (result === null) throw new ApiError(401, expiredSession)
     return result
   }
   const mutate = (req: Request, res: Response, change: (household: Household, memberId: string) => void) => {
-    const { household, memberId } = authenticated(req)
+    const { household, memberId } = authenticated(req, res)
     const { version } = versionSchema.parse(req.body)
     if (version !== household.version) throw new ApiError(409, 'A roommate just changed the kitchen. It has been refreshed; please try again.')
     change(household, memberId)
@@ -72,7 +75,7 @@ export function createApp(store: Store) {
     res.json({ household })
   }
   const requireRoommates = (household: Household, participants: string[], paidBy?: string) => {
-    const members = new Set(household.members.map((member) => member.id))
+    const members = new Set(household.members.filter((member) => !member.inactive).map((member) => member.id))
     if (participants.some((id) => !members.has(id)) || (paidBy !== undefined && !members.has(paidBy))) {
       throw new ApiError(400, 'Choose roommates who belong to this kitchen.')
     }
@@ -102,14 +105,28 @@ export function createApp(store: Store) {
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
   app.post('/api/demo', (_req, res) => res.status(201).json(store.create('The Sunday House', 'You', 'EUR', 45000, true)))
   app.post('/api/households', (req, res) => {
+    if (accounts.configured) {
+      accounts.authenticated(req, res)
+      throw new ApiError(409, 'Create a kitchen from your account using the account household action.')
+    }
     const input = createSchema.parse(req.body)
     res.status(201).json(store.create(input.name, input.memberName, input.currency, input.budget))
   })
   app.post('/api/join', (req, res) => {
+    if (accounts.configured) {
+      accounts.authenticated(req, res)
+      throw new ApiError(403, 'Use an account invitation from the kitchen owner and accept it from your account.')
+    }
     const input = joinSchema.parse(req.body)
     const household = store.byInvite(input.inviteCode)
     if (!household || household.demo) throw new ApiError(404, 'That invitation was not found. Ask your roommate for a fresh link.')
-    if (household.members.length >= 12) throw new ApiError(409, 'This kitchen already has 12 roommates.')
+    if (store.accounts.isManaged(household.id)) throw new ApiError(403, 'This kitchen uses account invitations. Ask its owner for a new account invitation.')
+    if (household.members.filter((member) => !member.inactive).length >= activeMemberLimit) {
+      throw new ApiError(409, 'This kitchen already has 12 active roommates.')
+    }
+    if (household.members.length >= retainedMemberLimit) {
+      throw new ApiError(409, 'This kitchen has reached its 200-identity history limit. Export the ledger and create a new kitchen to add a new roommate.')
+    }
     if (household.members.some((member) => member.name.toLocaleLowerCase() === input.name.toLocaleLowerCase())) {
       throw new ApiError(409, 'A roommate already uses that name. Choose a different name to keep the ledger clear.')
     }
@@ -126,22 +143,22 @@ export function createApp(store: Store) {
     res.status(201).json(restored)
   })
   app.get('/api/access', (req, res) => {
-    res.json(availableAccess(store.accessState(authenticated(req))))
+    res.json(availableAccess(store.accessState(legacyAuthenticated(req))))
   })
   app.patch('/api/access/device', (req, res) => {
-    const session = authenticated(req)
+    const session = legacyAuthenticated(req)
     const { label } = deviceNameInputSchema.parse(req.body)
     res.json(availableAccess(store.renameCurrentDevice(session, label)))
   })
   app.post('/api/access/recovery', (req, res) => {
-    const session = authenticated(req)
+    const session = legacyAuthenticated(req)
     const input = recoveryRotationInputSchema.parse(req.body)
     const result = availableAccess(store.rotateRecovery(session, input))
     if (result === 'conflict') throw new ApiError(409, 'Recovery settings changed in another browser. Refresh them and try again.')
     res.json(result)
   })
   app.delete('/api/access/devices/:id', (req, res) => {
-    const session = authenticated(req)
+    const session = legacyAuthenticated(req)
     const id = z.string().uuid().parse(req.params.id)
     const result = availableAccess(store.revokeDevice(session, id))
     if (result === 'current') throw new ApiError(409, 'Use another signed-in browser to revoke this session.')
@@ -149,7 +166,7 @@ export function createApp(store: Store) {
     res.json(result)
   })
   app.get('/api/household', (req, res) => {
-    const { household, memberId } = authenticated(req)
+    const { household, memberId } = authenticated(req, res)
     res.json({ household, memberId })
   })
   app.post('/api/expenses', (req, res) => mutate(req, res, (household) => {
@@ -293,6 +310,7 @@ export function createApp(store: Store) {
     Object.assign(household, input)
   }))
   app.post('/api/invite/rotate', (req, res) => mutate(req, res, (household) => {
+    if (store.accounts.isManaged(household.id)) throw new ApiError(403, 'Only the kitchen owner can create or revoke invitations from account settings.')
     household.inviteCode = randomBytes(12).toString('base64url')
   }))
   app.use('/api', (_req, _res, next) => next(new ApiError(404, 'This kitchen action could not be found.')))
@@ -300,7 +318,7 @@ export function createApp(store: Store) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: error.issues[0]?.message ?? 'Please check the form fields.' })
     } else if (error instanceof ApiError) {
-      res.status(error.status).json({ error: error.message })
+      res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) })
     } else if (error instanceof SyntaxError && 'status' in error && error.status === 400) {
       res.status(400).json({ error: 'The request could not be read. Please try again.' })
     } else if (error instanceof Error && 'type' in error && error.type === 'entity.too.large') {

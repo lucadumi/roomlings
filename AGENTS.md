@@ -38,12 +38,15 @@ Run commands from the repository root.
 
 ```sh
 npm run dev
+npm run preview:local
 npm test
 npm run build
 npm run test:browser
 ```
 
 Use http://localhost:5173 as the owner's review preview. Reuse the existing server and preserve its data and sessions. Isolated test servers are temporary, not alternative review URLs; stop them when testing finishes.
+
+Prefer `npm run preview:local` for uninterrupted review. Its API does not watch files; restart it after server, shared-schema or environment changes. `npm run dev` remains available for automatic API reloads while editing.
 
 Use the smallest relevant existing test selection while iterating. Cover the changed behavior and preserve the existing household, settlement, persistence and accessibility flows before presenting a feature for approval.
 

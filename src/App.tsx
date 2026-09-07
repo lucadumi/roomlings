@@ -9,14 +9,21 @@ import {
   balances, billingDate, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
   money, monthlyGroceries, parseMoney, splitAmount, suggestedTransfers,
 } from '../shared/domain.ts'
-import type { Bill, Category, Expense, Household, Session, Settlement, ShoppingItem, Transfer } from '../shared/domain.ts'
+import type { Bill, Category, Expense, Household, Settlement, ShoppingItem, Transfer } from '../shared/domain.ts'
+import type { AccountState, KitchenSession } from '../shared/accounts.ts'
 import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
 import { canEditShoppingItem, inBasket } from '../shared/shopping.ts'
-import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, sessionSchema } from './api.ts'
+import {
+  createDemo, forgetAccountKitchens, getAccountState, getHousehold, preferAccountAccess, readAccessMode,
+  readToken, rememberKitchen, request, RequestError, sameKitchenSession, savedKitchens, sessionSchema,
+} from './api.ts'
 import type { SavedKitchen } from './api.ts'
 import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel } from './components.tsx'
 import { AccessDialog, RecoveryForm } from './Access.tsx'
+import { AccountDialog } from './Accounts.tsx'
+import type { AccountChange, AccountIntent } from './Accounts.tsx'
+import { CreateKitchenForm } from './CreateKitchenForm.tsx'
 import { BillForm, BillPaymentForm, BillsPanel } from './Bills.tsx'
 import { ExpenseForm } from './ExpenseForm.tsx'
 import { ShoppingCheckoutForm, ShoppingItemForm, ShoppingPanel } from './Shopping.tsx'
@@ -29,17 +36,22 @@ import type { FocusRequest } from './camera.ts'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
 type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'help'
+  | { account: AccountIntent }
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
   | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } }
   | { editShopping: ShoppingItem } | { removeShopping: string } | { releaseShopping: string }
   | { checkout: { id: string; items: ShoppingItem[] } } | null
 const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ?? ''
 const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
-let initialSession: Promise<Session> | undefined
+const initialAccountInvite = new URLSearchParams(location.hash.slice(1)).get('account-invite') ?? ''
+const initialAccount = new URLSearchParams(location.hash.slice(1)).has('account')
+let initialSession: Promise<KitchenSession | null> | undefined
 
-function loadSession(): Promise<Session> {
+function loadSession(account: AccountState): Promise<KitchenSession | null> {
   if (!initialSession) {
-    const pending: Promise<Session> = (async () => {
+    const pending: Promise<KitchenSession | null> = (async () => {
+      const mode = readAccessMode()
+      if (mode === 'account' || (account.account && mode !== 'browser')) return account.session
       const token = readToken()
       if (token) return { token, ...await getHousehold(token) }
       return createDemo()
@@ -53,12 +65,20 @@ function loadSession(): Promise<Session> {
 }
 
 export function App() {
-  const [session, setSession] = useState<Session | null>(null)
+  const [session, setSession] = useState<KitchenSession | null>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
+  const sessionEpoch = useRef(0)
+  const [account, setAccount] = useState<AccountState | null>(null)
+  const accountRef = useRef(account)
+  accountRef.current = account
   const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
-  const [dialog, setDialog] = useState<Dialog>(initialInvite ? 'join' : initialRecovery ? 'recover' : null)
+  const [dialog, setDialog] = useState<Dialog>(initialAccountInvite ? { account: 'join' }
+    : initialAccount ? { account: 'manage' } : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
+  const [invitation, setInvitation] = useState(initialInvite)
+  const [accountInvitation, setAccountInvitation] = useState(initialAccountInvite)
+  const [accessRouteVersion, setAccessRouteVersion] = useState(0)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -78,18 +98,36 @@ export function App() {
     const attempt = ++startupAttempt.current
     setLoading(true)
     setError('')
-    loadSession().then((next) => {
+    void (async () => {
+      const accountState = await getAccountState()
       if (startupAttempt.current !== attempt) return
+      accountRef.current = accountState
+      setAccount(accountState)
+      const next = await loadSession(accountState)
+      if (startupAttempt.current !== attempt) return
+      sessionEpoch.current++
       sessionRef.current = next
       setSession(next)
+      if (!next) {
+        setSaved(savedKitchens())
+        setError(accountState.account ? 'Choose, create or link a kitchen from your account.' : 'Sign in to return to your account.')
+        setDialog((previous) => previous ?? { account: 'manage' })
+        return
+      }
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
       setShoppingView('list')
       try { setSaved(rememberKitchen(next)) } catch {
         setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
       }
-    }).catch((failure: unknown) => {
+    })().catch((failure: unknown) => {
       if (startupAttempt.current !== attempt) return
       setError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
+      if (failure instanceof RequestError && failure.code === 'ACCOUNT_DELETION_PENDING') {
+        setDialog({ account: 'manage' })
+        try { setSaved(savedKitchens()) } catch {
+          setError('Account deletion is pending. This browser also could not load its saved kitchen shortcuts.')
+        }
+      }
     }).finally(() => {
       if (startupAttempt.current === attempt) setLoading(false)
     })
@@ -97,21 +135,40 @@ export function App() {
   }, [])
   useEffect(initialize, [initialize])
   useEffect(() => {
+    const navigateAccess = () => {
+      const params = new URLSearchParams(location.hash.slice(1))
+      const accountInvite = params.get('account-invite') ?? ''
+      const invite = params.get('join') ?? ''
+      if (accountInvite) setDialog({ account: 'join' })
+      else if (params.has('account')) setDialog({ account: 'manage' })
+      else if (invite) setDialog('join')
+      else if (params.has('recover')) setDialog('recover')
+      else return
+      setInvitation(invite)
+      setAccountInvitation(accountInvite)
+      setAccessRouteVersion((version) => version + 1)
+      setFormError('')
+    }
+    window.addEventListener('hashchange', navigateAccess)
+    return () => window.removeEventListener('hashchange', navigateAccess)
+  }, [])
+  useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(''), 6500)
     return () => clearTimeout(timer)
   }, [notice])
   useEffect(() => { setFormError('') }, [dialog])
 
-  const expireSession = useCallback((token: string, message: string) => {
-    if (sessionRef.current?.token !== token) return
+  const expireSession = useCallback((expected: KitchenSession, message: string) => {
+    if (!sameKitchenSession(sessionRef.current, expected)) return
     startupAttempt.current++
+    sessionEpoch.current++
     initialSession = undefined
     sessionRef.current = null
     setSession(null)
     setLoading(false)
     setBusy(false)
-    setDialog(null)
+    setDialog(expected.token === null ? { account: 'manage' } : null)
     setPage('overview')
     setStockEvent(null)
     setFormError('')
@@ -119,31 +176,57 @@ export function App() {
     setSyncState('offline')
   }, [])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (refreshAccess = false) => {
     const current = sessionRef.current
     if (!current) return
+    let epoch = sessionEpoch.current
     try {
-      const fresh = await getHousehold(current.token)
-      if (sessionRef.current?.token !== current.token) return
-      setSession((previous) => previous?.token === current.token && fresh.household.version >= previous.household.version ? { ...previous, ...fresh } : previous)
+      if (refreshAccess && current.token === null) {
+        const next = await getAccountState()
+        if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, current)) return
+        const previousDevice = accountRef.current?.devices.find((device) => device.current)?.id
+        const allowed = next.account?.id === accountRef.current?.account?.id && next.memberships.some((membership) =>
+          membership.householdId === current.household.id && membership.memberId === current.memberId)
+        accountRef.current = next
+        setAccount(next)
+        if (!allowed) {
+          expireSession(current, 'Your account access changed. Sign in or choose an available kitchen.')
+          return
+        }
+        if (previousDevice !== next.devices.find((device) => device.current)?.id) {
+          epoch = ++sessionEpoch.current
+          setBusy(false)
+        }
+      }
+      const fresh = await getHousehold(current.token, current.household.id)
+      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, current)) return
+      if (fresh.memberId !== current.memberId) {
+        expireSession(current, 'This browser is now using a different account identity. Choose your kitchen again.')
+        return
+      }
+      setSession((previous) => previous && sameKitchenSession(previous, current) && fresh.household.version >= previous.household.version ? { ...previous, ...fresh } : previous)
       setSyncState('saved')
     } catch (failure) {
-      if (sessionRef.current?.token !== current.token) return
+      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, current)) return
       setSyncState('offline')
-      if (failure instanceof RequestError && failure.status === 401) expireSession(current.token, failure.message)
+      if (failure instanceof RequestError && (failure.status === 401 || (failure.status === 403 && current.token === null))) {
+        expireSession(current, failure.message)
+      }
     }
   }, [expireSession])
   useEffect(() => {
-    if (!session?.token) return
+    if (!session?.memberId) return
     const interval = window.setInterval(() => { if (!document.hidden) void refresh() }, 12_000)
-    const focus = () => { void refresh() }
+    const focus = () => { void refresh(true) }
     window.addEventListener('focus', focus)
     return () => { clearInterval(interval); window.removeEventListener('focus', focus) }
-  }, [session?.token, refresh])
+  }, [session?.token, session?.memberId, session?.household.id, refresh])
 
-  const adoptSession = (next: Session) => {
+  const adoptSession = (next: KitchenSession, keepDialog = false) => {
     startupAttempt.current++
+    sessionEpoch.current++
     setLoading(false)
+    setBusy(false)
     sessionRef.current = next
     setSession(next)
     initialSession = Promise.resolve(next)
@@ -151,13 +234,13 @@ export function App() {
     try { setSaved(rememberKitchen(next)) } catch {
       setError('Your browser could not remember this kitchen. Keep this tab open until browser storage is available.')
     }
-    history.replaceState(null, '', `${location.pathname}${location.search}`)
+    if (!keepDialog) history.replaceState(null, '', `${location.pathname}${location.search}`)
     setMonth(localDate().slice(0, 7))
     setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
     setShoppingView('list')
     setFilter('all')
     setPage('overview')
-    setDialog(null)
+    if (!keepDialog) setDialog(null)
     setSyncState('saved')
     setStockEvent(null)
     setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
@@ -165,14 +248,18 @@ export function App() {
 
   const action = async (path: string, body: Record<string, unknown>, success: string, method?: string, inline = false) => {
     if (!session || busy) return
+    const epoch = sessionEpoch.current
     setBusy(true)
     setFormError('')
     if (inline) setError('')
     try {
-      const result = await request<{ household: unknown }>(path, { token: session.token, body: { ...body, version: session.household.version }, method })
-      if (sessionRef.current?.token !== session.token) return
+      const result = await request<{ household: unknown }>(path, {
+        token: session.token, csrfToken: session.token === null ? accountRef.current?.csrfToken : undefined,
+        householdId: session.household.id, body: { ...body, version: session.household.version }, method,
+      })
+      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return
       const household = householdSchema.parse(result.household)
-      setSession((previous) => previous?.token === session.token && household.version >= previous.household.version ? { ...previous, household } : previous)
+      setSession((previous) => previous && sameKitchenSession(previous, session) && household.version >= previous.household.version ? { ...previous, household } : previous)
       setNotice(success)
       if (!inline) setDialog(null)
       setSyncState('saved')
@@ -185,21 +272,84 @@ export function App() {
         setPage('overview')
       }
     } catch (failure) {
-      if (sessionRef.current?.token !== session.token) return
+      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return
       if (failure instanceof RequestError && failure.status === 401) {
-        expireSession(session.token, failure.message)
+        expireSession(session, failure.message)
         return
       }
       const message = failure instanceof Error ? failure.message : 'The change could not be saved.'
       if (inline) setError(message)
       else setFormError(message)
-      if (failure instanceof RequestError && failure.status === 409) await refresh()
+      if (failure instanceof RequestError && (failure.status === 409 || (failure.status === 403 && session.token === null))) {
+        await refresh(failure.status === 403)
+      }
     } finally {
-      if (sessionRef.current?.token === session.token) setBusy(false)
+      if (sessionEpoch.current === epoch && sameKitchenSession(sessionRef.current, session)) setBusy(false)
     }
   }
 
-  const openDialog = (next: Dialog) => { setFormError(''); setDialog(next) }
+  const handleAccountChange = (next: AccountState, kind: AccountChange) => {
+    const previous = accountRef.current
+    const current = sessionRef.current
+    accountRef.current = next
+    setAccount(next)
+    const identityChanged = previous?.account?.id !== next.account?.id
+      || previous?.devices.find((device) => device.current)?.id !== next.devices.find((device) => device.current)?.id
+    const preserveLegacy = (kind === 'signed-out' || kind === 'deleting') && current !== null && current.token !== null
+      && !previous?.memberships.some((membership) => membership.householdId === current.household.id && membership.memberId === current.memberId)
+    if (preserveLegacy) {
+      startupAttempt.current++
+      sessionEpoch.current++
+      initialSession = Promise.resolve(current)
+      setLoading(false)
+      setBusy(false)
+      setError('')
+    } else if (kind === 'signed-out' || kind === 'deleting' || (current?.token === null && !next.account)) {
+      startupAttempt.current++
+      sessionEpoch.current++
+      initialSession = Promise.resolve(null)
+      sessionRef.current = null
+      setSession(null)
+      setLoading(false)
+      setBusy(false)
+      setPage('overview')
+      setStockEvent(null)
+      setError(kind === 'deleting' ? 'Account deletion is pending. Account kitchen access is disabled.' : 'Sign in to return to your account.')
+    } else if (kind === 'select' || (next.account && identityChanged) || (!current && next.session)) {
+      if (next.session) adoptSession(next.session, true)
+      else {
+        startupAttempt.current++
+        sessionEpoch.current++
+        initialSession = Promise.resolve(null)
+        sessionRef.current = null
+        setSession(null)
+        setLoading(false)
+        setBusy(false)
+        setError('Choose, create or link a kitchen from your account.')
+      }
+    } else if (current?.token === null && next.session && sameKitchenSession(current, next.session)
+      && next.session.household.version >= current.household.version) {
+      sessionRef.current = next.session
+      setSession(next.session)
+    }
+    try {
+      const removed = previous?.memberships.filter((membership) => kind === 'signed-out'
+        || (next.account !== null && previous.account?.id === next.account.id
+          && !next.memberships.some((saved) => saved.householdId === membership.householdId && saved.memberId === membership.memberId))) ?? []
+      if (removed.length) setSaved(forgetAccountKitchens(removed))
+      if (preserveLegacy && current) setSaved(rememberKitchen(current))
+      else if (kind === 'signed-out' || kind === 'deleting' || kind === 'select' || (next.account && identityChanged)) preferAccountAccess()
+    } catch {
+      setError('Account access changed, but this browser could not update its saved kitchen shortcuts. Check browser storage before closing the tab.')
+    }
+  }
+  const openDialog = (next: Dialog) => {
+    setFormError('')
+    if ((account?.configured || account?.account) && (next === 'create' || next === 'join' || next === 'invite')) {
+      setDialog({ account: next === 'create' ? 'create' : next === 'join' ? 'join' : 'manage' })
+    } else if (next === 'access' && session?.token === null) setDialog({ account: 'manage' })
+    else setDialog(next)
+  }
   const household = session?.household
   const memberName = (id: string) => household?.members.find((member) => member.id === id)?.name ?? 'Unknown roommate'
   const exportLedger = () => {
@@ -238,15 +388,21 @@ export function App() {
     } finally { setBusy(false) }
   }
 
-  const switchKitchen = async (kitchen: SavedKitchen) => {
+  const switchKitchen = async (kitchen: SavedKitchen, surfaceInDialog = false): Promise<boolean> => {
+    const epoch = sessionEpoch.current
     setBusy(true)
     try {
       const next = await getHousehold(kitchen.token)
+      if (sessionEpoch.current !== epoch) return false
       adoptSession({ token: kitchen.token, ...next })
       setNotice(`Welcome back to ${next.household.name}.`)
+      return true
     } catch (failure) {
+      if (sessionEpoch.current !== epoch) return false
+      if (surfaceInDialog) throw failure
       setError(failure instanceof Error ? failure.message : 'That kitchen could not be opened.')
-    } finally { setBusy(false) }
+      return false
+    } finally { if (sessionEpoch.current === epoch) setBusy(false) }
   }
 
   const changeMonth = (direction: number) => {
@@ -272,6 +428,13 @@ export function App() {
     if (!dialog) return null
     const close = () => setDialog(null)
     const footerError = formError && <p className="form-error" role="alert">{formError}</p>
+    const accountIntent = typeof dialog === 'object' && 'account' in dialog ? dialog.account
+      : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
+        ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
+    if (accountIntent) return <AccountDialog key={`account:${accessRouteVersion}`}
+      intent={accountIntent} initialState={account} initialInvite={accountInvitation || invitation} legacySession={session && session.token !== null ? session : null}
+      savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
+      onOpenLegacy={(kitchen) => switchKitchen(kitchen, true)} />
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
       <div className="game-guide">
         <p><Snowflake size={19} /><span><strong>Peek in the fridge.</strong> Click a door to open it. Click a grocery to find the expenses on that shelf.</span></p>
@@ -283,20 +446,20 @@ export function App() {
     </Modal>
     // Keep welcome-screen forms mounted when the loaded kitchen replaces the welcome content.
     if (dialog === 'create') return <Modal key="create" title="Make room for your people." subtitle="Start a fresh kitchen, then invite your roommates. You can switch back to saved kitchens from The roommates." onClose={close} busy={busy}>
-      <CreateForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/households', body) }} />
+      <CreateKitchenForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/households', body) }} />
       <button className="text-button centered" disabled={busy} onClick={() => openDialog('join')}>Already have an invitation? Join a kitchen <ArrowRight size={14} /></button>
       <button className="text-button centered" disabled={busy} onClick={() => openDialog('recover')}>Recover existing access <KeyRound size={14} /></button>
     </Modal>
-    if (dialog === 'join') return <Modal key="join" title="There is a place for you." subtitle="Use the invitation your roommate shared. Everyone with the link can join and edit the shared ledger." onClose={close} busy={busy}>
-      <JoinForm initialInvite={initialInvite} busy={busy} error={footerError} onSubmit={(body) => { void newSession('/join', body) }} />
+    if (dialog === 'join') return <Modal key={`join:${accessRouteVersion}`} title="There is a place for you." subtitle="Use the invitation your roommate shared. Everyone with the link can join and edit the shared ledger." onClose={close} busy={busy}>
+      <JoinForm initialInvite={invitation} busy={busy} error={footerError} onSubmit={(body) => { void newSession('/join', body) }} />
       <button className="text-button centered" disabled={busy} onClick={() => openDialog('recover')}>Recover existing access <KeyRound size={14} /></button>
     </Modal>
     if (dialog === 'recover') return <Modal key="recover" title="Come back as yourself." subtitle="Restore your existing roommate identity without creating another member." onClose={close} busy={busy}>
       <RecoveryForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/recover', body) }} />
     </Modal>
     if (!household || !session) return null
-    if (dialog === 'access') return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
-      onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session.token, message)} />
+    if (dialog === 'access' && session.token !== null) return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
+      onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session, message)} />
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
       <ExpenseForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/expenses', body, 'Fridge stocked. Groceries shared. All saved.') }} />
     </Modal>
@@ -470,8 +633,9 @@ export function App() {
           onCreate={() => openDialog('bill-create')} onEdit={(bill) => openDialog({ editBill: bill })} onPay={(item) => openDialog({ payBill: item })}
           onPause={(bill, paused) => openDialog({ pauseBill: { bill, paused } })} onRemove={(expense) => openDialog({ remove: expense })} onExport={exportLedger} />}
         {page === 'kitchen' && <div className="access-entry">
-          <button className="button secondary full" disabled={busy} onClick={() => openDialog('access')}><KeyRound size={16} />Recovery and devices</button>
-          <button className="text-button" disabled={busy} onClick={() => openDialog('recover')}>Use a recovery code</button>
+          <button className="button secondary full" disabled={busy} onClick={() => openDialog({ account: 'manage' })}><Users size={16} />Account and membership</button>
+          {session.token !== null && <><button className="button secondary full" disabled={busy} onClick={() => openDialog('access')}><KeyRound size={16} />Recovery and devices</button>
+            <button className="text-button" disabled={busy} onClick={() => openDialog('recover')}>Use a recovery code</button></>}
         </div>}
         {page === 'groceries' && <><div className="panel-period">{monthControls}<button className="button primary small-button" onClick={() => openDialog('expense')}><Plus size={15} />Add grocery run</button></div><div className="grocery-summary"><div><span className="eyebrow">SPENT TOGETHER</span><strong>{money(total, household.currency)}</strong></div><div><span className="eyebrow">GROCERY RUNS</span><strong>{expenses.length.toString().padStart(2, '0')}</strong></div><div className="category-breakdown">{categories.filter((category) => totals[category] > 0).map((category) => <button key={category} onClick={() => setFilter(category)} className={`breakdown-item ${category}`}><CategoryIcon category={category} size={16} /><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong></button>)}</div></div>{ledger}</>}
         {page === 'budget' && <><div className="panel-period">{monthControls}<button className="button secondary small-button" onClick={() => openDialog('settings')}><Settings2 size={15} />Edit monthly budget</button></div><section className="budget-panel"><div className="card-topline"><span className="eyebrow">SPENT TOGETHER</span><Leaf size={19} /></div><div className="spend-amount">{money(total, household.currency)}<span>of {money(household.budget, household.currency)}</span></div><div className="budget-track" role="meter" aria-label="Monthly grocery spending" aria-valuemin={0} aria-valuemax={household.budget} aria-valuenow={Math.min(total, household.budget)} aria-valuetext={`${money(total, household.currency)} spent out of ${money(household.budget, household.currency)}`}><div style={{ width: `${progress * 100}%` }} className={remaining < 0 ? 'over-budget' : ''} /></div><div className="budget-labels"><strong className={remaining < 0 ? 'negative' : ''}>{money(Math.abs(remaining), household.currency)} {remaining < 0 ? 'over budget' : 'left to enjoy'}</strong><span>{expenses.length} grocery runs</span></div><p className="budget-note">{remaining < 0 ? 'The pot is empty for this month. Maybe a pantry dinner tonight?' : 'A little room for the essentials. And a little treat.'}</p></section><div className="budget-categories">{categories.map((category) => <button key={category} onClick={() => { visit('groceries'); setFilter(category) }}><span className={`category-icon ${category}`}><CategoryIcon category={category} /></span><span>{categoryLabels[category]}</span><strong>{money(totals[category], household.currency)}</strong><ArrowRight size={15} /></button>)}</div><p className="field-hint">The jar represents your remaining monthly budget, not a bank account. The app never moves money.</p></>}
@@ -480,26 +644,11 @@ export function App() {
           {!transfers.length && <div className="empty-state"><CheckCheck size={42} className="sage-text" /><h3>All square. How lovely.</h3><p>No one owes a thing. There is probably a dinner to celebrate.</p></div>}
           <div className="info-note"><CircleHelp size={17} /><p>Roomlings does not send money. Pay your roommate however you like, then record it here. Cent remainders are shared deterministically, so the ledger always adds up.</p></div></section>
           <section className="payment-history"><div className="section-heading"><h2>All paid, all good.</h2><span className="small-muted">Payment history</span></div>{household.settlements.length ? household.settlements.map((settlement) => <div className="history-row" key={settlement.id}><span className="history-check"><Check size={17} /></span><div><strong>{memberName(settlement.from)} paid {memberName(settlement.to)}</strong><span>{dateTitle(settlement.createdAt.slice(0, 10))}</span></div><strong>{money(settlement.amount, household.currency)}</strong><button className="text-button" onClick={() => openDialog({ undo: settlement })}>Undo</button></div>) : <p className="muted-paragraph">Recorded payments will find a home here.</p>}</section></div><section className="household-panel settle-balances"><div className="card-topline"><span className="eyebrow">WHERE EVERYONE STANDS</span></div>{balanceList}<div className="handwritten-note">Fair shares.<br />Full plates.</div></section></div>}
-        {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => !expense.bill && expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>{saved.filter((kitchen) => kitchen.token !== session.token).length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{saved.filter((kitchen) => kitchen.token !== session.token).map((kitchen) => <button key={kitchen.token} disabled={busy} onClick={() => { void switchKitchen(kitchen) }}><Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></span><ArrowRight size={14} /></button>)}</div>}<p className="small-muted">Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.</p></section></div>}
+        {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.filter((member) => !member.inactive).length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.inactive ? 'Former roommate' : member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => !expense.bill && expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>{saved.filter((kitchen) => kitchen.token !== session.token).length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{saved.filter((kitchen) => kitchen.token !== session.token).map((kitchen) => <button key={kitchen.token} disabled={busy} onClick={() => { void switchKitchen(kitchen) }}><Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></span><ArrowRight size={14} /></button>)}</div>}<p className="small-muted">{session.token === null ? 'Sign in with your account on any device. Account and membership manages your kitchens and sessions.' : 'Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.'}</p></section></div>}
     </div></RoomPanel>}
     {notice && <div className="toast" role="status"><Check size={17} /><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {renderDialog()}
   </div>
-}
-
-function CreateForm({ busy, error, onSubmit }: { busy: boolean; error: ReactNode; onSubmit: (body: Record<string, unknown>) => void }) {
-  const [name, setName] = useState('')
-  const [memberName, setMemberName] = useState('')
-  const [currency, setCurrency] = useState('EUR')
-  const [budget, setBudget] = useState('450')
-  const [localError, setLocalError] = useState('')
-  return <Form onSubmit={() => { const amount = parseMoney(budget); if (!amount) { setLocalError('Enter a positive monthly budget.'); return }; setLocalError(''); onSubmit({ name, memberName, currency, budget: amount }) }}>
-    <label className="field">What do you call home?<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. The Sunday House" disabled={busy} /></label>
-    <label className="field">Your name<input required maxLength={50} value={memberName} onChange={(event) => setMemberName(event.target.value)} placeholder="What should your roommates call you?" disabled={busy} /></label>
-    <div className="field-row"><label className="field">Monthly grocery budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<select value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={busy}>{currencies.map((value) => <option key={value}>{value}</option>)}</select></label></div>
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <Home size={17} />}{busy ? 'Making room...' : 'Create our kitchen'}</button>
-  </Form>
 }
 
 function JoinForm({ initialInvite, busy, error, onSubmit }: { initialInvite: string; busy: boolean; error: ReactNode; onSubmit: (body: Record<string, unknown>) => void }) {

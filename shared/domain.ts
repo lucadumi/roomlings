@@ -4,6 +4,8 @@ export const categories = ['produce', 'dairy', 'pantry', 'drinks', 'other'] as c
 export type Category = (typeof categories)[number]
 export const currencies = ['EUR', 'USD', 'GBP', 'RON'] as const
 export const memberColors = ['#c9533a', '#7d9070', '#c2a34e', '#7c89a1', '#aa7893', '#738f91']
+export const activeMemberLimit = 12
+export const retainedMemberLimit = 200
 export const roomStyleSchema = z.enum(['original', 'sage', 'clay', 'linen'])
 
 const id = z.string().uuid()
@@ -23,10 +25,10 @@ export const timeZoneSchema = z.string().min(1).max(100).refine((timeZone) => {
     throw error
   }
 }, 'Choose a valid billing time zone.')
-export const participantsSchema = z.array(id).min(1, 'Choose someone to split with.').max(12)
+export const participantsSchema = z.array(id).min(1, 'Choose someone to split with.').max(activeMemberLimit)
   .refine((ids) => new Set(ids).size === ids.length, 'Choose each roommate only once.')
 
-export const memberSchema = z.object({ id, name: nameSchema, color: z.string() })
+export const memberSchema = z.object({ id, name: nameSchema, color: z.string(), inactive: z.boolean().optional() })
 export const expenseInputSchema = z.object({
   description: z.string().trim().min(1, 'Give this grocery run a name.').max(100),
   amount: centsSchema,
@@ -119,7 +121,7 @@ export const householdSchema = z.object({
   inviteCode: z.string(),
   demo: z.boolean(),
   version: z.number().int().nonnegative(),
-  members: z.array(memberSchema).min(1).max(12),
+  members: z.array(memberSchema).min(1).max(retainedMemberLimit),
   expenses: z.array(expenseSchema),
   settlements: z.array(settlementSchema),
   bills: z.array(billSchema).max(100).default(() => []),
@@ -129,6 +131,9 @@ export const householdSchema = z.object({
     runs: z.array(shoppingRunSchema).max(shoppingRunLimit),
   }).default(() => ({ items: [], runs: [] })),
 }).superRefine((household, context) => {
+  if (household.members.filter((member) => !member.inactive).length > activeMemberLimit) {
+    context.addIssue({ code: 'custom', message: 'A kitchen can have at most 12 active roommates.', path: ['members'] })
+  }
   const bills = new Map(household.bills.map((bill) => [bill.id, bill]))
   const members = new Set(household.members.map((member) => member.id))
   if (bills.size !== household.bills.length) {

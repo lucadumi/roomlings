@@ -1,0 +1,395 @@
+import { randomUUID } from 'node:crypto'
+import type { Page, Route } from '@playwright/test'
+import { balances, localDate } from '../../shared/domain.ts'
+import { accountStateSchema } from '../../shared/accounts.ts'
+import { openGroceryForm, savedKitchen } from './fixtures.ts'
+import {
+  accountState, browserAccountRequest, expect, routeAccountApi, test,
+} from './account-fixtures.ts'
+import type { AccountHarness } from './account-fixtures.ts'
+
+async function signIn(page: Page, accounts: AccountHarness, email: string, name: string, label = 'Account browser') {
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Email address', { exact: true }).fill(email)
+  await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+  await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor(email))
+  await dialog.getByLabel('Account display name', { exact: true }).fill(name)
+  await dialog.getByLabel('Name this browser', { exact: true }).fill(label)
+  await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
+  await expect(dialog.getByText(`${email} (verified)`, { exact: false })).toBeVisible()
+}
+
+async function createKitchen(page: Page, name: string) {
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Create a kitchen', exact: true }).click()
+  await dialog.getByLabel('What do you call home?', { exact: true }).fill(name)
+  await dialog.getByRole('button', { name: 'Create our kitchen', exact: true }).click()
+  await expect(dialog).toHaveAccessibleName('Your Roomlings account.')
+  await expect(dialog.getByRole('button', { name: `Open ${name}`, exact: true })).toBeVisible()
+}
+
+async function openAccount(page: Page) {
+  await page.getByRole('button', { name: 'The roommates', exact: true }).click()
+  await page.getByRole('button', { name: 'Account and membership', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
+}
+
+test.describe('verified accounts and household membership', () => {
+  test.use({ reducedMotion: 'reduce' })
+
+  test('keeps sign-in drafts through startup and opens a first kitchen without remounting its creation form', async ({ page, accounts }) => {
+    let received!: (route: Route) => void
+    const pending = new Promise<Route>((resolve) => { received = resolve })
+    await page.route('**/api/demo', received)
+    await page.goto('/#account')
+    const demo = await pending
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Email address', { exact: true }).fill('ada@example.com')
+    await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+    await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('ada@example.com'))
+    await dialog.getByLabel('Account display name', { exact: true }).fill('Ada draft')
+    await demo.fallback()
+    await expect(page.locator('.game-house')).toContainText('The Sunday House')
+    await expect(dialog.getByLabel('Account display name', { exact: true })).toHaveValue('Ada draft')
+    await expect(dialog.getByLabel('Account display name', { exact: true })).toBeFocused()
+    await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
+    await expect(dialog).toHaveAccessibleName('Your Roomlings account.')
+    await createKitchen(page, 'The account home')
+    await expect(dialog.getByLabel('What do you call home?', { exact: true })).toHaveCount(0)
+    const state = await accountState(page)
+    expect(state.memberships).toHaveLength(1)
+    expect(state.session?.token).toBeNull()
+    const cookie = (await page.context().cookies()).find((item) => item.httpOnly)
+    expect(cookie).toBeDefined()
+    expect(cookie?.expires).toBeGreaterThan(Date.now() / 1000)
+    const stored = await page.evaluate(() => Object.values(localStorage).join('\n'))
+    expect(stored).not.toContain(cookie?.value)
+    expect(stored).not.toContain(state.csrfToken)
+    await dialog.getByRole('button', { name: 'Open The account home', exact: true }).click()
+    await expect(page.locator('.game-house')).toContainText('The account home')
+    await page.reload()
+    await expect(page.locator('.game-house')).toContainText('The account home')
+  })
+
+  test('links an existing Coldshare identity and restores that exact ledger on another device', async ({ page, accounts, browser, baseURL }) => {
+    const legacy = accounts.store.create('The original household', 'Ada', 'EUR', 45000)
+    const roommate = { id: randomUUID(), name: 'Ben', color: '#7d9070' }
+    legacy.household.members.push(roommate)
+    legacy.household.expenses.push({
+      id: randomUUID(), description: 'Original groceries', amount: 1201, paidBy: legacy.memberId,
+      participants: [legacy.memberId, roommate.id], category: 'produce', date: localDate(), createdAt: new Date().toISOString(),
+    })
+    accounts.store.save(legacy.household)
+    const before = structuredClone(legacy.household)
+    await page.addInitScript((kitchen) => {
+      if (!localStorage.getItem('coldshare.session')) {
+        localStorage.setItem('coldshare.session', kitchen.token)
+        localStorage.setItem('coldshare.kitchens', JSON.stringify([kitchen]))
+      }
+    }, savedKitchen(legacy))
+    await page.goto('/#account')
+    await signIn(page, accounts, 'ada@example.com', 'Ada')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Link existing kitchen access', exact: true }).click()
+    const invalidRecovery = `roomlings-${'A'.repeat(43)}`
+    await dialog.getByLabel('Existing roommate recovery code', { exact: true }).fill(invalidRecovery)
+    await dialog.getByRole('button', { name: 'Link recovery identity to my account', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('invalid or revoked')
+    await expect(dialog.getByLabel('Existing roommate recovery code', { exact: true })).toHaveValue(invalidRecovery)
+    await dialog.getByRole('button', { name: 'Link Ada in The original household', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Link this identity', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Open The original household', exact: true })).toBeVisible()
+    const linked = await accountState(page)
+    expect(linked.session?.memberId).toBe(legacy.memberId)
+    expect(linked.session?.household.expenses).toEqual(before.expenses)
+    expect(linked.session?.household.settlements).toEqual(before.settlements)
+    expect(linked.session?.household.members.map((member) => member.id)).toEqual(before.members.map((member) => member.id))
+    if (!linked.session) throw new Error('The linked kitchen was not selected.')
+    expect([...balances(linked.session.household)]).toEqual([...balances(before)])
+    expect((await fetch(`${accounts.origin}/api/household`, { headers: { Authorization: `Bearer ${legacy.token}` } })).status).toBe(200)
+    expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(legacy.token)
+
+    const phoneContext = await browser.newContext({ baseURL, reducedMotion: 'reduce' })
+    try {
+      const phone = await phoneContext.newPage()
+      await routeAccountApi(phone, accounts)
+      await phone.goto('/#account')
+      await signIn(phone, accounts, 'ada@example.com', 'Do not overwrite the saved name', 'Phone')
+      const restored = await accountState(phone)
+      expect(restored.account?.id).toBe(linked.account?.id)
+      expect(restored.account?.name).toBe('Ada')
+      expect(restored.session?.memberId).toBe(legacy.memberId)
+      expect(restored.session?.household.expenses).toEqual(before.expenses)
+      await phone.getByRole('dialog').getByRole('button', { name: 'Open The original household', exact: true }).click()
+      await expect(phone.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Ada')
+      await expect(phone.locator('.game-house')).toContainText('The original household')
+    } finally {
+      await phoneContext.close()
+    }
+  })
+
+  test('accepts invitations once, transfers ownership and retains financial history when a roommate leaves', async ({ page, accounts, browser, baseURL }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'owner@example.com', 'Ada')
+    await createKitchen(page, 'The shared account home')
+    const ownerDialog = page.getByRole('dialog')
+    await ownerDialog.getByRole('button', { name: 'Manage The shared account home', exact: true }).click()
+    await ownerDialog.getByRole('button', { name: 'Create seven-day invitation', exact: true }).click()
+    const link = await ownerDialog.getByLabel('Account invitation link', { exact: true }).inputValue()
+    const guestContext = await browser.newContext({ baseURL, reducedMotion: 'reduce' })
+    try {
+      const guest = await guestContext.newPage()
+      await routeAccountApi(guest, accounts)
+      await guest.goto(link)
+      await signIn(guest, accounts, 'guest@example.com', 'Ben')
+      await expect(guest.getByRole('dialog').getByLabel('Account invitation link or code', { exact: true })).toHaveValue(new URLSearchParams(new URL(link).hash.slice(1)).get('account-invite') ?? '')
+      await guest.getByRole('dialog').getByRole('button', { name: 'Accept kitchen invitation', exact: true }).click()
+      const joined = await accountState(guest)
+      expect(joined.memberships).toHaveLength(1)
+      expect(joined.memberships[0].role).toBe('member')
+      expect(joined.session?.household.members).toHaveLength(2)
+      await guest.goto(link)
+      await guest.getByRole('dialog').getByRole('button', { name: 'Accept kitchen invitation', exact: true }).click()
+      expect((await accountState(guest)).session?.household.members).toHaveLength(2)
+
+      const owner = await accountState(page)
+      if (!owner.session || !joined.session) throw new Error('Both roommates need a selected kitchen.')
+      const expense = await browserAccountRequest(page, '/expenses', {
+        description: 'A shared receipt', amount: 1001, category: 'produce', date: localDate(),
+        paidBy: owner.session.memberId, participants: owner.session.household.members.map((member) => member.id),
+        version: owner.session.household.version,
+      })
+      expect(expense.status).toBe(200)
+      const before = accounts.store.get(owner.session.household.id)
+      if (!before) throw new Error('The shared household was not saved.')
+      await ownerDialog.getByRole('button', { name: 'Refresh membership settings', exact: true }).click()
+      await ownerDialog.getByRole('button', { name: 'Make Ben owner', exact: true }).click()
+      await ownerDialog.getByRole('button', { name: 'Transfer ownership', exact: true }).click()
+      await expect(ownerDialog.getByText('You are a member.', { exact: false })).toBeVisible()
+      await ownerDialog.getByRole('button', { name: 'Leave kitchen', exact: true }).click()
+      await ownerDialog.getByRole('button', { name: 'Leave kitchen', exact: true }).click()
+      await expect(ownerDialog).toHaveAccessibleName('Your Roomlings account.')
+      expect((await accountState(page)).memberships).toHaveLength(0)
+      const after = accounts.store.get(before.id)
+      if (!after) throw new Error('Leaving deleted the shared financial history.')
+      expect(after.expenses).toEqual(before.expenses)
+      expect([...balances(after)]).toEqual([...balances(before)])
+      expect(after.members.find((member) => member.id === owner.session?.memberId)?.inactive).toBe(true)
+      const guestState = await accountState(guest)
+      expect(guestState.memberships[0].role).toBe('owner')
+    } finally {
+      await guestContext.close()
+    }
+  })
+
+  test('preserves unrelated browser access on account sign-out and keeps retained shortcuts reachable', async ({ page, accounts }) => {
+    const linked = accounts.store.create('The linked home', 'Ada', 'EUR', 45000)
+    const unrelated = accounts.store.create('An unrelated saved home', 'Riley', 'EUR', 45000)
+    await page.addInitScript((kitchens) => {
+      if (!localStorage.getItem('test.seeded')) {
+        localStorage.setItem('roomlings.session', kitchens[0].token)
+        localStorage.setItem('roomlings.kitchens', JSON.stringify(kitchens))
+        localStorage.setItem('test.seeded', 'true')
+      }
+    }, [savedKitchen(linked), savedKitchen(unrelated)])
+    await page.goto('/#account')
+    await signIn(page, accounts, 'ada@example.com', 'Ada')
+    let dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Link existing kitchen access', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Link Ada in The linked home', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Link this identity', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Open The linked home', exact: true }).click()
+    await page.getByRole('button', { name: 'The roommates', exact: true }).click()
+    await page.locator('.saved-kitchens').getByRole('button', { name: /An unrelated saved home/ }).click()
+    await expect(page.locator('.game-house')).toContainText('An unrelated saved home')
+    await openAccount(page)
+    await dialog.getByRole('button', { name: 'Sign out this device', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Sign out this device', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click()
+    await expect(page.locator('.game-house')).toContainText('An unrelated saved home')
+    expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('browser')
+    expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(unrelated.token)
+    await page.reload()
+    await expect(page.locator('.game-house')).toContainText('An unrelated saved home')
+
+    await page.goto('/#account')
+    await signIn(page, accounts, 'ada@example.com', 'Ada')
+    dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Open The linked home', exact: true }).click()
+    await openAccount(page)
+    await dialog.getByRole('button', { name: 'Sign out this device', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Sign out this device', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Open saved An unrelated saved home', exact: true })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Open saved An unrelated saved home', exact: true }).click()
+    await expect(page.locator('.game-house')).toContainText('An unrelated saved home')
+  })
+
+  test('ignores a delayed browser switch after a newer account kitchen selection', async ({ page, accounts }) => {
+    const legacy = accounts.store.create('The delayed browser home', 'Riley', 'EUR', 45000)
+    await page.addInitScript((kitchen) => {
+      if (!localStorage.getItem('roomlings.kitchens')) localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
+    }, savedKitchen(legacy))
+    await page.goto('/#account')
+    await signIn(page, accounts, 'ada@example.com', 'Ada')
+    await createKitchen(page, 'Account kitchen one')
+    await createKitchen(page, 'Account kitchen two')
+    await page.getByRole('dialog').getByRole('button', { name: 'Open Account kitchen one', exact: true }).click()
+    await page.getByRole('button', { name: 'The roommates', exact: true }).click()
+    let receive!: (route: Route) => void
+    const pending = new Promise<Route>((resolve) => { receive = resolve })
+    await page.route('**/api/household', (route) => {
+      if (route.request().headers().authorization === `Bearer ${legacy.token}`) receive(route)
+      else void route.fallback()
+    })
+    await page.locator('.saved-kitchens').getByRole('button', { name: /The delayed browser home/ }).click()
+    const delayed = await pending
+    await page.locator('.add-roommate').click()
+    await page.getByRole('dialog').getByRole('button', { name: 'Open Account kitchen two', exact: true }).click()
+    await expect(page.locator('.game-house')).toContainText('Account kitchen two')
+    const response = page.waitForResponse((item) => item.url().endsWith('/api/household')
+      && item.request().headers().authorization === `Bearer ${legacy.token}`)
+    await delayed.fallback()
+    await (await response).finished()
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect(page.locator('.game-house')).toContainText('Account kitchen two')
+    expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
+  })
+
+  test('retains email and code input across delivery and verification failures', async ({ page, accounts }) => {
+    accounts.provider.failDelivery = true
+    await page.goto('/#account')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Email address', { exact: true }).fill('ada@example.com')
+    await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+    await expect(dialog.getByLabel('Email address', { exact: true })).toHaveValue('ada@example.com')
+    await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toHaveCount(0)
+    accounts.provider.failDelivery = false
+    await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+    await dialog.getByLabel('Email sign-in code', { exact: true }).fill('000000')
+    await dialog.getByLabel('Account display name', { exact: true }).fill('Ada')
+    await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+    await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toHaveValue('000000')
+    expect((await accountState(page)).account).toBeNull()
+    await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('ada@example.com'))
+    await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
+    await expect(dialog).toHaveAccessibleName('Your Roomlings account.')
+  })
+
+  test('manages account profiles and devices and refreshes cookie safety tokens after same-browser sign-in', async ({ page, accounts, browser, baseURL }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'sessions@example.com', 'Ada', 'Desktop')
+    await createKitchen(page, 'The session home')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Account display name', { exact: true }).fill('Ada Account')
+    await dialog.getByRole('button', { name: 'Save account name', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('Account name saved')
+    await dialog.getByLabel('Name this account browser', { exact: true }).fill('Desk')
+    await dialog.getByRole('button', { name: 'Save account browser name', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('Browser name saved')
+    const phoneContext = await browser.newContext({ baseURL, reducedMotion: 'reduce' })
+    const renewal = await page.context().newPage()
+    try {
+      const phone = await phoneContext.newPage()
+      await routeAccountApi(phone, accounts)
+      await phone.goto('/#account')
+      await signIn(phone, accounts, 'sessions@example.com', 'Ada', 'Phone')
+      await phone.getByRole('dialog').getByRole('button', { name: 'Open The session home', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Open The session home', exact: true }).click()
+
+      await routeAccountApi(renewal, accounts)
+      await renewal.goto('/#account')
+      const renewalDialog = renewal.getByRole('dialog')
+      await renewalDialog.getByRole('button', { name: 'Verify email again', exact: true }).click()
+      await renewalDialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+      await renewalDialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('sessions@example.com'))
+      await renewalDialog.getByLabel('Name this browser', { exact: true }).fill('Renewed desktop')
+      await renewalDialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
+      await expect(renewalDialog).toHaveAccessibleName('Your Roomlings account.')
+      const refreshed = page.waitForResponse('**/api/household')
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await (await refreshed).finished()
+      await openGroceryForm(page)
+      await dialog.getByLabel('What did you pick up?', { exact: true }).fill('After renewing account access')
+      await dialog.getByLabel('Total (EUR)', { exact: true }).fill('1.23')
+      await dialog.getByRole('button', { name: 'Add & split the groceries', exact: true }).click()
+      await expect(dialog).toHaveCount(0)
+      const state = await accountState(page)
+      expect(state.account?.name).toBe('Ada Account')
+      expect(state.session?.household.expenses[0].description).toBe('After renewing account access')
+
+      await openAccount(page)
+      await dialog.getByRole('button', { name: 'Revoke Phone', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Revoke session', exact: true }).click()
+      await expect(dialog.getByRole('button', { name: 'Revoke Phone', exact: true })).toHaveCount(0)
+      await phone.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(phone.getByRole('dialog').getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
+      await dialog.getByRole('button', { name: 'Sign out all devices', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Sign out all devices', exact: true }).click()
+      expect((await accountState(page)).account).toBeNull()
+      await renewal.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await expect(renewal.getByRole('dialog').getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
+    } finally {
+      await renewal.close()
+      await phoneContext.close()
+    }
+  })
+
+  test('deletes an account only after confirmation and preserves a closed kitchen ledger', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'delete@example.com', 'Ada')
+    await createKitchen(page, 'A retained ledger')
+    const state = await accountState(page)
+    if (!state.session) throw new Error('Account deletion needs a selected kitchen.')
+    const saved = await browserAccountRequest(page, '/expenses', {
+      description: 'Retained financial record', amount: 501, paidBy: state.session.memberId,
+      participants: [state.session.memberId], category: 'pantry', date: localDate(), version: state.session.household.version,
+    })
+    expect(saved.status).toBe(200)
+    const before = accounts.store.get(state.session.household.id)
+    if (!before) throw new Error('The ledger was not saved.')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await dialog.getByLabel('Confirm your email', { exact: true }).fill('someone-else@example.com')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('email address of this account')
+    expect(accounts.provider.deleted).toHaveLength(0)
+    await dialog.getByLabel('Confirm your email', { exact: true }).fill('delete@example.com')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('account has been deleted')
+    expect((await accountState(page)).account).toBeNull()
+    expect(accounts.provider.deleted).toHaveLength(1)
+    const after = accounts.store.get(before.id)
+    if (!after) throw new Error('Account deletion erased historical financial data.')
+    expect(after.expenses).toEqual(before.expenses)
+    expect([...balances(after)]).toEqual([...balances(before)])
+    expect(after.members[0].inactive).toBe(true)
+    const fresh = await browserAccountRequest(page, '/account', undefined, 'GET')
+    expect(accountStateSchema.parse(fresh.body).memberships).toHaveLength(0)
+  })
+
+  test('shows pending deletion across reloads and reports completion only after the durable retry succeeds', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'pending@example.com', 'Ada')
+    await createKitchen(page, 'The pending deletion home')
+    accounts.provider.failDelete = true
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await dialog.getByLabel('Confirm your email', { exact: true }).fill('pending@example.com')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await expect(dialog).toHaveAccessibleName('Account deletion is pending.')
+    await expect(dialog.getByRole('button', { name: 'Retry account deletion', exact: true })).toBeVisible()
+    await expect(page.locator('.game-house')).toHaveCount(0)
+    await expect(dialog.getByRole('button', { name: 'Send sign-in code', exact: true })).toHaveCount(0)
+    expect(accounts.provider.deleted).toHaveLength(0)
+    await page.reload()
+    await expect(dialog).toHaveAccessibleName('Account deletion is pending.')
+    accounts.provider.failDelete = false
+    await accounts.retryDeletions()
+    await dialog.getByRole('button', { name: 'Check deletion status', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('Account access has ended')
+    await expect(dialog.getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
+    expect(accounts.provider.deleted).toHaveLength(1)
+  })
+})
