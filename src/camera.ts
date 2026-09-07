@@ -8,7 +8,7 @@ export type FramingArea = { x: number; y: number; width: number; height: number 
 export const focusLabels: Record<SceneFocus, string> = {
   room: 'The kitchen',
   fridge: 'The shared fridge',
-  stock: 'The grocery bag',
+  stock: 'The shopping bag',
   ledger: 'The receipt book',
   budget: 'The house pot',
   roommates: 'Your people',
