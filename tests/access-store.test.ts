@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Store } from '../server/store.ts'
 
-it('migrates legacy sessions without replacing their token, identity or household data', () => {
+it('migrates legacy sessions without replacing their token, identity or household data', async () => {
   const filename = resolve('data', `test-access-migration-${randomUUID()}.sqlite`)
   mkdirSync(resolve('data'), { recursive: true })
   const householdId = randomUUID()
@@ -29,19 +29,19 @@ it('migrates legacy sessions without replacing their token, identity or househol
     database.prepare('INSERT INTO sessions (hash, household_id, member_id) VALUES (?, ?, ?)').run(tokenHash, householdId, memberId)
     database.close()
     store = new Store(filename)
-    const original = store.authenticate(token)
+    const original = (await store.authenticate(token))
     assert.ok(original)
     assert.equal(original.memberId, memberId)
     assert.equal(original.household.id, householdId)
-    const state = store.accessState(original)
+    const state = (await store.accessState(original))
     assert.ok(state)
     assert.equal(state.devices[0].label, 'Saved browser')
     assert.equal(state.devices[0].createdAt, null)
     const sessionId = state.devices[0].id
-    const generated = store.rotateRecovery(original, { version: 0, revokeOthers: false })
+    const generated = (await store.rotateRecovery(original, { version: 0, revokeOthers: false }))
     assert.ok(generated && generated !== 'conflict')
     const code = generated.code
-    store.close()
+    await store.close()
     store = undefined
 
     database = new DatabaseSync(filename)
@@ -53,25 +53,25 @@ it('migrates legacy sessions without replacing their token, identity or househol
     database.close()
 
     store = new Store(filename)
-    assert.equal(store.authenticate(token)?.sessionId, sessionId)
-    const restored = store.recover(code, 'New laptop')
+    assert.equal((await store.authenticate(token))?.sessionId, sessionId)
+    const restored = (await store.recover(code, 'New laptop'))
     assert.ok(restored)
     assert.equal(restored.memberId, memberId)
     assert.equal(restored.household.version, 7)
     assert.equal(restored.household.members.length, 1)
-    const current = store.authenticate(token)
+    const current = (await store.authenticate(token))
     assert.ok(current)
     const activeStore = store
     database = new DatabaseSync(filename)
     database.exec("CREATE TRIGGER block_test_revocation BEFORE DELETE ON sessions BEGIN SELECT RAISE(ABORT, 'Test revocation failure'); END")
-    assert.throws(() => activeStore.rotateRecovery(current, { version: 1, revokeOthers: true }), /Test revocation failure/)
-    assert.equal(store.accessState(current)?.recovery.version, 1)
-    assert.ok(store.authenticate(restored.token))
+    await assert.rejects(async () => (await activeStore.rotateRecovery(current, { version: 1, revokeOthers: true })), /Test revocation failure/)
+    assert.equal((await store.accessState(current))?.recovery.version, 1)
+    assert.ok((await store.authenticate(restored.token)))
     database.exec('DROP TRIGGER block_test_revocation')
     database.close()
-    assert.equal(store.recover(code, 'The original code still works')?.memberId, memberId)
+    assert.equal((await store.recover(code, 'The original code still works'))?.memberId, memberId)
   } finally {
-    store?.close()
+    await store?.close()
     if (database.isOpen) database.close()
     for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) {
       if (existsSync(path)) unlinkSync(path)

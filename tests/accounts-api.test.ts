@@ -49,7 +49,7 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
   const server = createApp(store, { provider: configured ? provider : undefined, appOrigin, allowLocalDevelopment: true }).listen(0, '127.0.0.1')
   await once(server, 'listening')
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-  cleanups.push(async () => { server.close(); await once(server, 'close'); store.close() })
+  cleanups.push(async () => { server.close(); await once(server, 'close'); await store.close() })
   const call = async (path: string, body?: unknown, options: {
     method?: string; cookie?: string; csrf?: string; token?: string; householdId?: string
     headers?: Record<string, string | undefined>
@@ -109,13 +109,13 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
   return { store, provider, call, browser, advance(ms: number) { time += ms } }
 }
 
-function secondLegacy(store: Store, first: Session, name = 'Ben') {
-  const household = store.get(first.household.id)!
+async function secondLegacy(store: Store, first: Session, name = 'Ben') {
+  const household = (await store.get(first.household.id))!
   const memberId = randomUUID()
   household.members.push({ id: memberId, name, color: memberColors[1] })
   household.version++
-  store.save(household)
-  return store.session(household, memberId)
+  await store.save(household)
+  return (await store.session(household, memberId))
 }
 
 describe('verified account HTTP lifecycle', () => {
@@ -173,7 +173,7 @@ describe('verified account HTTP lifecycle', () => {
     assert.equal((await browser.request('/account', { name: 'Forged' }, { method: 'PATCH', csrf: 'é'.repeat(64) })).status, 403)
     assert.equal((await browser.request('/account', { name: 'Forged' }, { method: 'PATCH', headers: { Origin: 'https://attacker.example' } })).status, 403)
     assert.equal((await browser.request('/household', undefined, { token: 'not-a-valid-legacy-token' })).status, 401)
-    const legacy = f.store.create('Legacy', 'Ada', 'EUR', 10000)
+    const legacy = (await f.store.create('Legacy', 'Ada', 'EUR', 10000))
     const legacyRead = await browser.request('/household', undefined, { token: legacy.token })
     assert.equal(legacyRead.data.household.id, legacy.household.id)
     const accountRead = await browser.request('/account', undefined, { token: legacy.token })
@@ -257,7 +257,7 @@ describe('verified account HTTP lifecycle', () => {
     const change = { name: 'First changed', currency: 'EUR', budget: 45000, version: first.household.version }
     const result = await browser.request('/household', change, { method: 'PATCH', householdId: first.household.id })
     assert.equal(result.data.household.id, first.household.id)
-    assert.equal(f.store.get(second.household.id)!.name, 'Second')
+    assert.equal((await f.store.get(second.household.id))!.name, 'Second')
     assert.equal((await browser.request('/household', change, { method: 'PATCH', householdId: randomUUID() })).status, 403)
     assert.equal((await browser.request(`/account/households/${randomUUID()}/select`, {})).status, 403)
     const selected = await browser.request(`/account/households/${first.household.id}/select`, {})
@@ -273,12 +273,12 @@ describe('verified account HTTP lifecycle', () => {
 describe('account invitations and membership lifecycle', () => {
   it('does not count retained inactive identities toward legacy invitation seats', async () => {
     const f = await fixture(false)
-    const created = f.store.create('Legacy history', 'Ada', 'EUR', 10000)
+    const created = (await f.store.create('Legacy history', 'Ada', 'EUR', 10000))
     const household = created.household
     for (let index = 0; index < 12; index++) {
       household.members.push({ id: randomUUID(), name: `Former ${index}`, color: memberColors[0], inactive: true })
     }
-    f.store.save(household)
+    await f.store.save(household)
     const joined = await f.call('/join', { inviteCode: household.inviteCode, name: 'Ben' })
     assert.equal(joined.status, 201)
     assert.equal(joined.data.household.members.length, 14)
@@ -287,10 +287,10 @@ describe('account invitations and membership lifecycle', () => {
 
   it('preserves legacy identities and recovery/browser sessions, with original creator ownership and proof-only linking', async () => {
     const f = await fixture()
-    const first = f.store.create('Legacy kitchen', 'Ada', 'EUR', 30000)
-    const second = secondLegacy(f.store, first)
-    const extra = f.store.session(f.store.get(first.household.id)!, first.memberId)
-    const proof = f.store.rotateRecovery(f.store.authenticate(first.token)!, { version: 0, revokeOthers: false })
+    const first = (await f.store.create('Legacy kitchen', 'Ada', 'EUR', 30000))
+    const second = (await secondLegacy(f.store, first))
+    const extra = (await f.store.session((await f.store.get(first.household.id))!, first.memberId))
+    const proof = (await f.store.rotateRecovery((await f.store.authenticate(first.token))!, { version: 0, revokeOthers: false }))
     assert.ok(proof && proof !== 'conflict')
     const ben = f.browser()
     await ben.signIn('ben@example.com', 'Ada')
@@ -310,21 +310,21 @@ describe('account invitations and membership lifecycle', () => {
     const repeated = await ada.request('/account/link', { token: first.token })
     assert.equal(repeated.data.session.household.version, linked.data.session.household.version)
     assert.equal(repeated.data.session.household.members.length, 2)
-    assert.ok(f.store.authenticate(first.token))
-    assert.ok(f.store.authenticate(extra.token))
-    assert.ok(f.store.recover(proof.code, 'Recovered'))
+    assert.ok((await f.store.authenticate(first.token)))
+    assert.ok((await f.store.authenticate(extra.token)))
+    assert.ok((await f.store.recover(proof.code, 'Recovered')))
     assert.equal((await ben.request('/account/link', { token: first.token })).status, 409)
-    const third = secondLegacy(f.store, first, 'Charlie')
+    const third = (await secondLegacy(f.store, first, 'Charlie'))
     assert.equal((await ada.request('/account/link', { token: third.token })).status, 409)
-    const demo = f.store.create('Practice', 'You', 'EUR', 30000, true)
+    const demo = (await f.store.create('Practice', 'You', 'EUR', 30000, true))
     assert.equal((await ada.request('/account/link', { token: demo.token })).status, 400)
     assert.equal((await ada.request('/account/link', { token: 'invalid-proof-123456789' })).status, 401)
-    assert.equal((await ada.request('/invite/rotate', { version: f.store.get(first.household.id)!.version }, { token: first.token })).status, 403)
+    assert.equal((await ada.request('/invite/rotate', { version: (await f.store.get(first.household.id))!.version }, { token: first.token })).status, 403)
     await ada.request('/account/logout', { all: true })
-    assert.equal(f.store.authenticate(first.token), null)
-    assert.equal(f.store.authenticate(extra.token), null)
-    assert.ok(f.store.authenticate(second.token))
-    assert.ok(f.store.recover(proof.code, 'Explicit recovery after global logout'))
+    assert.equal((await f.store.authenticate(first.token)), null)
+    assert.equal((await f.store.authenticate(extra.token)), null)
+    assert.ok((await f.store.authenticate(second.token)))
+    assert.ok((await f.store.recover(proof.code, 'Explicit recovery after global logout')))
   })
 
   it('never restores another provider identity by matching email or profile name', async () => {
@@ -397,7 +397,7 @@ describe('account invitations and membership lifecycle', () => {
     ])
     assert.deepEqual(accepted.map((result) => result.status), [200, 200])
     assert.equal(accepted[0].data.session.memberId, accepted[1].data.session.memberId)
-    assert.equal(f.store.get(household.id)!.members.length, 2)
+    assert.equal((await f.store.get(household.id))!.members.length, 2)
     assert.equal((await owner.request(`/account/households/${household.id}`)).data.invitations[0].uses, 1)
   })
 
@@ -412,8 +412,8 @@ describe('account invitations and membership lifecycle', () => {
     const joined: AccountState = (await ben.request('/account/invitations/accept', { code: invite.code, memberName: 'Ben' })).data
     const memberId = joined.session!.memberId
     const householdId = first.household.id
-    const bearer = f.store.session(f.store.get(householdId)!, memberId)
-    const recovery = f.store.rotateRecovery(f.store.authenticate(bearer.token)!, { version: 0, revokeOthers: false })
+    const bearer = (await f.store.session((await f.store.get(householdId))!, memberId))
+    const recovery = (await f.store.rotateRecovery((await f.store.authenticate(bearer.token))!, { version: 0, revokeOthers: false }))
     assert.ok(recovery && recovery !== 'conflict')
     const paid = await ben.request('/expenses', {
       version: joined.session!.household.version, description: 'Ben groceries', amount: 2001,
@@ -441,8 +441,8 @@ describe('account invitations and membership lifecycle', () => {
     assert.equal(after.members.find((member) => member.id === memberId)!.inactive, true)
     assert.equal(after.shopping.items[0].claimedBy, null)
     assert.equal(after.shopping.items[0].version, before.shopping.items[0].version + 1)
-    assert.equal(f.store.authenticate(bearer.token), null)
-    assert.equal(f.store.recover(recovery.code, 'Removed'), null)
+    assert.equal((await f.store.authenticate(bearer.token)), null)
+    assert.equal((await f.store.recover(recovery.code, 'Removed')), null)
     assert.equal((await ben.state()).memberships.length, 0)
     assert.equal((await ben.request('/household', undefined, { householdId })).status, 403)
     assert.equal((await ben.request('/account/link', { token: bearer.token })).status, 401)
@@ -482,11 +482,11 @@ describe('account invitations and membership lifecycle', () => {
 
   it('lets nonowners leave, blocks managed legacy invites even when auth later becomes unconfigured, and closes sole-owner kitchens', async () => {
     const f = await fixture(false)
-    const first = f.store.create('Legacy kitchen', 'Ada', 'EUR', 30000)
-    const signedIn = f.store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Test').session
-    f.store.accounts.link(signedIn, { token: first.token })
+    const first = (await f.store.create('Legacy kitchen', 'Ada', 'EUR', 30000))
+    const signedIn = (await f.store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Test')).session
+    await f.store.accounts.link(signedIn, { token: first.token })
     assert.equal((await f.call('/join', { inviteCode: first.household.inviteCode, name: 'Bypass' })).status, 403)
-    assert.equal((await f.call('/invite/rotate', { version: f.store.get(first.household.id)!.version }, { token: first.token })).status, 403)
+    assert.equal((await f.call('/invite/rotate', { version: (await f.store.get(first.household.id))!.version }, { token: first.token })).status, 403)
     const g = await fixture()
     const owner = g.browser()
     await owner.signIn('owner@example.com')
@@ -498,11 +498,11 @@ describe('account invitations and membership lifecycle', () => {
     const leaving = await member.request(`/account/households/${initial.household.id}/membership`, { version: joined.session.household.version }, { method: 'DELETE' })
     assert.equal(leaving.status, 200)
     assert.equal(leaving.data.memberships.length, 0)
-    const latest = g.store.get(initial.household.id)!
+    const latest = (await g.store.get(initial.household.id))!
     const closed = await owner.request(`/account/households/${initial.household.id}/membership`, { version: latest.version }, { method: 'DELETE' })
     assert.equal(closed.status, 200)
     assert.equal(closed.data.session, null)
-    assert.ok(g.store.get(initial.household.id)!.members.every((member) => member.inactive))
+    assert.ok((await g.store.get(initial.household.id))!.members.every((member) => member.inactive))
     assert.equal((await member.request('/account/invitations/accept', { code: invite.code, memberName: 'Ben' })).status, 410)
   })
 })
@@ -531,7 +531,7 @@ describe('account deletion and durable retry', () => {
     const before = payment.data.household as Household
     const deleted = await ben.request('/account', { confirmation: 'ben@example.com' }, { method: 'DELETE' })
     assert.equal(deleted.status, 200)
-    const retained = f.store.get(initial.household.id)!
+    const retained = (await f.store.get(initial.household.id))!
     assert.deepEqual(retained.bills, before.bills)
     assert.deepEqual(retained.expenses, before.expenses)
     assert.deepEqual(retained.settlements, before.settlements)
@@ -590,35 +590,35 @@ describe('account deletion and durable retry', () => {
 
   it('deletes a sole owner with retained pseudonymous ledger references and no remaining credentials', async () => {
     const f = await fixture()
-    const legacy = f.store.create('Retained ledger', 'Ada', 'EUR', 10000)
-    const household = f.store.get(legacy.household.id)!
+    const legacy = (await f.store.create('Retained ledger', 'Ada', 'EUR', 10000))
+    const household = (await f.store.get(legacy.household.id))!
     household.expenses.push({
       id: randomUUID(), description: 'Ada bought groceries', amount: 101, paidBy: legacy.memberId,
       participants: [legacy.memberId], category: 'pantry', date: '2026-09-01', createdAt: new Date().toISOString(),
     })
-    f.store.save(household)
-    const proof = f.store.rotateRecovery(f.store.authenticate(legacy.token)!, { version: 0, revokeOthers: false })
+    await f.store.save(household)
+    const proof = (await f.store.rotateRecovery((await f.store.authenticate(legacy.token))!, { version: 0, revokeOthers: false }))
     assert.ok(proof && proof !== 'conflict')
     const browser = f.browser()
     await browser.signIn('ada@example.com', 'Ada')
     await browser.request('/account/link', { token: legacy.token })
     const other = f.browser()
     await other.signIn('ada@example.com')
-    const before = f.store.get(household.id)!
+    const before = (await f.store.get(household.id))!
     const deleted = await browser.request('/account', { confirmation: 'ada@example.com' }, { method: 'DELETE' })
     assert.equal(deleted.status, 200)
     assert.equal(deleted.data.account, null)
     assert.equal(f.provider.deleted.length, 1)
     assert.equal((await other.state()).account, null)
-    assert.equal(f.store.authenticate(legacy.token), null)
-    assert.equal(f.store.recover(proof.code, 'Deleted account'), null)
-    const after = f.store.get(household.id)!
+    assert.equal((await f.store.authenticate(legacy.token)), null)
+    assert.equal((await f.store.recover(proof.code, 'Deleted account')), null)
+    const after = (await f.store.get(household.id))!
     assert.equal(after.members[0].name, 'Former roommate 1')
     assert.equal(after.members[0].inactive, true)
     assert.deepEqual(after.expenses, before.expenses)
     assert.deepEqual(balances(after), balances(before))
     assert.equal(after.expenses[0].description, 'Ada bought groceries')
-    assert.equal(f.store.accounts.pendingDeletions().length, 0)
+    assert.equal((await f.store.accounts.pendingDeletions()).length, 0)
     const recreated = await browser.signIn('ada@example.com')
     assert.equal(recreated.memberships.length, 0)
   })
@@ -630,23 +630,23 @@ describe('account deletion and durable retry', () => {
     const first = (await browser.create()).session!
     const other = f.browser()
     await other.signIn('ada@example.com')
-    const legacy = f.store.session(first.household, first.memberId)
+    const legacy = (await f.store.session(first.household, first.memberId))
     f.provider.failDelete = true
     const result = await browser.request('/account', { confirmation: 'ada@example.com' }, { method: 'DELETE' })
     assert.equal(result.status, 503)
     assert.equal(result.data.code, 'ACCOUNT_DELETION_PENDING')
-    assert.equal(f.store.authenticate(legacy.token), null)
+    assert.equal((await f.store.authenticate(legacy.token)), null)
     assert.equal((await other.state()).account, null)
     assert.equal((await browser.request('/household')).status, 409)
     assert.equal((await browser.request('/account', { name: 'Not allowed' }, { method: 'PATCH' })).status, 409)
     assert.equal((await browser.request('/account')).status, 409)
     assert.equal((await browser.request('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' })).status, 409)
-    assert.equal(f.store.accounts.pendingDeletions().length, 1)
+    assert.equal((await f.store.accounts.pendingDeletions()).length, 1)
     f.provider.failDelete = false
     const retried = await browser.request('/account', { confirmation: 'ada@example.com' }, { method: 'DELETE' })
     assert.equal(retried.status, 200)
-    assert.equal(f.store.accounts.pendingDeletions().length, 0)
-    assert.equal(f.store.get(first.household.id)!.members[0].name, 'Former roommate 1')
+    assert.equal((await f.store.accounts.pendingDeletions()).length, 0)
+    assert.equal((await f.store.get(first.household.id))!.members[0].name, 'Former roommate 1')
     const second = f.browser()
     await second.signIn('ben@example.com')
     await second.create('Second', 'Ben')
@@ -654,7 +654,7 @@ describe('account deletion and durable retry', () => {
     await second.request('/account', { confirmation: 'ben@example.com' }, { method: 'DELETE' })
     f.provider.failDelete = false
     await retryAccountDeletions(f.store, f.provider)
-    assert.equal(f.store.accounts.pendingDeletions().length, 0)
+    assert.equal((await f.store.accounts.pendingDeletions()).length, 0)
     assert.equal((await second.state()).account, null)
   })
 })

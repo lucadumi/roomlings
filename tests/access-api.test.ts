@@ -23,7 +23,7 @@ describe('roommate recovery and browser access', () => {
   afterEach(async () => {
     server.close()
     await once(server, 'close')
-    store.close()
+    await store.close()
   })
   const call = (path: string, body?: unknown, token?: string, method?: string) => fetch(`${origin}/api${path}`, {
     method: method ?? (body === undefined ? 'GET' : 'POST'),

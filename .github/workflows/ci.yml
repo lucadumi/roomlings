@@ -56,10 +56,46 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+  postgres:
+    name: PostgreSQL persistence and account flows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: roomlings
+          POSTGRES_PASSWORD: roomlings
+          POSTGRES_DB: roomlings_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U roomlings -d roomlings_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://roomlings:roomlings@127.0.0.1:5432/roomlings_test
+      TEST_DATABASE_TLS: disable
+      REQUIRE_POSTGRES_TESTS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: node --test tests/postgres.test.ts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser -- accounts.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: postgres-browser-failure-details
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
   kitchen:
     name: Build and exercise the shared kitchen
     if: ${{ always() }}
-    needs: [checks, browser]
+    needs: [checks, browser, postgres]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -67,6 +103,7 @@ jobs:
         env:
           CHECKS_RESULT: ${{ needs.checks.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          POSTGRES_RESULT: ${{ needs.postgres.result }}
         run: |
-          printf 'Unit/build: %s\nBrowser suites: %s\n' "$CHECKS_RESULT" "$BROWSER_RESULT"
-          test "$CHECKS_RESULT" = success && test "$BROWSER_RESULT" = success
+          printf 'Unit/build: %s\nBrowser suites: %s\nPostgreSQL: %s\n' "$CHECKS_RESULT" "$BROWSER_RESULT" "$POSTGRES_RESULT"
+          test "$CHECKS_RESULT" = success && test "$BROWSER_RESULT" = success && test "$POSTGRES_RESULT" = success

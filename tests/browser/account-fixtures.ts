@@ -1,14 +1,15 @@
 import { randomInt, randomUUID } from 'node:crypto'
 import { once } from 'node:events'
-import type { Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 import { expect, test as base } from '@playwright/test'
 import { accountStateSchema } from '../../shared/accounts.ts'
 import type { AccountState } from '../../shared/accounts.ts'
-import { Store } from '../../server/store.ts'
+import type { Store } from '../../server/store.ts'
 import { createApp } from '../../server/app.ts'
 import { ApiError } from '../../server/errors.ts'
 import type { AccountProvider } from '../../server/provider.ts'
 import { retryAccountDeletions } from '../../server/accounts-api.ts'
+import { databaseFixture } from '../database-fixture.ts'
 
 export { expect }
 
@@ -52,7 +53,8 @@ export type AccountHarness = { origin: string; store: Store; provider: TestMailb
 export const test = base.extend<{ accounts: AccountHarness }>({
   accounts: async ({ baseURL }, use) => {
     if (!baseURL) throw new Error('Account browser flows need a configured base URL.')
-    const store = new Store(':memory:')
+    const database = await databaseFixture()
+    const store = database.store
     const mailbox = new TestMailbox()
     const provider: AccountProvider = {
       sendCode: (email) => mailbox.send(email),
@@ -76,14 +78,22 @@ export const test = base.extend<{ accounts: AccountHarness }>({
         server.close()
         await closed
       }
-      store.close()
+      await database.close()
     }
   },
   page: async ({ page, accounts }, use) => {
     await routeAccountApi(page, accounts)
     await use(page)
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
   },
 })
+
+export async function closeAccountContext(context: BrowserContext): Promise<void> {
+  for (const page of context.pages()) {
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
+  }
+  await context.close()
+}
 
 export async function routeAccountApi(page: Page, accounts: AccountHarness): Promise<void> {
   await page.route('**/api/**', async (route) => {

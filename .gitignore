@@ -3,6 +3,7 @@ dist/
 data/
 .env
 .env.*
+supabase-ca.crt
 !.env.example
 .DS_Store
 *.sqlite

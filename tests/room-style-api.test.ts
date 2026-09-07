@@ -78,7 +78,7 @@ describe('shared room style API', () => {
   })
   afterEach(async () => {
     await api.close()
-    store.close()
+    await store.close()
   })
   const create = async (): Promise<Session> => {
     const response = await api.call('/households', { name: 'Our room', memberName: 'Ada', currency: 'EUR', budget: 45000 })
@@ -234,16 +234,16 @@ it('loads legacy JSON without rewriting it and persists presets, ledger, shoppin
   let api: Awaited<ReturnType<typeof serve>> | undefined
   let database: DatabaseSync | undefined
   try {
-    const owner = store.create('Persistent room', 'Ada', 'EUR', 35000, true)
+    const owner = (await store.create('Persistent room', 'Ada', 'EUR', 35000, true))
     const original = withHistory(owner)
-    store.save(original)
-    const session = store.authenticate(owner.token)
+    await store.save(original)
+    const session = (await store.authenticate(owner.token))
     assert.ok(session)
-    const recovery = store.rotateRecovery(session, { version: 0, revokeOthers: false })
+    const recovery = (await store.rotateRecovery(session, { version: 0, revokeOthers: false }))
     assert.ok(recovery && recovery !== 'conflict')
-    const phone = store.recover(recovery.code, 'Phone')
+    const phone = (await store.recover(recovery.code, 'Phone'))
     assert.ok(phone)
-    store.close()
+    await store.close()
     store = undefined
 
     database = new DatabaseSync(filename)
@@ -256,9 +256,9 @@ it('loads legacy JSON without rewriting it and persists presets, ledger, shoppin
     database.close()
 
     store = new Store(filename)
-    assert.deepEqual(store.get(original.id), original)
-    assert.deepEqual(store.byInvite(original.inviteCode), original)
-    assert.deepEqual(store.authenticate(owner.token)?.household, original)
+    assert.deepEqual((await store.get(original.id)), original)
+    assert.deepEqual((await store.byInvite(original.inviteCode)), original)
+    assert.deepEqual((await store.authenticate(owner.token))?.household, original)
     database = new DatabaseSync(filename)
     assert.equal(database.prepare('SELECT state FROM households WHERE id = ?').get(original.id)?.state, legacy)
     database.close()
@@ -278,14 +278,14 @@ it('loads legacy JSON without rewriting it and persists presets, ledger, shoppin
       assert.deepEqual(await changed.json(), { household: expected })
       await api.close()
       api = undefined
-      store.close()
+      await store.close()
       store = new Store(filename)
       api = await serve(store)
       const restored = await api.call('/household', undefined, owner.token)
       assert.equal(restored.status, 200)
       assert.deepEqual(await restored.json(), { household: expected, memberId: owner.memberId })
-      assert.deepEqual(store.authenticate(phone.token)?.household, expected)
-      assert.deepEqual(store.byInvite(original.inviteCode), expected)
+      assert.deepEqual((await store.authenticate(phone.token))?.household, expected)
+      assert.deepEqual((await store.byInvite(original.inviteCode)), expected)
       assert.deepEqual(balances(expected), balances(original))
       assert.deepEqual(suggestedTransfers(expected), suggestedTransfers(original))
       before = expected
@@ -298,13 +298,13 @@ it('loads legacy JSON without rewriting it and persists presets, ledger, shoppin
     assert.ok(persisted)
     assert.deepEqual(JSON.parse(String(persisted.state)), before)
     database.close()
-    const recovered = store.recover(recovery.code, 'Recovered laptop')
+    const recovered = (await store.recover(recovery.code, 'Recovered laptop'))
     assert.ok(recovered)
     assert.equal(recovered.memberId, owner.memberId)
     assert.deepEqual(recovered.household, before)
   } finally {
     await api?.close()
-    store?.close()
+    await store?.close()
     if (database?.isOpen) database.close()
     for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) {
       if (existsSync(path)) unlinkSync(path)
