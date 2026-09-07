@@ -1,6 +1,25 @@
-import { accountState, expect, test } from './account-fixtures.ts'
+import type { Page } from '@playwright/test'
+import { accountState, browserAccountRequest, expect, test } from './account-fixtures.ts'
+import type { AccountHarness } from './account-fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
+
+async function signedInVisitor(page: Page, accounts: AccountHarness, createKitchen = true) {
+  await page.goto('/')
+  const email = 'returning@example.com'
+  await accounts.provider.send(email)
+  const signedIn = await browserAccountRequest(page, '/account/verify', {
+    email, code: accounts.provider.codeFor(email), name: 'Robin', label: 'Returning browser',
+  })
+  expect(signedIn.status).toBe(200)
+  if (createKitchen) {
+    const created = await browserAccountRequest(page, '/account/households', {
+      name: 'The signed-in home', memberName: 'Robin', currency: 'EUR', budget: 45000,
+    })
+    expect(created.status).toBe(201)
+  }
+  return accountState(page)
+}
 
 test('a new visitor sees the landing without a demo session or an unsolicited sign-in dialog', async ({ page }) => {
   const writes: string[] = []
@@ -84,4 +103,52 @@ test('an unavailable account service leaves the landing readable and exposes a r
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toBeVisible()
+})
+
+test('returning through the landing uses a signed-in account when an older browser token has expired', async ({ page, accounts }) => {
+  const before = await signedInVisitor(page, accounts)
+  const staleToken = 'expired-browser-access-that-is-not-in-this-store'
+  await page.evaluate((token) => {
+    localStorage.setItem('roomlings.access-mode', 'browser')
+    localStorage.setItem('roomlings.session', token)
+  }, staleToken)
+  await page.goto('/welcome')
+  await page.locator('.welcome-hero').getByRole('link', { name: 'Explore the kitchen', exact: true }).click()
+  await expect(page.locator('.game-house')).toContainText('The signed-in home')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('status')).toContainText('signed-in account')
+  expect((await accountState(page)).session?.household).toEqual(before.session?.household)
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(staleToken)
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
+  await page.goto('/')
+  await expect(page.locator('.game-house')).toContainText('The signed-in home')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('a transient browser-kitchen failure does not silently switch the chosen household to an account kitchen', async ({ page, accounts }) => {
+  await signedInVisitor(page, accounts)
+  await page.evaluate(() => {
+    localStorage.setItem('roomlings.access-mode', 'browser')
+    localStorage.setItem('roomlings.session', 'saved-browser-access-that-must-not-be-replaced')
+  })
+  await page.route('**/api/household', (route) => route.fulfill({ status: 503, json: { error: 'The selected browser kitchen is temporarily unavailable.' } }))
+  await page.goto('/kitchen')
+  await expect(page.getByRole('alert')).toHaveText('The selected browser kitchen is temporarily unavailable.')
+  await expect(page.locator('.game-house')).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('browser')
+})
+
+test('a signed-in account without a kitchen remains reachable after browser-only access expires', async ({ page, accounts }) => {
+  await signedInVisitor(page, accounts, false)
+  await page.evaluate(() => {
+    localStorage.setItem('roomlings.access-mode', 'browser')
+    localStorage.setItem('coldshare.session', 'expired-coldshare-access-that-is-not-in-this-store')
+  })
+  await page.goto('/')
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
+  await expect(page.getByRole('button', { name: 'Create a kitchen', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
+  expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).not.toBeNull()
+  await page.reload()
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
 })

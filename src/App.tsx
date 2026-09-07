@@ -48,16 +48,24 @@ const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover
 const initialAccountInvite = new URLSearchParams(location.hash.slice(1)).get('account-invite') ?? ''
 const initialAccount = new URLSearchParams(location.hash.slice(1)).has('account')
 const initialAccountIntent = new URLSearchParams(location.hash.slice(1)).get('account')
-let initialSession: Promise<KitchenSession | null> | undefined
+type InitialAccess = { session: KitchenSession | null; expiredBrowser?: true }
+let initialSession: Promise<InitialAccess> | undefined
 
-function loadSession(account: AccountState): Promise<KitchenSession | null> {
+function loadSession(account: AccountState): Promise<InitialAccess> {
   if (!initialSession) {
-    const pending: Promise<KitchenSession | null> = (async () => {
+    const pending: Promise<InitialAccess> = (async (): Promise<InitialAccess> => {
       const mode = readAccessMode()
-      if (mode === 'account' || (account.account && mode !== 'browser')) return account.session
+      if (mode === 'account' || (account.account && mode !== 'browser')) return { session: account.session }
       const token = readToken()
-      if (token) return { token, ...await getHousehold(token) }
-      return /^\/kitchen\/?$/.test(location.pathname) || initialInvite || initialRecovery ? createDemo() : null
+      if (token) {
+        try {
+          return { session: { token, ...await getHousehold(token) } }
+        } catch (failure) {
+          if (!(failure instanceof RequestError) || failure.status !== 401 || !account.account) throw failure
+          return { session: account.session, expiredBrowser: true }
+        }
+      }
+      return { session: /^\/kitchen\/?$/.test(location.pathname) || initialInvite || initialRecovery ? await createDemo() : null }
     })().catch((error: unknown) => {
       if (initialSession === pending) initialSession = undefined
       throw error
@@ -107,21 +115,26 @@ export function App() {
       if (startupAttempt.current !== attempt) return
       accountRef.current = accountState
       setAccount(accountState)
-      const next = await loadSession(accountState)
+      const restored = await loadSession(accountState)
       if (startupAttempt.current !== attempt) return
+      const next = restored.session
       sessionEpoch.current++
       sessionRef.current = next
       setSession(next)
       if (!next) {
         setSaved(savedKitchens())
         if (accountState.account) {
-          setError('Choose, create or link a kitchen from your account.')
+          if (restored.expiredBrowser) preferAccountAccess()
+          setError(restored.expiredBrowser
+            ? 'Your older browser-only access ended. Choose, create or link a kitchen from your signed-in account.'
+            : 'Choose, create or link a kitchen from your account.')
           setDialog((previous) => previous ?? { account: 'manage' })
         }
         return
       }
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
       setShoppingView('list')
+      if (restored.expiredBrowser) setNotice(`Your older browser-only access ended. Opened ${next.household.name} through your signed-in account.`)
       try { setSaved(rememberKitchen(next)) } catch {
         setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
       }
@@ -241,7 +254,7 @@ export function App() {
     setBusy(false)
     sessionRef.current = next
     setSession(next)
-    initialSession = Promise.resolve(next)
+    initialSession = Promise.resolve({ session: next })
     setError('')
     try { setSaved(rememberKitchen(next)) } catch {
       setError('Your browser could not remember this kitchen. Keep this tab open until browser storage is available.')
@@ -312,14 +325,14 @@ export function App() {
     if (preserveLegacy) {
       startupAttempt.current++
       sessionEpoch.current++
-      initialSession = Promise.resolve(current)
+      initialSession = Promise.resolve({ session: current })
       setLoading(false)
       setBusy(false)
       setError('')
     } else if (kind === 'signed-out' || kind === 'deleting' || (current?.token === null && !next.account)) {
       startupAttempt.current++
       sessionEpoch.current++
-      initialSession = Promise.resolve(null)
+      initialSession = Promise.resolve({ session: null })
       sessionRef.current = null
       setSession(null)
       setLoading(false)
@@ -332,7 +345,7 @@ export function App() {
       else {
         startupAttempt.current++
         sessionEpoch.current++
-        initialSession = Promise.resolve(null)
+        initialSession = Promise.resolve({ session: null })
         sessionRef.current = null
         setSession(null)
         setLoading(false)

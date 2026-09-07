@@ -23,6 +23,8 @@ The landing introduces shopping, bills and repayments before sign-in. Its contai
 
 **Get started** opens the existing verified-email flow with kitchen creation selected. **Sign in** opens account access. Signing out returns to the landing. API and delivery failures remain visible with retry actions; the landing does not invent a successful login or replace an unavailable saved kitchen with a new one.
 
+If an older browser-only token is definitively expired or revoked while a verified account is still signed in, the app opens that account's selected kitchen and explains the change. The old browser shortcuts and Coldshare keys are retained. Temporary server failures do not trigger a household switch.
+
 The responsive tour measures its actual scene area and content height. Preserve coverage for longer copy, orientation changes, keyboard use, constrained headers and failed WebGL. Scroll restoration is scoped to the current browser history entry, not persistent kitchen storage.
 
 Browser coverage can target an already-running isolated test server with `PLAYWRIGHT_BASE_URL`. Such servers are temporary; use http://localhost:5173 for review and preserve its data and sessions.
