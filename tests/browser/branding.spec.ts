@@ -9,7 +9,7 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
     localStorage.setItem('coldshare.kitchens', JSON.stringify([kitchen]))
   }, { token: original.token, kitchen })
 
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page).toHaveTitle('Roomlings | A home to share')
   await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   await expect(page.locator('.game-house')).toContainText(original.household.name)
@@ -35,7 +35,7 @@ test('Roomlings sessions take precedence over retained legacy browser storage', 
     localStorage.setItem('roomlings.kitchens', JSON.stringify([currentKitchen]))
   }, { oldKitchen: savedKitchen(legacy), currentKitchen })
 
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(current.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([currentKitchen])

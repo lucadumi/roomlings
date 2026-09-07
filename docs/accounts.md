@@ -34,6 +34,7 @@ Account-managed invitations last seven days and reveal their secret only when cr
 ## Sessions and membership
 
 - Sessions expire after 30 days, or seven days without use. Account settings support device labels, revocation and sign-out on one or all devices.
+- Returning to the public home page or trying a sample does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
 - Signing out all devices also revokes linked browser sessions. Unrelated saved browser identities stay separate.
 - Owners manage invitations, remove access and transfer ownership. All active roommates can edit the shared ledger.
 - Before leaving a kitchen with other members, its owner must transfer ownership.

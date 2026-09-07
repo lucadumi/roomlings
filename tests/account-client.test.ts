@@ -9,6 +9,7 @@ import {
   request, RequestError, sameKitchenSession, savedKitchens,
 } from '../src/api.ts'
 import type { SavedKitchen } from '../src/api.ts'
+import { rememberSample, restoreSample } from '../src/sampleAccess.ts'
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>()
@@ -187,5 +188,55 @@ describe('account-aware client access', () => {
     assert.equal(sameKitchenSession(first, { ...first, token: randomBytes(32).toString('base64url') }), false)
     assert.equal(sameKitchenSession(first, null), false)
     assert.equal(sameKitchenSession(null, null), false)
+  })
+
+  it('keeps sample access separate from real and Coldshare identities and account preference', async () => {
+    const real = legacySession()
+    storage.setItem('coldshare.session', real.token)
+    rememberKitchen(real)
+    rememberKitchen({ ...real, token: null })
+    const personalKeys = ['roomlings.session', 'roomlings.kitchens', 'coldshare.session', 'roomlings.access-mode']
+    const before = personalKeys.map((key) => storage.getItem(key))
+    const sample = legacySession()
+    sample.household.demo = true
+    rememberSample(sample)
+    mock.method(globalThis, 'fetch', async (url: string | URL | Request) => {
+      assert.equal(url, '/api/household')
+      return Response.json({ household: sample.household, memberId: sample.memberId })
+    })
+    assert.equal((await restoreSample()).session.token, sample.token)
+    assert.deepEqual(personalKeys.map((key) => storage.getItem(key)), before)
+    assert.throws(() => rememberSample(real), /cannot be saved as a sample/)
+  })
+
+  it('renews only definitively expired samples and retains the prior key until saving succeeds', async () => {
+    const expired = legacySession()
+    expired.household.demo = true
+    rememberSample(expired)
+    const replacement = legacySession()
+    replacement.household.demo = true
+    mock.method(globalThis, 'fetch', async (url: string | URL | Request) => url === '/api/household'
+      ? Response.json({ error: 'Sample access is no longer active.' }, { status: 401 })
+      : Response.json(replacement, { status: 201 }))
+    const result = await restoreSample()
+    assert.equal(result.renewed, true)
+    assert.equal(result.session.token, replacement.token)
+    assert.equal(storage.getItem('roomlings.sample-session'), expired.token)
+    rememberSample(result.session)
+    assert.equal(storage.getItem('roomlings.sample-session'), replacement.token)
+  })
+
+  it('does not replace a sample after an outage or accept a personal household as a sample', async () => {
+    const session = legacySession()
+    session.household.demo = true
+    rememberSample(session)
+    const calls = mock.method(globalThis, 'fetch', async () =>
+      Response.json({ error: 'The server is unavailable.' }, { status: 503 }))
+    await assert.rejects(restoreSample(), (error: unknown) => error instanceof RequestError && error.status === 503)
+    assert.equal(calls.mock.callCount(), 1)
+    assert.equal(storage.getItem('roomlings.sample-session'), session.token)
+    const real = legacySession()
+    mock.method(globalThis, 'fetch', async () => Response.json({ household: real.household, memberId: real.memberId }))
+    await assert.rejects(restoreSample(), /personal household/)
   })
 })

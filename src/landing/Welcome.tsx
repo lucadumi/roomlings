@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus, Snowflake } from 'lucide-react'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
+import { roomPath, samplePath } from '../roomNavigation.ts'
 import './welcome.css'
 
 function subscribeToMotion(callback: () => void) {
@@ -34,6 +35,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       if (cancelled) return
       if (scroll !== null) window.scrollTo({ top: scroll, behavior: 'instant' })
       else document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'instant' })
+      if (location.hash === '#home-sign-in' || location.hash === '#home-start') {
+        document.getElementById(location.hash.slice(1))?.focus({ preventScroll: true })
+      }
     })
     const rememberPosition = () => {
       const previous: unknown = history.state
@@ -64,8 +68,8 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <a href="#questions">Questions</a>
       </nav>
       <div className="welcome-header-actions">
-        <a className="welcome-sign-in" href="/#account">Sign in <ArrowRight size={15} /></a>
-        <a className="button primary welcome-enter" href="/#account=create">Get started</a>
+        <a className="welcome-sign-in" id="home-sign-in" href={roomPath()}>Sign in <ArrowRight size={15} /></a>
+        <a className="button primary welcome-enter" href={`${roomPath()}#account=create`}>Get started</a>
       </div>
     </header>
     {accessNotice && <div className="welcome-access-notice welcome-container">{accessNotice}</div>}
@@ -75,8 +79,8 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
           <p>Groceries, household bills and who owes what, in one shared home.</p>
           <div className="welcome-actions">
-            <a className="button primary welcome-enter" href="/#account=create">Get started <ArrowRight size={18} /></a>
-            <a className="welcome-text-link" href="/kitchen">Explore the kitchen <ArrowUpRight size={16} /></a>
+            <a className="button primary welcome-enter" id="home-start" href={`${roomPath()}#account=create`}>Get started <ArrowRight size={18} /></a>
+            <a className="welcome-text-link" href={samplePath()}>Try the sample <ArrowUpRight size={16} /></a>
           </div>
           <p className="welcome-small"><Check size={14} />Try a sample kitchen without signing in.</p>
         </div>
@@ -112,7 +116,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
 
       <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
         <div><h2 id="invitation-title">Create your household.</h2><p>Sign in and invite your roommates.</p></div>
-        <a className="button primary welcome-enter" href="/#account=create">Get started <ArrowRight size={18} /></a>
+        <a className="button primary welcome-enter" href={`${roomPath()}#account=create`}>Get started <ArrowRight size={18} /></a>
       </section>
     </main>
     <footer className="welcome-footer welcome-container">

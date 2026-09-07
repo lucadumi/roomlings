@@ -234,7 +234,7 @@ test.describe('UI consistency', () => {
   test('a single grocery run and an empty repayment history have truthful labels', async ({ page, request }) => {
     const session = await createHousehold(request, 'UI consistency kitchen', 'Robin')
     await page.addInitScript((token) => localStorage.setItem('roomlings.session', token), session.token)
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openGroceryForm(page)
     await page.getByLabel('What did you pick up?', { exact: true }).fill('One grocery run')
     await page.getByLabel('Total (EUR)', { exact: true }).fill('1.00')

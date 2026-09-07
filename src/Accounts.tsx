@@ -37,9 +37,10 @@ function browserKitchens(session: Session | null, saved: SavedKitchen[]): SavedK
 }
 
 export function AccountDialog({
-  intent = 'manage', initialInvite = '', initialState, legacySession, savedLegacy, onChange, onClose, onRecover, onOpenLegacy,
+  intent = 'manage', initialInvite = '', initialState, legacySession, savedLegacy, onChange, onClose, onRecover, onOpenLegacy, autoEnter = false,
 }: {
   intent?: AccountIntent; initialInvite?: string; legacySession: Session | null; savedLegacy: SavedKitchen[]
+  autoEnter?: boolean
   initialState: AccountState | null
   onChange: (state: AccountState, change: AccountChange) => void; onClose: () => void; onRecover: () => void
   onOpenLegacy: (kitchen: SavedKitchen) => Promise<boolean>
@@ -259,8 +260,12 @@ export function AccountDialog({
           if (mounted.current) setNotice('Check your email for a one-time sign-in code.')
         })}
         onVerify={(body) => run(async () => {
-          await accountAction('/account/verify', body, 'POST', 'select')
-          if (mounted.current) { setReauthenticate(false); setNotice('Your verified account is signed in.') }
+          const next = await accountAction('/account/verify', body, 'POST', 'select')
+          if (mounted.current) {
+            setReauthenticate(false)
+            if (autoEnter && next.session && intent === 'manage') onClose()
+            else setNotice('Your verified account is signed in.')
+          }
         })}
       />}
       {confirmation && <Form onSubmit={() => {
@@ -341,7 +346,10 @@ export function AccountDialog({
         {view === 'create' && <CreateKitchenForm initialMemberName={account.name} busy={disabled} error={null} onSubmit={(body) => {
           void run(async () => {
             await accountAction('/account/households', body, 'POST', 'select')
-            if (mounted.current) { navigate('manage'); setNotice('Your account now owns the new kitchen.') }
+            if (mounted.current) {
+              if (autoEnter) onClose()
+              else { navigate('manage'); setNotice('Your account now owns the new kitchen.') }
+            }
           })
         }} />}
         {view === 'join' && <AccountJoinForm initialInvite={initialInvite} name={account.name} busy={disabled} onSubmit={(body) => {
@@ -349,8 +357,11 @@ export function AccountDialog({
             await accountAction('/account/invitations/accept', body, 'POST', 'select')
             if (mounted.current) {
               history.replaceState(null, '', `${location.pathname}${location.search}`)
-              navigate('manage')
-              setNotice('The kitchen is linked to your account. Reopening the invitation will not add another roommate.')
+              if (autoEnter) onClose()
+              else {
+                navigate('manage')
+                setNotice('The kitchen is linked to your account. Reopening the invitation will not add another roommate.')
+              }
             }
           })
         }} />}
