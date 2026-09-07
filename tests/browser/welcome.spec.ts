@@ -4,7 +4,7 @@ import { sampleSession, savedKitchen, trackDrawing } from './fixtures.ts'
 import { tourChapters } from '../../src/landing/tour.ts'
 
 async function openTour(page: Page) {
-  await page.locator('#tour').scrollIntoViewIfNeeded()
+  await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
 }
 
@@ -48,6 +48,10 @@ test('the public welcome page explains the product without opening or changing a
   await page.goto('/welcome')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Share a home.Not the hassle.')
   await expect(page.locator('.welcome-feature')).toHaveCount(3)
+  await expect(page.locator('.welcome-journal')).toBeVisible()
+  await expect(page.locator('.welcome-home-illustration')).toBeVisible()
+  await expect(page.getByText('A place for everyone.', { exact: true })).toHaveCount(0)
+  await expect(page.locator('.welcome-house-note, .welcome-feature-grid')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Make yourself at home', exact: true })).toHaveAttribute('href', '/#account=create')
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/#account')
   await page.getByText('Does Roomlings send money?', { exact: true }).click()
@@ -227,14 +231,13 @@ test('longer copy and orientation changes use measured scene areas without clipp
     await page.setViewportSize({ width, height })
     await openTour(page)
     expect(await layoutProblems(page)).toEqual([])
-    const fits = await page.locator('.welcome-stage').evaluate((element) => {
+    await expect.poll(() => page.locator('.welcome-stage').evaluate((element) => {
       const canvas = element.querySelector('.welcome-canvas')
       const raw = canvas?.getAttribute('data-scene-area')
       if (!raw) return false
       const area = JSON.parse(raw) as { x: number; y: number; width: number; height: number }
       return area.x >= 0 && area.y >= 0 && area.x + area.width <= element.clientWidth && area.y + area.height <= element.clientHeight
-    })
-    expect(fits).toBe(true)
+    })).toBe(true)
   }
   await page.setViewportSize({ width: 320, height: 568 })
   await page.addStyleTag({ content: '.welcome-header { width: calc(100% - 72px); }' })
