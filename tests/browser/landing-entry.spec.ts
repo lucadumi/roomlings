@@ -3,6 +3,7 @@ import { accountState, browserAccountRequest, expect, test } from './account-fix
 import type { AccountHarness } from './account-fixtures.ts'
 import { roomPath, samplePath } from '../../src/roomNavigation.ts'
 import { openGroceryForm } from './fixtures.ts'
+import { accountInvitationResultSchema, accountStateSchema } from '../../shared/accounts.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -245,4 +246,38 @@ test('unimplemented rooms do not create samples or show placeholder controls', a
   await expect(page.getByRole('alert')).toContainText('That room is not available')
   await expect(page.locator('.game-house')).toHaveCount(0)
   expect(requests).toEqual([])
+})
+
+test('a second invitation opened after returning home uses the current link, not the previous invitation', async ({ page, accounts }) => {
+  const firstHome = (await signedInVisitor(page, accounts)).session
+  if (!firstHome) throw new Error('The first household was not created.')
+  const firstResult = await browserAccountRequest(page, `/account/households/${firstHome.household.id}/invitations`, {
+    version: firstHome.household.version,
+  })
+  expect(firstResult.status).toBe(201)
+  const first = accountInvitationResultSchema.parse(firstResult.body)
+  const created = await browserAccountRequest(page, '/account/households', {
+    name: 'The second invitation home', memberName: 'Robin', currency: 'EUR', budget: 45000,
+  })
+  expect(created.status).toBe(201)
+  const secondHome = accountStateSchema.parse(created.body).session
+  if (!secondHome) throw new Error('The second household was not created.')
+  const secondResult = await browserAccountRequest(page, `/account/households/${secondHome.household.id}/invitations`, {
+    version: secondHome.household.version,
+  })
+  expect(secondResult.status).toBe(201)
+  const second = accountInvitationResultSchema.parse(secondResult.body)
+
+  await page.evaluate((code) => { location.hash = `account-invite=${code}` }, first.code)
+  await expect(page.getByLabel('Account invitation link or code', { exact: true })).toHaveValue(first.code)
+  await page.goBack()
+  await expect(page.locator('.welcome-hero')).toBeVisible()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.evaluate((code) => { location.hash = `account-invite=${code}` }, second.code)
+  await expect(page.getByLabel('Account invitation link or code', { exact: true })).toHaveValue(second.code)
+  const accepted = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/account/invitations/accept')
+  await page.getByRole('button', { name: 'Accept kitchen invitation', exact: true }).click()
+  expect((await accepted).postDataJSON()).toMatchObject({ code: second.code })
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
+  expect((await accountState(page)).session?.household.id).toBe(secondHome.household.id)
 })
