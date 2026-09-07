@@ -5,6 +5,8 @@
   --quiet-ink: #667459;
   --room-ink: #35472e;
   background: #eeedde;
+  background-image: var(--paper-texture);
+  background-size: var(--paper-texture-size);
   min-height: 100dvh;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -40,10 +42,9 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background-image: radial-gradient(#98a087 0.65px, transparent 0.65px);
-  background-size: 12px 12px;
-  opacity: 0.18;
-  mask-image: linear-gradient(#000, transparent 25%, transparent 70%, #000);
+  background-image: var(--paper-texture);
+  background-size: var(--paper-texture-size);
+  opacity: 1;
   pointer-events: none;
 }
 .game-hud {
