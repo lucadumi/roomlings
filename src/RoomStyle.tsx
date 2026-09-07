@@ -32,6 +32,9 @@ export function RoomStyleForm({ current, busy, error, onSubmit, onClose }: {
               <span style={{ backgroundColor: preset.colors.wall }} />
               <span style={{ backgroundImage: `repeating-conic-gradient(${preset.colors.floor} 0% 25%, ${preset.colors.floorAlternate} 0% 50%)` }} />
               <span style={{ backgroundColor: preset.colors.fridgeDoor }} />
+              <span style={{ backgroundColor: preset.colors.cabinetPanel }} />
+              <span style={{ backgroundColor: preset.colors.counter }} />
+              <span style={{ backgroundColor: preset.colors.lightWood }} />
             </span>
             <span className="room-style-description" id={`${id}-${style}`}>{preset.description}</span>
           </label>

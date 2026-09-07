@@ -13,6 +13,33 @@ async function openPicker(page: Page) {
   return picker
 }
 
+async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
+  return page.evaluate(async (frames) => {
+    const pixels: Uint8ClampedArray[] = []
+    for (const frame of frames) {
+      const image = new Image()
+      image.src = `data:image/png;base64,${frame}`
+      await image.decode()
+      const canvas = new OffscreenCanvas(image.width, image.height)
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('The room screenshots could not be compared.')
+      context.drawImage(image, 0, 0)
+      pixels.push(context.getImageData(0, 0, image.width, image.height).data)
+    }
+    if (pixels[0].length !== pixels[1].length) throw new Error('Room screenshots have different dimensions.')
+    let changed = 0
+    for (let i = 0; i < pixels[0].length; i += 4) {
+      const difference = Math.max(
+        Math.abs(pixels[0][i] - pixels[1][i]),
+        Math.abs(pixels[0][i + 1] - pixels[1][i + 1]),
+        Math.abs(pixels[0][i + 2] - pixels[1][i + 2]),
+      )
+      if (difference >= 30) changed++
+    }
+    return changed / (pixels[0].length / 4)
+  }, [before.toString('base64'), after.toString('base64')])
+}
+
 test('presets require confirmation and sync to another roommate without WebGL', async ({ page, browser, request, baseURL }) => {
   const owner = await createHousehold(request, 'A room of our own', 'Rowan')
   const joined = await request.post('/api/join', { data: { inviteCode: owner.household.inviteCode, name: 'Alex' } })
@@ -202,6 +229,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
       expect(image.equals(original)).toBe(true)
     } else {
       for (const previous of seen) expect(image.equals(previous)).toBe(false)
+      expect(await strongColorChange(page, original, image), `${name} should strongly recolor at least 30% of the room view`).toBeGreaterThanOrEqual(0.3)
       seen.push(image)
     }
   }

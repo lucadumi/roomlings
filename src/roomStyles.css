@@ -11,7 +11,7 @@
 .room-style-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; font-size: 13px; }
 .room-style-heading strong { font-weight: 600; }
 .room-style-heading small { font-size: 10px; color: var(--muted); }
-.room-style-swatches { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 30px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 5px; }
+.room-style-swatches { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); height: 30px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 5px; }
 .room-style-swatches > span { background-size: 16px 16px; }
 .room-style-description { grid-column: 1 / -1; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 .room-style-actions .primary { flex: 1; }
