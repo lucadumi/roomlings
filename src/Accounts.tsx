@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Home, KeyRound, LoaderCircle, LogOut, Mail, Plus, RefreshCw, Users } from 'lucide-react'
+import { Check, Home, KeyRound, LogOut, Mail, Plus, RefreshCw, Users } from 'lucide-react'
 import { z } from 'zod'
 import {
   acceptAccountInvitationSchema, accountInvitationResultSchema, accountStateSchema,
@@ -12,6 +12,7 @@ import { nameSchema } from '../shared/domain.ts'
 import { getAccountState, request, RequestError } from './api.ts'
 import type { SavedKitchen } from './api.ts'
 import { CopyField, Form, Modal } from './components.tsx'
+import { LoadingIcon } from './Branding.tsx'
 import { CreateKitchenForm } from './CreateKitchenForm.tsx'
 import './access.css'
 
@@ -237,7 +238,7 @@ export function AccountDialog({
     <div className="access-content" ref={content}>
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p className="access-notice" role="status">{notice}</p>}
-      {loading && <p className="inline"><LoaderCircle size={17} className="spin" />Loading account access...</p>}
+      {loading && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Loading account access...</p>}
       {!loading && !state && !pendingDeletion && <button className="button secondary full" onClick={() => { setError(''); setRefreshId((value) => value + 1) }}>Try again</button>}
       {pendingDeletion && <>
         <p className="field-hint">Account access is disabled while deletion finishes. The server retries automatically at startup and every minute. This is not a completed deletion yet.</p>
@@ -475,7 +476,7 @@ function EmailSignIn({ busy, initialEmail, initialName, fixedEmail = false, onSe
       <p className="field-hint">The display name is used when creating a new account. Signing into an existing account keeps its saved name.</p>
     </>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="button primary full" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Mail size={17} />}{sent ? 'Verify and sign in' : 'Send sign-in code'}</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Mail size={17} />}{sent ? 'Verify and sign in' : 'Send sign-in code'}</button>
     {sent && <div className="button-row">
       {!fixedEmail && <button type="button" className="text-button" disabled={busy} onClick={() => { setSent(false); setCode(''); setError('') }}>Use another email</button>}
       <button type="button" className="text-button" disabled={busy} onClick={() => { void onSend(email) }}>Send another code</button>

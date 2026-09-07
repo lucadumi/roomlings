@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
+import { SceneLoading } from './Branding.tsx'
 import '@fontsource-variable/dm-sans'
 import '@fontsource-variable/fraunces'
 import '@fontsource-variable/fraunces/wght-italic.css'
@@ -11,5 +12,5 @@ const Entry = /^\/welcome\/?$/.test(location.pathname)
   : lazy(() => import('./App.tsx').then(({ App }) => ({ default: App })))
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><Suspense fallback={<div className="scene-loading" role="status">Putting the kettle on...</div>}><Entry /></Suspense></React.StrictMode>,
+  <React.StrictMode><Suspense fallback={<SceneLoading />}><Entry /></Suspense></React.StrictMode>,
 )

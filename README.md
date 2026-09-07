@@ -29,4 +29,5 @@ Restart `preview:local` after server, schema or `.env` changes. Browser tests ne
 - [Using Roomlings](docs/usage.md)
 - [Accounts and email setup](docs/accounts.md)
 - [Storage, migration and deployment](docs/storage.md)
+- [Branding, logo sources and the 2D loader](docs/branding.md)
 - [Contributor rules](AGENTS.md)

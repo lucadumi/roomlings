@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Check, History, LoaderCircle, Pencil, Plus, ReceiptText, ShoppingBasket, Trash2, UserCheck } from 'lucide-react'
+import { Check, History, Pencil, Plus, ReceiptText, ShoppingBasket, Trash2, UserCheck } from 'lucide-react'
 import {
   localDate, money, shoppingCheckoutSchema, shoppingItemEditSchema, shoppingItemInputSchema, shoppingItemLimit,
 } from '../shared/domain.ts'
 import type { Household, ShoppingItem } from '../shared/domain.ts'
 import { canEditShoppingItem, checkoutItems, inBasket } from '../shared/shopping.ts'
 import { Form } from './components.tsx'
+import { LoadingIcon } from './Branding.tsx'
 import { ExpenseForm } from './ExpenseForm.tsx'
 import { dateTitle } from './format.ts'
 import './shopping.css'
@@ -31,7 +32,7 @@ export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, 
       <button type="button" aria-pressed={view === 'basket'} disabled={busy} onClick={() => onView('basket')}>Basket <span>{basket.length}</span></button>
       <button type="button" aria-pressed={view === 'history'} disabled={busy} onClick={() => onView('history')}>Past runs</button>
     </nav>
-    {busy && <p className="inline shopping-saving" role="status"><LoaderCircle className="spin" size={15} />Saving the list...</p>}
+    {busy && <p className="inline shopping-saving loading-status" role="status"><LoadingIcon size={20} />Saving the list...</p>}
     {view !== 'history' && <>
       <div className="shopping-toolbar">
         {view === 'list' ? <button className="button primary small-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit} onClick={onAdd}><Plus size={15} />Add item</button>
@@ -114,7 +115,7 @@ export function ShoppingItemForm({ household, memberId, item, busy, error, onSub
       </div>
     </div>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
+    <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
   </Form>
 }
 

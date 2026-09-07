@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Check, KeyRound, LoaderCircle, LogOut, RefreshCw } from 'lucide-react'
+import { Check, KeyRound, LogOut, RefreshCw } from 'lucide-react'
 import { accessStateSchema, deviceNameInputSchema, recoverInputSchema, recoveryRotationSchema } from '../shared/access.ts'
 import type { AccessState, Device } from '../shared/access.ts'
 import { request, RequestError } from './api.ts'
 import { CopyField, Form, Modal } from './components.tsx'
+import { LoadingIcon } from './Branding.tsx'
 import './access.css'
 
 function currentDevice(access: AccessState): Device {
@@ -134,7 +135,7 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
     <div className="access-content" ref={content}>
       {error && <p className="form-error" role="alert">{error}</p>}
       {notice && <p className="access-notice" role="status">{notice}</p>}
-      {loading && !access && <p className="inline"><LoaderCircle className="spin" size={17} />Loading browser access...</p>}
+      {loading && !access && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Loading browser access...</p>}
       {!loading && !access && <button className="button secondary full" onClick={() => { setError(''); setRefreshId((value) => value + 1) }}>Try again</button>}
       {mode === 'code' && secret && <>
         <p className="field-hint">Anyone with this code can return as you. Save it in a password manager. It stays valid until you replace it, but it is only displayed here now.</p>
@@ -165,7 +166,7 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
           }}><KeyRound size={16} />{access.recovery.enabled ? 'Replace recovery code' : 'Generate recovery code'}</button>
         </section>
         <section className="access-section">
-          <div className="access-heading"><h3>Signed-in browsers</h3><button className="icon-button control-surface" aria-label="Refresh browser sessions" disabled={busy || loading} onClick={() => { setError(''); setNotice(''); setRefreshId((value) => value + 1) }}><RefreshCw size={16} className={loading ? 'spin' : undefined} /></button></div>
+          <div className="access-heading"><h3>Signed-in browsers</h3><button className="icon-button control-surface" aria-label="Refresh browser sessions" disabled={busy || loading} onClick={() => { setError(''); setNotice(''); setRefreshId((value) => value + 1) }}>{loading ? <LoadingIcon size={16} /> : <RefreshCw size={16} />}</button></div>
           <ul className="device-list">
             {access.devices.map((device) => <li key={device.id} className="device-row">
               <div><strong>{device.label}</strong>{device.current && <span className="device-current">This browser</span>}<small>Last active: {activityTime(device.lastUsedAt)}</small><small>Added: {activityTime(device.createdAt)}</small></div>
@@ -195,6 +196,6 @@ export function RecoveryForm({ busy, error, onSubmit }: {
     <label className="field">Name this browser<input required maxLength={50} value={label} onChange={(event) => setLabel(event.target.value)} disabled={busy} autoComplete="off" /></label>
     <p className="field-hint">Use the private code saved from your original roommate profile. It is not a kitchen invitation.</p>
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <KeyRound size={17} />}{busy ? 'Restoring access...' : 'Recover my access'}</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size={17} />}{busy ? 'Restoring access...' : 'Recover my access'}</button>
   </Form>
 }

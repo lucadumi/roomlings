@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Download, LoaderCircle, Pause, Pencil, Play, Plus, ReceiptText, Undo2 } from 'lucide-react'
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Download, Pause, Pencil, Play, Plus, ReceiptText, Undo2 } from 'lucide-react'
 import { billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate, money, parseMoney } from '../shared/domain.ts'
 import type { Bill, Expense, Household } from '../shared/domain.ts'
 import { addMonths, earlierOverdueBills, latestBillRevision, monthlyBills } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
 import { Form, SplitParticipants } from './components.tsx'
+import { LoadingIcon } from './Branding.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import './bills.css'
 
@@ -122,7 +123,7 @@ export function BillForm({ household, bill, busy, error, onSubmit }: {
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
     {bill && <p className="field-hint">Changes apply from {monthTitle(appliesFrom)}. Earlier months and recorded payments keep their original details.</p>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={busy}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}{bill ? 'Save monthly bill' : 'Create monthly bill'}</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{bill ? 'Save monthly bill' : 'Create monthly bill'}</button>
   </Form>
 }
 
@@ -158,7 +159,7 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={disabled} />
     {participants.some((id) => household.members.some((member) => member.id === id && member.inactive)) && <p className="field-hint">This schedule includes a former roommate. New payment records require active participants; review the split before recording a payment. Existing ledger entries are unchanged.</p>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={disabled}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}Record bill payment</button>
+    <button className="button primary full" disabled={disabled}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}Record bill payment</button>
     <p className="form-footnote">One expense for this bill and month. No money is transferred.</p>
   </Form>
 }

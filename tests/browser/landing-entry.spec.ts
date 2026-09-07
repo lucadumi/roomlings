@@ -116,7 +116,7 @@ test('returning through the landing uses a signed-in account when an older brows
   await page.locator('.welcome-hero').getByRole('link', { name: 'Explore the kitchen', exact: true }).click()
   await expect(page.locator('.game-house')).toContainText('The signed-in home')
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await expect(page.getByRole('status')).toContainText('signed-in account')
+  await expect(page.locator('.toast[role="status"]')).toContainText('signed-in account')
   expect((await accountState(page)).session?.household).toEqual(before.session?.household)
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(staleToken)
   expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')

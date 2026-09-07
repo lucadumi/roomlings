@@ -51,9 +51,6 @@ em { font-weight: inherit; }
 .app-shell { display: flex; min-height: 100vh; }
 .sidebar { width: 228px; min-width: 228px; background: #f2f2e9; border-right: 1px solid #e2e4d9; padding: 32px 20px 18px; height: 100vh; position: sticky; top: 0; display: flex; flex-direction: column; }
 .brand { padding: 0; background: none; display: flex; align-items: center; font-size: 28px; font-weight: 650; letter-spacing: -1.5px; gap: 9px; line-height: 1; }
-.brand-period { color: var(--red); margin-left: -9px; }
-.brand-mark { height: 32px; width: 28px; background: var(--red); color: #fff5df; border-radius: 7px 7px 6px 6px; display: inline-flex; align-items: center; justify-content: center; transform: rotate(-5deg); }
-.brand-mark::after { content: ''; width: 19px; height: 1px; background: #ee967c; position: absolute; bottom: 9px; }
 .sidebar-house { margin: 40px -4px 30px; padding: 13px 10px; display: flex; gap: 10px; align-items: center; border: 1px solid #dddfd1; border-radius: 8px; background: #f8f8f1; }
 .house-stamp { width: 31px; height: 32px; display: flex; align-items: center; justify-content: center; background: #e9edde; border-radius: 6px; color: #6c7d5d; flex-shrink: 0; }
 .sidebar-house > div { min-width: 0; flex: 1; }
@@ -441,8 +438,6 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 @media (max-width: 950px) {
   .sidebar { width: 74px; min-width: 74px; padding: 26px 12px 15px; align-items: center; }
   .brand { font-size: 0; gap: 0; }
-  .brand-mark { width: 32px; height: 35px; }
-  .brand-period { display: none; }
   .sidebar-house, .nav-label, .sidebar-note, .invite-sidebar, .profile > span:not(.avatar), .profile > svg { display: none; }
   .sidebar nav { margin-top: 44px; gap: 13px; width: 100%; }
   .nav-item { justify-content: center; padding: 0; }
@@ -635,7 +630,6 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
   .modal .button { font-size: 12px; min-height: 44px; }
   .toast { bottom: 76px; font-size: 10px; width: calc(100vw - 30px); }
   .welcome-screen > .brand { font-size: 29px; gap: 9px; }
-  .welcome-screen > .brand > .brand-period { display: block; }
   .welcome-content { margin-top: 20vh; }
   .welcome-content h1 { font-size: 53px; }
   .welcome-content .button-row { flex-wrap: wrap; }
