@@ -17,6 +17,8 @@ test('every supported room preset has distinct finishes and Original keeps the e
   assert.deepEqual(roomPresets.original.colors, {
     wall: '#efe3c8', trim: '#ded0b0', floor: '#e4e7d9', floorAlternate: '#d3dcc6',
     fridge: '#9eb399', fridgeDoor: '#b1c4a7', fridgeEdge: '#8b9d82',
+    cabinet: '#879f91', cabinetPanel: '#94ac9b', counter: '#f1e9d7',
+    wood: '#bb895c', lightWood: '#d7ad78', woodGrain: '#c69c6b',
   })
 })
 
@@ -43,8 +45,9 @@ test('room finishes update batched material references without rebuilding or rec
     },
   }
   const scenery = buildRoom(room, shapes, 'linen')
-  assert.equal(scenery.styleMaterials.wall.color.getHexString(), roomPresets.linen.colors.wall.slice(1))
-  assert.equal(scenery.styleMaterials.floor.color.getHexString(), roomPresets.linen.colors.floor.slice(1))
+  for (const surface of ['wall', 'floor', 'cabinet', 'cabinetPanel', 'counter', 'wood', 'lightWood', 'woodGrain'] as const) {
+    assert.equal(scenery.styleMaterials[surface].color.getHexString(), roomPresets.linen.colors[surface].slice(1))
+  }
   const finishes = {
     ...scenery.styleMaterials,
     fridge: shapes.material(roomPresets.original.colors.fridge, 0.6),
@@ -53,6 +56,7 @@ test('room finishes update batched material references without rebuilding or rec
   }
   const unchanged = materials.filter((material) => !Object.values(finishes).includes(material))
     .map((material) => ({ material, color: material.color.getHexString() }))
+  assert.deepEqual(Object.keys(finishes).sort(), Object.keys(roomPresets.original.colors).sort())
   const preserved = new Set([...scenery.coins, ...scenery.receipts, ...scenery.steam, scenery.kettleLid])
   batchStaticMeshes(room, preserved)
   const children = [...room.children]
@@ -62,7 +66,10 @@ test('room finishes update batched material references without rebuilding or rec
   const geometry = floor.geometry
   for (const style of styles) {
     applyRoomStyle(finishes, style)
-    for (const surface of ['wall', 'trim', 'floor', 'floorAlternate', 'fridge', 'fridgeDoor', 'fridgeEdge'] as const) {
+    for (const surface of [
+      'wall', 'trim', 'floor', 'floorAlternate', 'fridge', 'fridgeDoor', 'fridgeEdge',
+      'cabinet', 'cabinetPanel', 'counter', 'wood', 'lightWood', 'woodGrain',
+    ] as const) {
       assert.equal(finishes[surface].color.getHexString(), roomPresets[style].colors[surface].slice(1))
       assert.equal(finishes[surface].flatShading, true)
     }

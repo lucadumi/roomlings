@@ -32,12 +32,14 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   const plaster = material(palette.wall)
   const wallTrim = material(palette.trim)
   const trim = material('#ded0b0')
-  const wood = material('#bb895c', 0.82)
-  const lightWood = material('#d7ad78', 0.78)
-  const woodGrain = material('#c69c6b', 0.84)
-  const teal = material('#879f91', 0.64)
-  const cabinetPanel = material('#94ac9b', 0.64)
-  const counter = material('#f1e9d7', 0.7)
+  const wood = material(palette.wood, 0.82)
+  const lightWood = material(palette.lightWood, 0.78)
+  const woodGrain = material(palette.woodGrain, 0.84)
+  const cabinet = material(palette.cabinet, 0.64)
+  const cabinetPanel = material(palette.cabinetPanel, 0.64)
+  const counter = material(palette.counter, 0.7)
+  const bagPaper = material(roomPresets.original.colors.lightWood, 0.78)
+  const brown = material(roomPresets.original.colors.wood, 0.82)
   const ink = material('#5f6857')
   const paper = material('#fff5df', 0.98)
   const tomato = material('#c7593d', 0.6)
@@ -98,12 +100,12 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   cupboard.position.set(2.05, 0, -2.56)
   room.add(cupboard)
   contacts.push({ position: [2.05, 0.007, -2.56], size: [5.1, 1.65] })
-  box(cupboard, [4.77, 1.48, 1.18], [0, 0.85, 0], teal, 0.045)
+  box(cupboard, [4.77, 1.48, 1.18], [0, 0.85, 0], cabinet, 0.045)
   box(cupboard, [4.88, 0.15, 1.31], [0, 1.66, 0.015], counter, 0.035)
   box(cupboard, [4.6, 0.17, 0.98], [0, 0.15, -0.02], ink)
   for (let i = 0; i < 5; i++) {
     const x = -1.87 + i * 0.935
-    box(cupboard, [0.885, 1.28, 0.065], [x, 0.88, 0.61], teal, 0.025)
+    box(cupboard, [0.885, 1.28, 0.065], [x, 0.88, 0.61], cabinet, 0.025)
     box(cupboard, [0.735, 1.08, 0.012], [x, 0.86, 0.65], cabinetPanel, 0.006)
     box(cupboard, [0.24, 0.04, 0.08], [x, 1.31, 0.68], handles, 0.014)
   }
@@ -197,7 +199,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   }
   for (const [x, z] of [[0.6, 2.76], [2.95, 1.26]]) {
     cylinder(room, 0.38, 0.045, [x, 0.765, z], wood)
-    cylinder(room, 0.41, 0.12, [x, 0.84, z], teal)
+    cylinder(room, 0.41, 0.12, [x, 0.84, z], cabinet)
     contacts.push({ position: [x, 0.042, z], size: [1.05, 0.9] })
     for (let i = 0; i < 3; i++) {
       const angle = (i / 3) * Math.PI * 2
@@ -208,10 +210,10 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   }
 
   const bag = actor('stock', [-0.4, 1.51, 1.1])
-  box(bag, [0.74, 0.72, 0.51], [0, 0.36, 0], lightWood, 0.035)
-  box(bag, [0.62, 0.03, 0.4], [0, 0.73, 0], wood)
+  box(bag, [0.74, 0.72, 0.51], [0, 0.36, 0], bagPaper, 0.035)
+  box(bag, [0.62, 0.03, 0.4], [0, 0.73, 0], brown)
   for (const z of [-0.19, 0.2]) {
-    const handle = new Mesh(new TorusGeometry(0.2, 0.027, 4, 9, Math.PI), wood)
+    const handle = new Mesh(new TorusGeometry(0.2, 0.027, 4, 9, Math.PI), brown)
     handle.position.set(0, 0.77, z)
     handle.castShadow = true
     handle.receiveShadow = true
@@ -240,7 +242,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     return sheet
   })
   const receiptLines = new Group()
-  for (let i = 0; i < 5; i++) box(receiptLines, [i === 4 ? 0.2 : 0.47, 0.005, 0.017], [i === 4 ? 0.13 : 0, 0, -0.2 + i * 0.11], wood)
+  for (let i = 0; i < 5; i++) box(receiptLines, [i === 4 ? 0.2 : 0.47, 0.005, 0.017], [i === 4 ? 0.13 : 0, 0, -0.2 + i * 0.11], brown)
   receiptBook.add(receiptLines)
 
   const envelope = actor('settle', [2.05, 1.51, 0.88])
@@ -257,7 +259,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     contacts.push({ position: [position[0], position[1] - 0.012, position[2]], size: [0.85 * scale, 0.85 * scale] })
     cylinder(pot, 0.24, 0.5, [0, 0.25, 0], terracotta, 0.32)
     cylinder(pot, 0.31, 0.06, [0, 0.51, 0], terracotta)
-    cylinder(pot, 0.28, 0.03, [0, 0.545, 0], wood)
+    cylinder(pot, 0.28, 0.03, [0, 0.545, 0], brown)
     const branches = new Group()
     branches.position.y = 0.56
     for (let i = 0; i < 6; i++) {
@@ -309,6 +311,9 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   clock.add(hourHand, minuteHand)
   room.add(clock)
 
-  const styleMaterials = { wall: plaster, trim: wallTrim, floor: tile, floorAlternate: tileAlternate }
+  const styleMaterials = {
+    wall: plaster, trim: wallTrim, floor: tile, floorAlternate: tileAlternate,
+    cabinet, cabinetPanel, counter, wood, lightWood, woodGrain,
+  }
   return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts, styleMaterials }
 }
