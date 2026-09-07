@@ -40,7 +40,7 @@ test('the landing carries a new account through sign-in, kitchen creation, retur
   const demos: string[] = []
   page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/demo') demos.push(request.url()) })
   await page.goto('/')
-  const start = page.getByRole('link', { name: 'Make yourself at home', exact: true })
+  const start = page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })
   await start.click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email address', { exact: true }).fill('landing@example.com')

@@ -8,11 +8,11 @@ import type { TourStatus } from './TourScene.tsx'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
 const chapters = [
-  { icon: Home, title: 'Everything has a place.', copy: 'A shared kitchen for your shared costs. The objects open the tools you actually use, from the shopping bag to the receipt book.' },
-  { icon: ShoppingBasket, title: 'From list to fridge.', copy: 'Claim the things you are picking up. Save the paid receipt and your groceries appear on the shelf. One run, fairly shared.' },
-  { icon: ReceiptText, title: 'The little things. The monthly things.', copy: 'Groceries and recurring bills live in one receipt book, with who paid and who shares each cost kept together.' },
-  { icon: Wallet, title: 'Know what is left.', copy: 'Your house pot shows the monthly grocery budget. Household bills share the ledger, without dipping into that grocery pot.' },
-  { icon: CheckCheck, title: 'Keep it even. Keep it friendly.', copy: 'Record repayments after paying your roommates. Everyone sees the same balances, down to the last cent.' },
+  { icon: Home, title: 'The kitchen', copy: 'Open the shopping list, receipts and budget through objects in the room.' },
+  { icon: ShoppingBasket, title: 'Groceries', copy: 'Claim items from the shopping list. Record a paid run to add it to the ledger and stock the fridge.' },
+  { icon: ReceiptText, title: 'Bills and receipts', copy: 'Keep grocery receipts and recurring household bills together, with the payer and shares recorded.' },
+  { icon: Wallet, title: 'Monthly budget', copy: 'The house pot shows the grocery budget left this month. Bills are tracked separately from this pot.' },
+  { icon: CheckCheck, title: 'Repayments', copy: 'Pay your roommate, then record the repayment to update the shared balances.' },
 ]
 
 class TourBoundary extends Component<{ children: ReactNode; onFailure: () => void }, { failed: boolean }> {
@@ -124,7 +124,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
 
   return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title" data-scene={status} data-chapter={tourChapters[active].id}>
     <div className="welcome-section-heading">
-      <div><span className="welcome-eyebrow">FAMILIAR THINGS. A FRESH WAY TO SHARE.</span><h2 id="tour-title">A little look inside.</h2></div>
+      <h2 id="tour-title">Inside the kitchen</h2>
       <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
     </div>
     <div className="welcome-tour-track" ref={track}>
@@ -138,14 +138,13 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
             </TourBoundary>}
           </div>
           <div className="welcome-tour-description">
-            <span className="welcome-eyebrow">A ROOM THAT WORKS FOR YOU <span>{String(active + 1).padStart(2, '0')} / 05</span></span>
             <div className="welcome-tour-details" id="tour-details">
               {chapters.map(({ title, copy }, index) => <div className="welcome-tour-copy" key={title} aria-hidden={active !== index} data-active={active === index}>
                 <h3>{title}</h3><p>{copy}</p>
               </div>)}
             </div>
             <a className="welcome-text-link" href="/kitchen">Explore the kitchen <ArrowRight size={16} /></a>
-            <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll a little, or choose an object below.</p>
+            <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll or choose an object.</p>
           </div>
         </div>
         <div className="welcome-tour-controls">

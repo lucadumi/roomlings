@@ -52,14 +52,31 @@ test('the public welcome page explains the product without opening or changing a
   await expect(page.locator('.welcome-home-illustration')).toBeVisible()
   await expect(page.getByText('A place for everyone.', { exact: true })).toHaveCount(0)
   await expect(page.locator('.welcome-house-note, .welcome-feature-grid')).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Make yourself at home', exact: true })).toHaveAttribute('href', '/#account=create')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveAttribute('href', '/#account=create')
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/#account')
   await page.getByText('Does Roomlings send money?', { exact: true }).click()
   await expect(page.locator('.welcome-faq details').first()).toHaveAttribute('open', '')
-  await expect(page.locator('.welcome-faq details').first()).toContainText('the app never moves money')
+  await expect(page.locator('.welcome-faq details').first()).toContainText('Roomlings never moves money')
   expect(requests).toEqual([])
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
   expect(errors).toEqual([])
+})
+
+test('the three steps stay compact and the landing avoids redundant promotional copy', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  for (const [width, height, maximum] of [[1440, 960, 700], [390, 844, 1050]]) {
+    await page.setViewportSize({ width, height })
+    await page.goto('/welcome')
+    await expect(page.locator('.welcome-feature')).toHaveCount(3)
+    await page.evaluate(() => document.fonts.ready)
+    const metrics = await page.locator('.welcome').evaluate((element) => ({
+      words: element.innerText.split(/\s+/).length,
+      steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
+    }))
+    expect(metrics.words).toBeLessThanOrEqual(230)
+    expect(metrics.steps).toBeLessThanOrEqual(maximum)
+    await expect(page.locator('.welcome-edition, .welcome-eyebrow, .welcome-interlude, .welcome-margin-mark, .welcome-signature')).toHaveCount(0)
+  }
 })
 
 test('the secondary kitchen tour uses less than one extra screen of native scrolling and reverses cleanly', { tag: '@room' }, async ({ page }) => {
@@ -86,7 +103,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   await page.mouse.wheel(0, 240)
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before + 100)
   await page.getByRole('link', { name: 'Skip the tour', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Before you come in.', exact: true })).toBeInViewport()
+  await expect(page.getByRole('heading', { name: 'Questions', exact: true })).toBeInViewport()
 })
 
 test('reduced motion removes the scroll runway and holds a stationary room while the object buttons work', { tag: '@room' }, async ({ page }) => {
@@ -101,7 +118,7 @@ test('reduced motion removes the scroll runway and holds a stationary room while
   const idle = await drawing()
   expect(idle.draws).toBeGreaterThan(0)
   await chooseChapter(page, 3)
-  await expect(page.getByRole('heading', { name: 'Know what is left.', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Monthly budget', exact: true })).toBeVisible()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   expect(await drawing()).toEqual(idle)
   await page.getByRole('button', { name: 'Reduced motion', exact: true }).click()
@@ -117,7 +134,8 @@ test('the tour stops drawing off screen instead of running behind the rest of th
   await page.goto('/welcome')
   await openTour(page)
   await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-rendering', 'active')
-  await page.locator('#get-started').scrollIntoViewIfNeeded()
+  await page.locator('.welcome-header').scrollIntoViewIfNeeded()
+  await expect(page.locator('.welcome-stage')).not.toBeInViewport()
   await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-rendering', 'paused')
   const idle = await drawing()
   await page.waitForTimeout(200)
@@ -179,7 +197,7 @@ test('WebGL startup failure keeps the illustration, object navigation and actual
   await expect(page.locator('.welcome-scene-status')).toContainText('3D is unavailable')
   await expect(page.locator('.welcome-static')).toBeVisible()
   await chooseChapter(page, 2)
-  await expect(page.getByRole('heading', { name: 'The little things. The monthly things.', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bills and receipts', exact: true })).toBeVisible()
   await page.locator('.welcome-tour').getByRole('link', { name: 'Explore the kitchen', exact: true }).click()
   await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
@@ -198,7 +216,7 @@ test('context loss restores the illustration without breaking the shorter tour',
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'unavailable')
   await chooseChapter(page, 1)
   await expect(page.locator('.welcome-static')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'From list to fridge.', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Groceries', exact: true })).toBeVisible()
 })
 
 test('the landing remains readable across phones, tablets, short landscapes and reserved scrollbar space', { tag: '@room' }, async ({ page }) => {
@@ -254,8 +272,8 @@ test('skip navigation, FAQ disclosures and tour controls work with a keyboard', 
   await page.keyboard.press('Enter')
   await expect(page.locator('#welcome-content')).toBeFocused()
   await page.keyboard.press('Tab')
-  await expect(page.getByRole('link', { name: 'Make yourself at home', exact: true })).toBeFocused()
-  await expect(page.getByRole('link', { name: 'Make yourself at home', exact: true })).toHaveCSS('outline-style', 'solid')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toBeFocused()
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveCSS('outline-style', 'solid')
   await openTour(page)
   const budget = page.getByRole('button', { name: 'Monthly budget', exact: true })
   await budget.focus()
