@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  kitchen:
-    name: Build and exercise the shared kitchen
+  checks:
+    name: Unit tests and production build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,12 +26,47 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - run: npm run build
+  browser:
+    name: Browser checks (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: household
+            args: --grep-invert @room
+          - suite: room-1
+            args: --grep @room --fully-parallel --shard=1/2
+          - suite: room-2
+            args: --grep @room --fully-parallel --shard=2/2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      - run: npm run test:browser -- ${{ matrix.args }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-failure-details
+          name: browser-failure-details-${{ matrix.suite }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+  kitchen:
+    name: Build and exercise the shared kitchen
+    if: ${{ always() }}
+    needs: [checks, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every check to pass
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          printf 'Unit/build: %s\nBrowser suites: %s\n' "$CHECKS_RESULT" "$BROWSER_RESULT"
+          test "$CHECKS_RESULT" = success && test "$BROWSER_RESULT" = success

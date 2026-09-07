@@ -315,10 +315,11 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 .modal h2 { font-size: 29px; margin: 12px 0 12px; letter-spacing: -1px; padding-right: 15px; }
 .modal-subtitle { color: #939d82; font-size: 11px; line-height: 1.8; margin-bottom: 26px; }
 .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; font-size: 10px; font-weight: 550; color: #7c886c; min-width: 0; }
-.field input, .field select { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #dfe5d2; background: #fefef9; border-radius: var(--control-radius); padding: 10px 12px; color: #5e704e; font-size: 13px; font-weight: 400; }
+.field input, .field select, .field textarea { width: 100%; min-width: 0; min-height: 44px; border: 1px solid #dfe5d2; background: #fefef9; border-radius: var(--control-radius); padding: 10px 12px; color: #5e704e; font-size: 13px; font-weight: 400; }
+.field textarea { resize: vertical; line-height: 1.6; }
 .field input::placeholder { color: #b0b8a0; font-size: 11px; }
-.field input:disabled, .field select:disabled { color: #9aab86; background: #eef2e5; }
-.field input:focus, .field select:focus { border-color: var(--focus-ring); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.field input:disabled, .field select:disabled, .field textarea:disabled { color: #9aab86; background: #eef2e5; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--focus-ring); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .field-hint { font-size: 10px; color: #9aa58c; line-height: 1.8; margin-top: 2px; margin-bottom: 24px; }
 .split-fieldset { padding: 0; border: 0; margin: 0 0 20px; }
@@ -627,7 +628,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
   .modal h2 { font-size: 26px; }
   .modal-subtitle { font-size: 11px; margin-bottom: 23px; }
   .field { font-size: 11px; margin-bottom: 17px; }
-  .field input, .field select { font-size: 16px; padding: 10px; }
+  .field input, .field select, .field textarea { font-size: 16px; padding: 10px; }
   .field input::placeholder { font-size: 12px; }
   .field-row { gap: 10px; }
   .field-row .field { font-size: 10px; }

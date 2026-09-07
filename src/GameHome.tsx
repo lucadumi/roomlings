@@ -85,7 +85,7 @@ export function GameHome({
       <nav className="game-dock" aria-label="Kitchen tools">
         <button className="dock-tool" onClick={() => onAction('ledger')} aria-label="Grocery runs" aria-pressed={activeTool === 'ledger'}><ReceiptText size={21} /><span>Receipts</span></button>
         <button className="dock-tool" onClick={() => onAction('budget')} aria-label="Monthly budget" aria-pressed={activeTool === 'budget'}><Coins size={21} /><span>House pot</span></button>
-        <button className="stock-button" onClick={() => onAction('stock')} aria-label="Stock the fridge, add a grocery run" aria-haspopup="dialog"><span><Plus size={23} /></span><span>Stock the fridge<small>Add a grocery run</small></span></button>
+        <button className="stock-button" onClick={() => onAction('stock')} aria-label="Shopping bag, plan and record groceries" aria-pressed={activeTool === 'stock'}><span><Plus size={23} /></span><span>Shopping bag<small>Plan and record groceries</small></span></button>
         <button className="dock-tool" onClick={() => onAction('settle')} aria-label="Settle up" aria-pressed={activeTool === 'settle'}><Wallet size={21} /><span>Settle up</span>{transferCount > 0 && <i className="tool-count">{transferCount}</i>}</button>
         <button className="dock-tool" onClick={() => onAction('roommates')} aria-label="The roommates" aria-pressed={activeTool === 'roommates'}><Users size={21} /><span>People</span></button>
       </nav>

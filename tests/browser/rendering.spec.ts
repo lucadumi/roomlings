@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { trackDrawing } from './fixtures.ts'
 
-test('the full-size kitchen stays within its static-geometry draw-call budget', async ({ page }) => {
+test('the full-size kitchen stays within its static-geometry draw-call budget', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await trackDrawing(page)
   await page.goto('/')
@@ -25,7 +25,7 @@ test('the full-size kitchen stays within its static-geometry draw-call budget', 
   expect(Math.max(...draws)).toBeLessThanOrEqual(350)
 })
 
-test('reduced-motion rooms stop idle drawing and refresh cached shadows only when an object moves', async ({ page }) => {
+test('reduced-motion rooms stop idle drawing and refresh cached shadows only when an object moves', { tag: '@room' }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)

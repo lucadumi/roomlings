@@ -37,7 +37,37 @@ export const expenseInputSchema = z.object({
 const billPaymentReferenceSchema = z.object({ billId: id, month: monthSchema, dueDate: dateSchema })
   .refine((reference) => reference.dueDate.startsWith(`${reference.month}-`), 'The due date must belong to the billing month.')
 export const expenseSchema = expenseInputSchema.extend({
-  id, createdAt: z.string().datetime(), bill: billPaymentReferenceSchema.optional(),
+  id, createdAt: z.string().datetime(), bill: billPaymentReferenceSchema.optional(), shoppingRunId: id.optional(),
+})
+export const shoppingItemLimit = 200
+export const shoppingRunLimit = 20_000
+export const shoppingItemInputSchema = z.object({
+  name: nameSchema,
+  quantity: z.string().trim().min(1, 'Enter a quantity.').max(40).default('1'),
+  notes: z.string().trim().max(240).default(''),
+})
+export const shoppingItemVersionSchema = z.object({ itemVersion: z.number().int().nonnegative() })
+export const shoppingItemEditSchema = shoppingItemInputSchema.extend(shoppingItemVersionSchema.shape)
+export const shoppingClaimSchema = shoppingItemVersionSchema.extend({ claimed: z.boolean() })
+export const shoppingPickSchema = shoppingItemVersionSchema.extend({ pickedUp: z.boolean() })
+export const shoppingItemSnapshotSchema = shoppingItemInputSchema.extend({
+  id, createdBy: id, createdAt: z.string().datetime(),
+})
+export const shoppingItemSchema = shoppingItemSnapshotSchema.extend({
+  version: z.number().int().nonnegative(),
+  claimedBy: id.nullable(),
+  pickedUp: z.boolean(),
+  updatedAt: z.string().datetime(),
+}).refine((item) => !item.pickedUp || item.claimedBy !== null, 'An item in a basket must have a shopper.')
+export const shoppingRunSchema = z.object({
+  id, expenseId: id, name: expenseInputSchema.shape.description,
+  completedBy: id, completedAt: z.string().datetime(),
+  items: z.array(shoppingItemSnapshotSchema).min(1).max(shoppingItemLimit),
+})
+export const shoppingCheckoutSchema = expenseInputSchema.extend({
+  checkoutId: id,
+  items: z.array(z.object({ id, version: z.number().int().nonnegative() })).min(1, 'Choose at least one item.').max(shoppingItemLimit)
+    .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Choose each item only once.'),
 })
 export const billEditInputSchema = z.object({
   name: nameSchema, amount: centsSchema, dueDay: z.number().int().min(1).max(31), participants: participantsSchema,
@@ -92,6 +122,10 @@ export const householdSchema = z.object({
   settlements: z.array(settlementSchema),
   bills: z.array(billSchema).max(100).default(() => []),
   billingTimeZone: timeZoneSchema.default('UTC'),
+  shopping: z.object({
+    items: z.array(shoppingItemSchema).max(shoppingItemLimit),
+    runs: z.array(shoppingRunSchema).max(shoppingRunLimit),
+  }).default(() => ({ items: [], runs: [] })),
 }).superRefine((household, context) => {
   const bills = new Map(household.bills.map((bill) => [bill.id, bill]))
   const members = new Set(household.members.map((member) => member.id))
@@ -116,6 +150,40 @@ export const householdSchema = z.object({
     }
     payments.add(key)
   })
+  const items = new Set<string>()
+  household.shopping.items.forEach((item, index) => {
+    if (items.has(item.id) || !members.has(item.createdBy) || (item.claimedBy !== null && !members.has(item.claimedBy))) {
+      context.addIssue({ code: 'custom', message: 'Shopping items need unique identifiers and valid roommates.', path: ['shopping', 'items', index] })
+    }
+    items.add(item.id)
+  })
+  const runs = new Map(household.shopping.runs.map((run) => [run.id, run]))
+  const receipts = new Set<string>()
+  const expenses = new Map(household.expenses.map((expense) => [expense.id, expense]))
+  if (runs.size !== household.shopping.runs.length) {
+    context.addIssue({ code: 'custom', message: 'Shopping runs need unique identifiers.', path: ['shopping', 'runs'] })
+  }
+  household.shopping.runs.forEach((run, index) => {
+    const expense = expenses.get(run.expenseId)
+    if (!members.has(run.completedBy) || receipts.has(run.expenseId) || (expense && (expense.shoppingRunId !== run.id || expense.bill))) {
+      context.addIssue({ code: 'custom', message: 'A shopping run must have its own grocery receipt and a valid shopper.', path: ['shopping', 'runs', index] })
+    }
+    receipts.add(run.expenseId)
+    for (const item of run.items) {
+      if (items.has(item.id) || !members.has(item.createdBy)) {
+        context.addIssue({ code: 'custom', message: 'A shopping item can only be archived once.', path: ['shopping', 'runs', index, 'items'] })
+      }
+      items.add(item.id)
+    }
+  })
+  household.expenses.forEach((expense, index) => {
+    if (expense.shoppingRunId && (expense.bill || runs.get(expense.shoppingRunId)?.expenseId !== expense.id)) {
+      context.addIssue({ code: 'custom', message: 'A shopping receipt must reference its matching run.', path: ['expenses', index] })
+    }
+    if (expense.shoppingRunId && (!members.has(expense.paidBy) || expense.participants.some((participant) => !members.has(participant)))) {
+      context.addIssue({ code: 'custom', message: 'A shopping receipt references an unknown roommate.', path: ['expenses', index] })
+    }
+  })
 })
 
 export type Member = z.infer<typeof memberSchema>
@@ -128,6 +196,10 @@ export type BillRevision = z.infer<typeof billRevisionSchema>
 export type BillEditInput = z.infer<typeof billEditInputSchema>
 export type BillCreateInput = z.infer<typeof billCreateInputSchema>
 export type BillPaymentInput = z.infer<typeof billPaymentInputSchema>
+export type ShoppingItem = z.infer<typeof shoppingItemSchema>
+export type ShoppingItemInput = z.infer<typeof shoppingItemInputSchema>
+export type ShoppingRun = z.infer<typeof shoppingRunSchema>
+export type ShoppingCheckoutInput = z.infer<typeof shoppingCheckoutSchema>
 export type Transfer = Pick<Settlement, 'from' | 'to' | 'amount'>
 export type Session = { token: string; memberId: string; household: Household }
 

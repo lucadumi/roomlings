@@ -9,23 +9,29 @@ import {
   balances, billingDate, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
   money, monthlyGroceries, parseMoney, splitAmount, suggestedTransfers,
 } from '../shared/domain.ts'
-import type { Bill, Category, Expense, Household, Session, Settlement, Transfer } from '../shared/domain.ts'
+import type { Bill, Category, Expense, Household, Session, Settlement, ShoppingItem, Transfer } from '../shared/domain.ts'
 import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
+import { canEditShoppingItem, inBasket } from '../shared/shopping.ts'
 import { createDemo, getHousehold, readToken, rememberKitchen, request, RequestError, sessionSchema } from './api.ts'
 import type { SavedKitchen } from './api.ts'
-import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel, SplitParticipants } from './components.tsx'
+import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel } from './components.tsx'
 import { AccessDialog, RecoveryForm } from './Access.tsx'
 import { BillForm, BillPaymentForm, BillsPanel } from './Bills.tsx'
+import { ExpenseForm } from './ExpenseForm.tsx'
+import { ShoppingCheckoutForm, ShoppingItemForm, ShoppingPanel } from './Shopping.tsx'
+import type { ShoppingView } from './Shopping.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import { GameHome } from './GameHome.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
 
-type Page = 'overview' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
-type Dialog = 'expense' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'help'
+type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
+type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'help'
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
-  | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } } | null
+  | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } }
+  | { editShopping: ShoppingItem } | { removeShopping: string } | { releaseShopping: string }
+  | { checkout: { id: string; items: ShoppingItem[] } } | null
 const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ?? ''
 const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
 let initialSession: Promise<Session> | undefined
@@ -59,6 +65,7 @@ export function App() {
   const [notice, setNotice] = useState('')
   const [month, setMonth] = useState(localDate().slice(0, 7))
   const [billMonth, setBillMonth] = useState(localDate().slice(0, 7))
+  const [shoppingView, setShoppingView] = useState<ShoppingView>('list')
   const [filter, setFilter] = useState<Category | 'all'>('all')
   const [search, setSearch] = useState('')
   const [syncState, setSyncState] = useState<'saved' | 'offline'>('saved')
@@ -75,6 +82,7 @@ export function App() {
       sessionRef.current = next
       setSession(next)
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
+      setShoppingView('list')
       try { setSaved(rememberKitchen(next)) } catch {
         setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
       }
@@ -145,6 +153,7 @@ export function App() {
     history.replaceState(null, '', `${location.pathname}${location.search}`)
     setMonth(localDate().slice(0, 7))
     setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
+    setShoppingView('list')
     setFilter('all')
     setPage('overview')
     setDialog(null)
@@ -153,20 +162,21 @@ export function App() {
     setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
   }
 
-  const action = async (path: string, body: Record<string, unknown>, success: string, method?: string) => {
+  const action = async (path: string, body: Record<string, unknown>, success: string, method?: string, inline = false) => {
     if (!session || busy) return
     setBusy(true)
     setFormError('')
+    if (inline) setError('')
     try {
       const result = await request<{ household: unknown }>(path, { token: session.token, body: { ...body, version: session.household.version }, method })
       if (sessionRef.current?.token !== session.token) return
       const household = householdSchema.parse(result.household)
       setSession((previous) => previous?.token === session.token && household.version >= previous.household.version ? { ...previous, household } : previous)
       setNotice(success)
-      setDialog(null)
+      if (!inline) setDialog(null)
       setSyncState('saved')
       if (path === '/bills') setBillMonth(household.bills[0].startMonth)
-      if (path === '/expenses' && method !== 'DELETE') {
+      if ((path === '/expenses' || path === '/shopping/checkout') && method !== 'DELETE') {
         const added = household.expenses[0]
         setMonth(added.date.slice(0, 7))
         setStockEvent({ id: added.id, category: added.category })
@@ -179,7 +189,9 @@ export function App() {
         expireSession(session.token, failure.message)
         return
       }
-      setFormError(failure instanceof Error ? failure.message : 'The change could not be saved.')
+      const message = failure instanceof Error ? failure.message : 'The change could not be saved.'
+      if (inline) setError(message)
+      else setFormError(message)
       if (failure instanceof RequestError && failure.status === 409) await refresh()
     } finally {
       if (sessionRef.current?.token === session.token) setBusy(false)
@@ -191,15 +203,17 @@ export function App() {
   const memberName = (id: string) => household?.members.find((member) => member.id === id)?.name ?? 'Unknown roommate'
   const exportLedger = () => {
     if (!household) return
-    const rows: (string | number)[][] = [['Type', 'Date', 'Description', 'Amount', 'Currency', 'Paid by / From', 'Split with / To', 'Category', 'Billing month']]
+    const runs = new Map(household.shopping.runs.map((run) => [run.id, run]))
+    const rows: (string | number)[][] = [['Type', 'Date', 'Description', 'Amount', 'Currency', 'Paid by / From', 'Split with / To', 'Category', 'Billing month', 'Shopping items']]
     for (const expense of household.expenses) rows.push([
       expense.bill ? 'Bill' : 'Expense', expense.date, expense.description, (expense.amount / 100).toFixed(2), household.currency,
       memberName(expense.paidBy), expense.participants.map(memberName).join('; '), expense.bill ? 'Monthly bill' : categoryLabels[expense.category],
       expense.bill?.month ?? '',
+      expense.shoppingRunId ? runs.get(expense.shoppingRunId)?.items.map((item) => `${item.quantity} ${item.name}${item.notes ? ` (${item.notes})` : ''}`).join('; ') ?? '' : '',
     ])
     for (const settlement of household.settlements) rows.push([
       'Repayment', settlement.createdAt.slice(0, 10), 'Recorded repayment', (settlement.amount / 100).toFixed(2),
-      household.currency, memberName(settlement.from), memberName(settlement.to), '', '',
+      household.currency, memberName(settlement.from), memberName(settlement.to), '', '', '',
     ])
     const url = URL.createObjectURL(new Blob(['\uFEFF', rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }))
     const link = document.createElement('a')
@@ -248,11 +262,9 @@ export function App() {
   }
   const interact = (action: KitchenAction) => {
     setFocusRequest((previous) => ({ target: action, id: previous.id + 1 }))
-    if (action === 'stock') openDialog('expense')
-    else {
-      const pages: Record<Exclude<KitchenAction, 'stock'>, Page> = { ledger: 'groceries', budget: 'budget', roommates: 'kitchen', settle: 'settle' }
-      visit(pages[action])
-    }
+    if (action === 'stock') setShoppingView('list')
+    const pages: Record<KitchenAction, Page> = { stock: 'shopping', ledger: 'groceries', budget: 'budget', roommates: 'kitchen', settle: 'settle' }
+    visit(pages[action])
   }
 
   const renderDialog = () => {
@@ -262,7 +274,7 @@ export function App() {
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
       <div className="game-guide">
         <p><Snowflake size={19} /><span><strong>Peek in the fridge.</strong> Click a door to open it. Click a grocery to find the expenses on that shelf.</span></p>
-        <p><Plus size={19} /><span><strong>Unpack a grocery run.</strong> Click the shopping bag. Save an expense and watch the groceries fly into the fridge.</span></p>
+        <p><Plus size={19} /><span><strong>Plan a grocery run.</strong> The shopping bag holds the shared list and your basket. Record the paid receipt to archive its items and stock the fridge.</span></p>
         <p><ReceiptText size={19} /><span><strong>Keep the receipts.</strong> The book holds groceries and monthly bills. Record a bill only after someone has paid it.</span></p>
         <p><Wallet size={19} /><span><strong>Watch the house pot.</strong> The coins represent the monthly budget you have left, not points or rewards.</span></p>
         <p><Users size={19} /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
@@ -286,6 +298,33 @@ export function App() {
       onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session.token, message)} />
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
       <ExpenseForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/expenses', body, 'Fridge stocked. Groceries shared. All saved.') }} />
+    </Modal>
+    if (dialog === 'shopping-add') return <Modal title="Add to the shared list." subtitle="Tell your roommates what home needs. No expense is created yet." onClose={close} busy={busy}>
+      <ShoppingItemForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/shopping/items', body, 'Item added to the shared shopping list.') }} />
+    </Modal>
+    if (typeof dialog === 'object' && 'editShopping' in dialog) return <Modal title="Edit a shopping item." subtitle="Keep quantities and notes clear for whoever is buying it." onClose={close} busy={busy}>
+      <ShoppingItemForm household={household} memberId={session.memberId} item={dialog.editShopping} busy={busy} error={footerError} onSubmit={(body) => { void action(`/shopping/items/${dialog.editShopping.id}`, body, 'Shopping item updated.', 'PATCH') }} />
+    </Modal>
+    if (typeof dialog === 'object' && ('removeShopping' in dialog || 'releaseShopping' in dialog)) {
+      const release = 'releaseShopping' in dialog
+      const id = release ? dialog.releaseShopping : dialog.removeShopping
+      const item = household.shopping.items.find((item) => item.id === id)
+      const allowed = !!item && (release ? item.claimedBy !== null : canEditShoppingItem(item, session.memberId))
+      return <Modal title={release ? 'Release this shopping claim?' : 'Remove this shopping item?'}
+        subtitle={item ? `${item.quantity} ${item.name}. ${release ? 'This returns it to the shared list and clears its basket status. Coordinate with the shopper before buying it again.' : 'This only changes the list, not your ledger.'}` : 'This item is no longer on the list.'}
+        onClose={close} busy={busy}>
+        {!allowed ? <p className="form-error" role="alert">The item changed. Close this dialog and review its current status.</p> : footerError}
+        <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
+          {item && <button className="button primary" disabled={busy || !allowed} onClick={() => {
+            if (release) void action(`/shopping/items/${id}/claim`, { itemVersion: item.version, claimed: false }, 'Shopping claim released.')
+            else void action(`/shopping/items/${id}`, { itemVersion: item.version }, 'Item removed from the shopping list.', 'DELETE')
+          }}>{release ? 'Release claim' : 'Remove item'}</button>}
+        </div>
+      </Modal>
+    }
+    if (typeof dialog === 'object' && 'checkout' in dialog) return <Modal title="Finish this shopping run." subtitle="Confirm the actual total, payer and split. Nothing is archived until the receipt is saved." onClose={close} busy={busy}>
+      <ShoppingCheckoutForm household={household} memberId={session.memberId} checkoutId={dialog.checkout.id} initialItems={dialog.checkout.items} busy={busy} error={footerError}
+        onSubmit={(body) => { void action('/shopping/checkout', body, 'Shopping run saved. Items archived and the fridge stocked.') }} />
     </Modal>
     if (dialog === 'bill-create') return <Modal title="A regular part of home." subtitle="Add a monthly bill. Creating a schedule does not create a debt or move money." onClose={close} busy={busy}>
       <BillForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/bills', body, 'Monthly bill created. Record a payment when someone has paid it.') }} />
@@ -331,7 +370,7 @@ export function App() {
     }
     if (typeof dialog === 'object' && 'remove' in dialog) return <Modal title={dialog.remove.bill ? 'Undo this bill payment record?' : 'Remove this grocery run?'}
       subtitle={dialog.remove.bill ? 'This removes the expense record and recalculates balances. It does not return money or undo roommate repayments.'
-        : `"${dialog.remove.description}" will be removed from everyone's ledger. Existing payments will stay and balances will be recalculated.`} onClose={close} busy={busy}>
+        : `"${dialog.remove.description}" will be removed from everyone's ledger. Existing payments will stay and balances will be recalculated.${dialog.remove.shoppingRunId ? ' Its purchased items stay archived.' : ''}`} onClose={close} busy={busy}>
       {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/expenses/${dialog.remove.id}`, {}, dialog.remove.bill ? 'Bill payment record removed. Balances have been recalculated.' : 'Grocery run removed. Balances have been recalculated.', 'DELETE') }}>{busy ? 'Removing...' : dialog.remove.bill ? 'Undo bill payment record' : 'Remove grocery run'}</button></div>
     </Modal>
     if (typeof dialog === 'object' && 'undo' in dialog) return <Modal title="Undo this recorded payment?" subtitle="This only changes the shared ledger. It will not return money that has already been transferred." onClose={close} busy={busy}>
@@ -394,18 +433,30 @@ export function App() {
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       expenseCount={expenses.length} receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
       stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
-      panelOpen={page !== 'overview'} activeTool={page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
+      panelOpen={page !== 'overview'} activeTool={page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
       onAction={interact} onCreate={() => openDialog('create')} onInvite={() => openDialog('invite')}
       onSettings={() => openDialog('settings')} onHelp={() => openDialog('help')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
     {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button></div>}
     {page !== 'overview' && !dialog && <RoomPanel
-      title={{ groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.' }[page]}
-      subtitle={{ groceries: 'Every little thing you brought home, all in one place.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Real repayments, without the awkward conversations.', kitchen: 'One kitchen. Different tastes. Always a fair share.', budget: 'The coins in your jar show how much of this month is left to enjoy.' }[page]}
-      view={page === 'bills' ? `bills:${billMonth}` : page}
+      title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.' }[page]}
+      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Every little thing you brought home, all in one place.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Real repayments, without the awkward conversations.', kitchen: 'One kitchen. Different tastes. Always a fair share.', budget: 'The coins in your jar show how much of this month is left to enjoy.' }[page]}
+      view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page}
       onClose={() => visit('overview')}
     ><div className="game-panel-content">
+        {page === 'shopping' && <ShoppingPanel household={household} memberId={session.memberId} view={shoppingView} onView={setShoppingView} busy={busy}
+          onAdd={() => openDialog('shopping-add')} onEdit={(item) => openDialog({ editShopping: item })} onRemove={(item) => openDialog({ removeShopping: item.id })}
+          onClaim={(item) => { void action(`/shopping/items/${item.id}/claim`, { itemVersion: item.version, claimed: true }, '', undefined, true) }}
+          onRelease={(item) => openDialog({ releaseShopping: item.id })}
+          onPick={(item, pickedUp) => { void action(`/shopping/items/${item.id}/pick`, { itemVersion: item.version, pickedUp }, '', undefined, true) }}
+          onQuickRecord={() => openDialog('expense')}
+          onCheckout={() => {
+            const items = household.shopping.items.filter((item) => inBasket(item, session.memberId))
+            if (!items.length) { setError('Pick up items before finishing a shopping run.'); return }
+            if (!globalThis.crypto?.randomUUID) { setError('Use HTTPS or localhost to safely record a shopping run.'); return }
+            openDialog({ checkout: { id: crypto.randomUUID(), items } })
+          }} />}
         {(page === 'groceries' || page === 'bills') && <nav className="receipt-tabs" aria-label="Receipt book sections">
           <button type="button" disabled={busy} aria-pressed={page === 'groceries'} onClick={() => visit('groceries')}>Groceries</button>
           <button type="button" disabled={busy} aria-pressed={page === 'bills'} onClick={() => visit('bills')}>Bills</button>
@@ -429,31 +480,6 @@ export function App() {
     {notice && <div className="toast" role="status"><Check size={17} /><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {renderDialog()}
   </div>
-}
-
-function ExpenseForm({ household, memberId, busy, error, onSubmit }: { household: Household; memberId: string; busy: boolean; error: ReactNode; onSubmit: (body: Record<string, unknown>) => void }) {
-  const [description, setDescription] = useState('')
-  const [amount, setAmount] = useState('')
-  const [paidBy, setPaidBy] = useState(memberId)
-  const [participants, setParticipants] = useState(household.members.map((member) => member.id))
-  const [category, setCategory] = useState<Category>('produce')
-  const [date, setDate] = useState(localDate())
-  const [localError, setLocalError] = useState('')
-  const cents = parseMoney(amount)
-  return <Form onSubmit={() => {
-    if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
-    if (!participants.length) { setLocalError('Choose at least one roommate to split with.'); return }
-    setLocalError('')
-    onSubmit({ description, amount: cents, paidBy, participants, category, date })
-  }}>
-    <label className="field">What did you pick up?<input required maxLength={100} placeholder="e.g. The big weekly shop" value={description} onChange={(event) => setDescription(event.target.value)} disabled={busy} /></label>
-    <div className="field-row"><label className="field">Total ({household.currency})<input required inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></label><label className="field">Date<input type="date" required value={date} max={localDate()} onChange={(event) => setDate(event.target.value)} disabled={busy} /></label></div>
-    <div className="field-row"><label className="field">Paid by<select value={paidBy} onChange={(event) => setPaidBy(event.target.value)} disabled={busy}>{household.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label><label className="field">On which shelf?<select value={category} onChange={(event) => setCategory(event.target.value as Category)} disabled={busy}>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}</select></label></div>
-    <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
-    {(localError || error) && <div>{localError && <p className="form-error" role="alert">{localError}</p>}{error}</div>}
-    <button className="button primary full" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <Plus size={17} />} {busy ? 'Adding to the kitchen...' : 'Add & split the groceries'}</button>
-    <p className="form-footnote">Shared equally, with any spare cents split fairly.</p>
-  </Form>
 }
 
 function CreateForm({ busy, error, onSubmit }: { busy: boolean; error: ReactNode; onSubmit: (body: Record<string, unknown>) => void }) {

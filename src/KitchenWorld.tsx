@@ -36,7 +36,7 @@ type Props = {
 type Target = { category: Category } | { action: SceneAction }
 const targetLabels: Record<SceneAction, string> = {
   fridge: 'Open or close your fridge',
-  stock: 'Unpack a grocery run',
+  stock: 'Open the shared shopping list',
   ledger: 'Open the receipt book',
   budget: 'Check the house pot',
   roommates: 'Meet your roommates',

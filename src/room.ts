@@ -15,7 +15,7 @@ export type Shapes = {
 }
 
 export const sceneAnchors: { action: KitchenAction | 'brew'; label: string; position: [number, number, number] }[] = [
-  { action: 'stock', label: 'Stock the fridge', position: [-0.45, 2.85, 1.08] },
+  { action: 'stock', label: 'Shopping bag', position: [-0.45, 2.85, 1.08] },
   { action: 'ledger', label: 'Receipt book', position: [0.8, 1.6, 2.1] },
   { action: 'budget', label: 'The house pot', position: [0, 2.75, -2.35] },
   { action: 'roommates', label: 'Your people', position: [3.7, 4.65, -3.15] },
