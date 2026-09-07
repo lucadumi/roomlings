@@ -4,6 +4,7 @@ export const categories = ['produce', 'dairy', 'pantry', 'drinks', 'other'] as c
 export type Category = (typeof categories)[number]
 export const currencies = ['EUR', 'USD', 'GBP', 'RON'] as const
 export const memberColors = ['#c9533a', '#7d9070', '#c2a34e', '#7c89a1', '#aa7893', '#738f91']
+export const roomStyleSchema = z.enum(['original', 'sage', 'clay', 'linen'])
 
 const id = z.string().uuid()
 export const nameSchema = z.string().trim().min(1, 'Please enter a name.').max(50)
@@ -114,6 +115,7 @@ export const householdSchema = z.object({
   name: nameSchema,
   currency: z.enum(currencies),
   budget: centsSchema,
+  roomStyle: roomStyleSchema.default('original'),
   inviteCode: z.string(),
   demo: z.boolean(),
   version: z.number().int().nonnegative(),
@@ -187,6 +189,7 @@ export const householdSchema = z.object({
 })
 
 export type Member = z.infer<typeof memberSchema>
+export type RoomStyle = z.infer<typeof roomStyleSchema>
 export type ExpenseInput = z.infer<typeof expenseInputSchema>
 export type Expense = z.infer<typeof expenseSchema>
 export type Settlement = z.infer<typeof settlementSchema>

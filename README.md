@@ -20,6 +20,7 @@ Open http://localhost:5173 (API: port 4311). Start with the private sample kitch
 - **House pot and fridge:** grocery-only spending and purchases. Bills share the same balances and repayments, not the grocery budget.
 - **Envelope:** record or undo roommate repayments. Export the complete ledger from the receipt book.
 - **The roommates:** manage browser sessions and recovery codes. Use **Recover existing access** or `/#recover` on another browser.
+- **Room style:** choose Original, Sage, Clay or Linen beside Help and House rules, then apply the look for everyone.
 
 Bill dates use the first creator's time zone. Edits preserve earlier months and recorded payments. Pauses stop future months; resuming never backfills skipped months. Short months use their last day.
 

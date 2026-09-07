@@ -23,11 +23,12 @@ import { ShoppingCheckoutForm, ShoppingItemForm, ShoppingPanel } from './Shoppin
 import type { ShoppingView } from './Shopping.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import { GameHome } from './GameHome.tsx'
+import { RoomStyleForm } from './RoomStyle.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
-type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'help'
+type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'help'
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
   | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } }
   | { editShopping: ShoppingItem } | { removeShopping: string } | { releaseShopping: string }
@@ -357,6 +358,10 @@ export function App() {
     if (dialog === 'settings') return <Modal title="A few house rules." subtitle="A shared budget keeps everyone on the same page." onClose={close} busy={busy}>
       <SettingsForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/household', body, 'Your house rules have been updated.', 'PATCH') }} />
     </Modal>
+    if (dialog === 'room-style') return <Modal title="Make the room feel like home." subtitle="One shared look for your household. Your groceries, bills and balances stay the same." onClose={close} busy={busy}>
+      <RoomStyleForm current={household.roomStyle} busy={busy} error={footerError} onClose={close}
+        onSubmit={(roomStyle) => { void action('/household/room-style', { roomStyle }, 'Room style saved for everyone.', 'PATCH') }} />
+    </Modal>
     if (dialog === 'invite') return <Modal title="Better with roommates." subtitle={household.demo ? 'This is a sample kitchen. Create your real one before inviting your people.' : 'This private invitation lets a roommate join and edit your kitchen. Only share it with people you trust.'} onClose={close} busy={busy}>
       {household.demo ? <button className="button primary full" onClick={() => openDialog('create')}>Create your kitchen <ArrowRight size={16} /></button>
         : <Invite household={household} busy={busy} error={footerError} onRotate={() => { void action('/invite/rotate', {}, 'A fresh invitation is ready. The previous link no longer works.') }} />}
@@ -435,7 +440,7 @@ export function App() {
       stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
       panelOpen={page !== 'overview'} activeTool={page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
       onAction={interact} onCreate={() => openDialog('create')} onInvite={() => openDialog('invite')}
-      onSettings={() => openDialog('settings')} onHelp={() => openDialog('help')}
+      onSettings={() => openDialog('settings')} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
     {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button></div>}

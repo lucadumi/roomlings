@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
   balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
-  centsSchema, currencies, expenseInputSchema, memberColors, nameSchema,
+  centsSchema, currencies, expenseInputSchema, memberColors, nameSchema, roomStyleSchema,
   shoppingCheckoutSchema, shoppingClaimSchema, shoppingItemEditSchema, shoppingItemInputSchema,
   shoppingItemLimit, shoppingItemVersionSchema, shoppingPickSchema, shoppingRunLimit,
 } from '../shared/domain.ts'
@@ -280,6 +280,10 @@ export function createApp(store: Store) {
     const index = household.settlements.findIndex((settlement) => settlement.id === req.params.id)
     if (index === -1) throw new ApiError(404, 'That repayment is no longer in the ledger.')
     household.settlements.splice(index, 1)
+  }))
+  app.patch('/api/household/room-style', (req, res) => mutate(req, res, (household) => {
+    const { roomStyle } = z.object({ roomStyle: roomStyleSchema }).parse(req.body)
+    household.roomStyle = roomStyle
   }))
   app.patch('/api/household', (req, res) => mutate(req, res, (household) => {
     const input = z.object({ name: nameSchema, budget: centsSchema, currency: z.enum(currencies) }).parse(req.body)

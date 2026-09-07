@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { ArrowRight, CircleHelp, Coins, Home, LoaderCircle, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
+import { ArrowRight, CircleHelp, Coins, Home, LoaderCircle, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
 import { money } from '../shared/domain.ts'
 import type { Category, Household } from '../shared/domain.ts'
 import { Avatar } from './components.tsx'
@@ -31,6 +31,7 @@ type Props = {
   onCreate: () => void
   onInvite: () => void
   onSettings: () => void
+  onRoomStyle: () => void
   onHelp: () => void
   onSelect: (category: Category) => void
 }
@@ -49,7 +50,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export function GameHome({
   household, memberId, counts, selected, remaining, yourBalance, transferCount, expenseCount, receiptCount,
-  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onCreate, onInvite, onSettings, onHelp, onSelect,
+  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onCreate, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
 }: Props) {
   const viewer = household.members.find((member) => member.id === memberId)!
   return <main className="game-home" id="main" data-panel-open={panelOpen} inert={inert} aria-hidden={inert || undefined}>
@@ -71,7 +72,7 @@ export function GameHome({
     <h1 className="sr-only">{household.name}: your shared kitchen</h1>
     <SceneBoundary>
       <Suspense fallback={<div className="scene-loading"><LoaderCircle size={28} className="spin" /><span>Putting the kettle on...</span></div>}>
-        <KitchenWorld key={household.id} paused={inert || panelOpen} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={household.members.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
+        <KitchenWorld key={household.id} roomStyle={household.roomStyle} paused={inert || panelOpen} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={household.members.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
       </Suspense>
     </SceneBoundary>
     <div className="room-caption">
@@ -79,7 +80,7 @@ export function GameHome({
       <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{household.members.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
     </div>
     {household.demo && <div className="game-demo"><span>Sample kitchen</span><button className="control-surface" onClick={onCreate} aria-haspopup="dialog">Make it yours <ArrowRight size={13} /></button></div>}
-    <div className="house-tools"><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>
+    <div className="house-tools"><button className="icon-button control-surface" onClick={onRoomStyle} aria-label="Room style" title="Room style" aria-haspopup="dialog"><Palette size={19} /></button><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>
     <div className="game-bottom">
       <button className="game-balance control-surface" onClick={() => onAction('settle')} aria-label="Your household balance" aria-pressed={activeTool === 'settle'}><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>
       <nav className="game-dock" aria-label="Kitchen tools">
