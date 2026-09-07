@@ -156,11 +156,11 @@ export function SplitParticipants({ members, selected, onChange, amount, currenc
   const shares = amount && selected.length ? splitAmount(amount, selected) : null
   return <>
     <fieldset className="split-fieldset"><legend>Share it with</legend><div className="participant-options">
-      {members.map((member) => <label className={`participant-option${selected.includes(member.id) ? ' chosen' : ''}`} key={member.id}>
+      {members.filter((member) => !member.inactive || selected.includes(member.id)).map((member) => <label className={`participant-option${selected.includes(member.id) ? ' chosen' : ''}`} key={member.id}>
         <input type="checkbox" checked={selected.includes(member.id)} disabled={disabled} onChange={(event) => onChange((previous) =>
           event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id),
         )} />
-        <Avatar member={member} small /><span>{member.name}</span>{selected.includes(member.id) && <Check size={13} />}
+        <Avatar member={member} small /><span>{member.name}{member.inactive ? ' (former roommate)' : ''}</span>{selected.includes(member.id) && <Check size={13} />}
       </label>)}
     </div></fieldset>
     {shares && <div className="split-preview">{members.filter((member) => selected.includes(member.id)).map((member) =>

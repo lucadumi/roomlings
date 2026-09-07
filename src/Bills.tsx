@@ -94,13 +94,17 @@ export function BillForm({ household, bill, busy, error, onSubmit }: {
   const [amount, setAmount] = useState(revision ? (revision.amount / 100).toFixed(2) : '')
   const [firstDueDate, setFirstDueDate] = useState(billingDate(timeZone))
   const [dueDay, setDueDay] = useState(String(revision?.dueDay ?? 1))
-  const [participants, setParticipants] = useState(revision?.participants ?? household.members.map((member) => member.id))
+  const [participants, setParticipants] = useState(revision?.participants ?? household.members.filter((member) => !member.inactive).map((member) => member.id))
   const [localError, setLocalError] = useState('')
   const cents = parseMoney(amount)
   const currentMonth = billingDate(timeZone).slice(0, 7)
   const appliesFrom = bill && bill.startMonth > currentMonth ? bill.startMonth : currentMonth
   return <Form onSubmit={() => {
     if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
+    if (household.members.some((member) => member.inactive && participants.includes(member.id))) {
+      setLocalError('Remove former roommates from the participants before saving this new bill schedule.')
+      return
+    }
     const input = bill
       ? billEditInputSchema.safeParse({ name, amount: cents, dueDay: Number(dueDay), participants })
       : billCreateInputSchema.safeParse({ name, amount: cents, firstDueDate, participants, timeZone })
@@ -136,6 +140,10 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
   const disabled = busy || blocked
   return <Form onSubmit={() => {
     if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
+    if (household.members.some((member) => member.inactive && (member.id === paidBy || participants.includes(member.id)))) {
+      setLocalError('Choose an active payer and remove former roommates from this new payment record. Existing ledger entries remain unchanged.')
+      return
+    }
     const input = billPaymentInputSchema.safeParse({ month: item.month, amount: cents, paidBy, participants, date })
     if (!input.success) { setLocalError(input.error.issues[0].message); return }
     setLocalError('')
@@ -146,8 +154,9 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
       <label className="field">Amount paid ({household.currency})<input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={disabled} /></label>
       <label className="field">Payment date<input type="date" required value={date} max={today} onChange={(event) => setDate(event.target.value)} disabled={disabled} /></label>
     </div>
-    <label className="field">Paid by<select value={paidBy} onChange={(event) => setPaidBy(event.target.value)} disabled={disabled}>{household.members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+    <label className="field">Paid by<select value={paidBy} onChange={(event) => setPaidBy(event.target.value)} disabled={disabled}>{household.members.filter((member) => !member.inactive || member.id === paidBy).map((member) => <option key={member.id} value={member.id} disabled={member.inactive}>{member.name}{member.inactive ? ' (former roommate)' : ''}</option>)}</select></label>
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={disabled} />
+    {participants.some((id) => household.members.some((member) => member.id === id && member.inactive)) && <p className="field-hint">This schedule includes a former roommate. New payment records require active participants; review the split before recording a payment. Existing ledger entries are unchanged.</p>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
     <button className="button primary full" disabled={disabled}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}Record bill payment</button>
     <p className="form-footnote">One expense for this bill and month. No money is transferred.</p>

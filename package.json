@@ -10,14 +10,16 @@
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --env-file-if-exists=.env --watch server/index.ts",
     "dev:web": "vite",
+    "preview:local": "concurrently -k -n api,web \"node --env-file-if-exists=.env server/index.ts\" \"npm:dev:web\"",
     "build": "tsc --noEmit && vite build",
-    "start": "node --env-file-if-exists=.env server/index.ts",
+    "start": "node --env-file-if-exists=.env server/index.ts --production",
     "test": "node --test tests/*.test.ts",
     "test:browser": "playwright test"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.2.8",
     "@fontsource-variable/fraunces": "^5.3.0",
+    "@supabase/supabase-js": "2.57.4",
     "express": "^5.1.0",
     "lucide-react": "^0.577.0",
     "react": "^19.2.0",
