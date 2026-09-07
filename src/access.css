@@ -1,5 +1,8 @@
 .access-entry { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 22px; }
-.access-content > .button + .button { margin-top: 12px; }
+:is(.access-content, .access-section) > :is(.button, .text-button) { display: flex; }
+:is(.access-content, .access-section) > :is(.button, .text-button) + :is(.button, .text-button, .field, .field-hint) { margin-top: 12px; }
+.access-content > :is(form, .access-section) + .text-button, .access-content form > .button + .button-row { margin-top: 12px; }
+.access-content > form + form { margin-top: 24px; }
 .access-content .field-hint { margin-bottom: 16px; }
 .access-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--control-border); }
 .access-section h3 { margin: 0 0 12px; color: #486435; font-size: 21px; }
