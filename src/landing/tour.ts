@@ -1,9 +1,9 @@
 export const tourChapters = [
-  { id: 'hello', label: 'Overview', short: 'Overview' },
+  { id: 'hello', label: 'The shared room', short: 'Room' },
   { id: 'groceries', label: 'Groceries', short: 'Groceries' },
   { id: 'receipts', label: 'Bills and receipts', short: 'Bills' },
   { id: 'house-pot', label: 'Monthly budget', short: 'Budget' },
-  { id: 'come-in', label: 'Get started', short: 'Start' },
+  { id: 'come-in', label: 'Fair repayments', short: 'Balances' },
 ] as const
 
 type Point = [number, number, number]

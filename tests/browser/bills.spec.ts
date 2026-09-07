@@ -37,7 +37,7 @@ test.describe('monthly bills', () => {
 
   test('records variable payments in the shared ledger without changing groceries and can undo them', async ({ page }) => {
     const month = localDate().slice(0, 7)
-    await page.goto('/')
+    await page.goto('/kitchen')
     const pot = page.locator('.fund-trigger strong')
     const share = page.locator('.game-balance strong')
     const beforePot = await pot.innerText()

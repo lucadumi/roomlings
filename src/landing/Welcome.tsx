@@ -1,13 +1,9 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowDown, ArrowRight, Pause, Play, Snowflake } from 'lucide-react'
-import { scrollProgress, tourArea, tourChapters } from './tour.ts'
-import type { TourLayout } from './tour.ts'
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Leaf, Plus, ReceiptText, ShoppingBasket, Snowflake, Users } from 'lucide-react'
+import { KitchenTour } from './KitchenTour.tsx'
 import { TourFallback } from './TourFallback.tsx'
-import type { TourStatus } from './TourScene.tsx'
 import './welcome.css'
-
-const TourScene = lazy(() => import('./TourScene.tsx'))
 
 function subscribeToMotion(callback: () => void) {
   const media = window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -15,44 +11,30 @@ function subscribeToMotion(callback: () => void) {
   return () => media.removeEventListener('change', callback)
 }
 
-class TourBoundary extends Component<{ children: ReactNode; onFailure: () => void }, { failed: boolean }> {
-  state = { failed: false }
-  static getDerivedStateFromError() { return { failed: true } }
-  componentDidCatch(error: Error) {
-    console.error('The welcome kitchen could not be displayed:', error)
-    this.props.onFailure()
-  }
-  render() { return this.state.failed ? null : this.props.children }
-}
+const features = [
+  { icon: ShoppingBasket, number: '01', label: 'BEFORE THE SHOP', title: 'One list. Less guesswork.', description: 'Add what home needs, claim what you are picking up, and keep everyone in the loop. No more three cartons of milk.' },
+  { icon: ReceiptText, number: '02', label: 'AFTER THE SHOP', title: 'Every little thing, shared.', description: 'Keep groceries and recurring household bills in one receipt book. Choose who shares each cost. We will handle the cents.' },
+  { icon: CheckCheck, number: '03', label: 'BACK AT HOME', title: 'Good friends. Clear balances.', description: 'See who paid and who owes what. Pay your roommate your usual way, then record it so everyone is on the same page.' },
+]
 
-export default function Welcome() {
-  const root = useRef<HTMLDivElement>(null)
-  const story = useRef<HTMLElement>(null)
-  const sections = useRef<Array<HTMLElement | null>>([])
-  const stage = useRef<HTMLDivElement>(null)
-  const startFrame = useRef<HTMLDivElement>(null)
-  const endFrame = useRef<HTMLDivElement>(null)
-  const illustration = useRef<HTMLDivElement>(null)
-  const header = useRef<HTMLElement>(null)
-  const footer = useRef<HTMLElement>(null)
-  const progress = useRef(0)
-  const layout = useRef<TourLayout | null>(null)
-  const wakeScene = useRef<(() => void) | null>(null)
+export default function Welcome({ accessNotice, paused = false }: { accessNotice?: ReactNode; paused?: boolean }) {
   const systemReduced = useSyncExternalStore(subscribeToMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches, () => false)
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
-  const [active, setActive] = useState(0)
-  const [status, setStatus] = useState<TourStatus>('loading')
 
   useEffect(() => {
+    const previousTitle = document.title
+    document.title = 'Roomlings | Share a home. Not the hassle.'
+    let cancelled = false
     const saved: unknown = history.state
     const scroll = saved !== null && typeof saved === 'object' && 'roomlingsTourScroll' in saved
       && typeof saved.roomlingsTourScroll === 'number' && Number.isFinite(saved.roomlingsTourScroll) && saved.roomlingsTourScroll >= 0
       ? saved.roomlingsTourScroll : null
-    const chapter = tourChapters.findIndex(({ id }) => location.hash === `#${id}`)
-    // The lazy entry mounts after the browser's initial scroll-restoration attempt.
-    if (scroll !== null) window.scrollTo({ top: scroll, behavior: 'instant' })
-    else if (chapter >= 0) sections.current[chapter]?.scrollIntoView({ behavior: 'instant' })
+    void document.fonts.ready.then(() => {
+      if (cancelled) return
+      if (scroll !== null) window.scrollTo({ top: scroll, behavior: 'instant' })
+      else document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'instant' })
+    })
     const rememberPosition = () => {
       const previous: unknown = history.state
       history.replaceState({
@@ -60,170 +42,94 @@ export default function Welcome() {
         roomlingsTourScroll: window.scrollY,
       }, '')
     }
+    window.addEventListener('pagehide', rememberPosition)
     window.addEventListener('beforeunload', rememberPosition)
-    return () => window.removeEventListener('beforeunload', rememberPosition)
+    return () => {
+      cancelled = true
+      document.title = previousTitle
+      window.removeEventListener('pagehide', rememberPosition)
+      window.removeEventListener('beforeunload', rememberPosition)
+    }
   }, [])
 
-  useEffect(() => {
-    const element = story.current
-    const page = root.current
-    const viewport = stage.current
-    const first = startFrame.current
-    const last = endFrame.current
-    const topBar = header.current
-    const bottomBar = footer.current
-    if (!element || !page || !viewport || !first || !last || !topBar || !bottomBar) return
-    let frame = 0
-    let needsLayout = true
-    let previousLayout = ''
-    const update = () => {
-      frame = 0
-      if (!viewport.clientWidth || !viewport.clientHeight) return
-      if (needsLayout) {
-        const copyHeight = Math.max(...sections.current.map((section) => {
-          const copy = section?.querySelector('.welcome-copy')
-          if (!copy) throw new Error('A welcome chapter is missing its content.')
-          return copy.getBoundingClientRect().height
-        }))
-        const headerHeight = topBar.getBoundingClientRect().height
-        const footerHeight = bottomBar.getBoundingClientRect().height
-        page.style.setProperty('--welcome-copy-height', `${copyHeight}px`)
-        page.style.setProperty('--welcome-header-space', `${headerHeight}px`)
-        const flowing = copyHeight + headerHeight + footerHeight + 48 > viewport.clientHeight
-        page.dataset.flow = String(flowing)
-        page.style.setProperty('--welcome-footer-space', `${flowing ? 0 : footerHeight}px`)
-        needsLayout = false
-      }
-      const stops = sections.current.map((section) => {
-        if (!section) throw new Error('A welcome chapter is missing from the page.')
-        return window.scrollY + section.getBoundingClientRect().top
-      })
-      const next = scrollProgress(window.scrollY, stops)
-      progress.current = next
-      const viewportBounds = viewport.getBoundingClientRect()
-      const area = (frame: HTMLElement) => {
-        const bounds = frame.getBoundingClientRect()
-        return { x: bounds.left - viewportBounds.left, y: bounds.top - viewportBounds.top, width: bounds.width, height: bounds.height }
-      }
-      const start = area(first)
-      const end = area(last)
-      const flowing = page.dataset.flow === 'true'
-      const bottom = viewport.clientHeight - (flowing ? 0 : bottomBar.getBoundingClientRect().height)
-      const extra = Math.max(0, start.y + start.height - bottom)
-      const index = Math.min(stops.length - 1, Math.floor(next * (stops.length - 1)))
-      const travelled = Math.max(0, window.scrollY - stops[index])
-      const remaining = index + 1 < stops.length ? Math.max(0, stops[index + 1] - window.scrollY) : Infinity
-      const shift = Math.min(extra, travelled, remaining)
-      start.y -= shift
-      end.y -= shift
-      const measured = { width: viewport.clientWidth, height: viewport.clientHeight, start, end, top: Math.max(0, topBar.getBoundingClientRect().bottom), bottom }
-      const picture = tourArea(0, measured, true)
-      if (illustration.current) {
-        Object.assign(illustration.current.style, {
-          left: `${picture.x}px`, top: `${picture.y}px`, width: `${picture.width}px`, height: `${picture.height}px`,
-        })
-      }
-      const key = JSON.stringify(measured)
-      if (key !== previousLayout) {
-        previousLayout = key
-        layout.current = measured
-        wakeScene.current?.()
-      }
-      setActive((current) => {
-        const chapter = Math.round(next * (tourChapters.length - 1))
-        return current === chapter ? current : chapter
-      })
-    }
-    const requestUpdate = () => { if (!frame) frame = requestAnimationFrame(update) }
-    const observer = new ResizeObserver(() => { needsLayout = true; requestUpdate() })
-    observer.observe(viewport)
-    observer.observe(topBar)
-    observer.observe(bottomBar)
-    for (const section of sections.current) {
-      const copy = section?.querySelector('.welcome-copy')
-      if (copy) observer.observe(copy)
-    }
-    update()
-    window.addEventListener('scroll', requestUpdate, { passive: true })
-    window.addEventListener('resize', requestUpdate)
-    return () => {
-      cancelAnimationFrame(frame)
-      observer.disconnect()
-      window.removeEventListener('scroll', requestUpdate)
-      window.removeEventListener('resize', requestUpdate)
-    }
-  }, [reducedMotion])
-
-  return <div className="welcome" ref={root} data-motion={reducedMotion ? 'reduced' : 'full'} data-scene={status} data-chapter={tourChapters[active].id}>
+  return <div className="welcome" data-motion={reducedMotion ? 'reduced' : 'full'} id="welcome-top">
     <a className="welcome-skip" href="#welcome-content">Skip to content</a>
-    <header className="welcome-header" ref={header}>
-      <a className="brand" href="#hello" aria-label="Roomlings, back to the beginning">
+    <header className="welcome-header welcome-container">
+      <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning">
         <span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span>
       </a>
+      <nav className="welcome-navigation" aria-label="On this page">
+        <a href="#how-it-works">How it works</a>
+        <a href="#tour">A look inside</a>
+        <a href="#questions">Questions</a>
+      </nav>
       <div className="welcome-header-actions">
-        <button className="welcome-motion" onClick={() => setMotionOverride(!reducedMotion)} aria-label="Reduced motion" aria-pressed={reducedMotion} title={reducedMotion ? 'Enable motion' : 'Reduce motion'}>
-          {reducedMotion ? <Play size={14} /> : <Pause size={14} />}
-          <span>Motion</span>
-        </button>
-        <a className="welcome-open" href="/">Open kitchen <ArrowRight size={15} /></a>
-      </div>
-      <div className="welcome-scene-status" data-loading={status === 'loading'} role="status">
-        {status === 'loading' && 'Loading kitchen...'}
-        {status === 'unavailable' && '3D is unavailable. Kitchen tools still work.'}
+        <a className="welcome-sign-in" href="/#account">Sign in <ArrowRight size={15} /></a>
+        <a className="button primary welcome-enter" href="/#account=create">Get started</a>
       </div>
     </header>
-    <main className="welcome-story" id="welcome-content" ref={story} tabIndex={-1}>
-      <div className="welcome-stage" ref={stage} aria-hidden="true">
-        <div className="welcome-scene-backdrop" />
-        <div className="welcome-framing"><div className="welcome-frame-start" ref={startFrame} /><div className="welcome-frame-end" ref={endFrame} /></div>
-        <div className="welcome-static" ref={illustration}><TourFallback /></div>
-        <TourBoundary onFailure={() => setStatus('unavailable')}>
-          <Suspense fallback={null}><TourScene progress={progress} layout={layout} wake={wakeScene} reducedMotion={reducedMotion} onStatus={setStatus} /></Suspense>
-        </TourBoundary>
-      </div>
-      <section className="welcome-chapter welcome-hello" id="hello" ref={(element) => { sections.current[0] = element }} aria-labelledby="hello-title">
-        <div className="welcome-copy">
-          <h1 id="hello-title">Split groceries and bills.</h1>
-          <p>A shared place for groceries, household bills and repayments. See who paid and what everyone owes.</p>
+    {accessNotice && <div className="welcome-access-notice welcome-container">{accessNotice}</div>}
+    <main id="welcome-content" tabIndex={-1}>
+      <section className="welcome-hero welcome-container" aria-labelledby="welcome-title">
+        <div className="welcome-hero-copy">
+          <span className="welcome-eyebrow"><Leaf size={16} />FOR THE PEOPLE YOU LIVE WITH</span>
+          <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
+          <p>Groceries, household bills and who owes what, in one shared kitchen. Made for the people you come home to.</p>
           <div className="welcome-actions">
-            <a className="button primary welcome-enter" href="/">Open kitchen <ArrowRight size={18} /></a>
-            <a className="welcome-explore" href="#groceries">See how it works <ArrowDown size={15} /></a>
+            <a className="button primary welcome-enter" href="/#account=create">Make yourself at home <ArrowRight size={18} /></a>
+            <a className="welcome-text-link" href="/kitchen">Explore the kitchen <ArrowUpRight size={16} /></a>
           </div>
+          <p className="welcome-small"><Check size={14} />Try a sample kitchen without signing in.</p>
+        </div>
+        <figure className="welcome-vignette">
+          <div className="welcome-vignette-room"><TourFallback /></div>
+          <div className="welcome-house-note"><span className="welcome-note-icon"><Users size={19} /></span><span>A place for everyone.<small>A fair share for each.</small></span></div>
+          <figcaption>YOUR EVERYDAY, A LITTLE MORE TOGETHER</figcaption>
+        </figure>
+      </section>
+
+      <div className="welcome-everyday welcome-container" aria-label="What Roomlings brings together">
+        <span><ShoppingBasket size={19} />The grocery runs</span>
+        <span><ReceiptText size={19} />The monthly bills</span>
+        <span><Users size={19} />The people at home</span>
+      </div>
+
+      <section className="welcome-features welcome-container" id="how-it-works" aria-labelledby="features-title">
+        <div className="welcome-section-heading">
+          <div><span className="welcome-eyebrow">LESS KEEPING TRACK. MORE LIVING TOGETHER.</span><h2 id="features-title">A fair share of the everyday.</h2></div>
+          <p>The small things add up.<br />Keeping them together makes a difference.</p>
+        </div>
+        <div className="welcome-feature-grid">
+          {features.map(({ icon: Icon, number, label, title, description }) => <article className="welcome-feature" key={number}>
+            <div className="welcome-feature-top"><Icon size={25} strokeWidth={1.5} /><span>{number}</span></div>
+            <span className="welcome-eyebrow">{label}</span>
+            <h3>{title}</h3>
+            <p>{description}</p>
+          </article>)}
         </div>
       </section>
-      <section className="welcome-chapter" id="groceries" ref={(element) => { sections.current[1] = element }} aria-labelledby="groceries-title">
-        <div className="welcome-copy">
-          <h2 id="groceries-title">Groceries</h2>
-          <p>Record what you bought, choose who shares it, and split every cent fairly. Everyone can see the same grocery history.</p>
+
+      <KitchenTour reducedMotion={reducedMotion} paused={paused} onToggleMotion={() => setMotionOverride(!reducedMotion)} />
+
+      <section className="welcome-questions welcome-container" id="questions" aria-labelledby="questions-title">
+        <div className="welcome-questions-heading"><span className="welcome-eyebrow">A FEW THINGS YOU MIGHT WONDER</span><h2 id="questions-title">Before you come in.</h2><p>Simple where it should be.<br />Clear where it matters.</p></div>
+        <div className="welcome-faq">
+          <details><summary>Does Roomlings send money?<Plus size={19} /></summary><p>No. Pay your roommate however you normally do, then record the repayment in Roomlings. Your shared ledger stays up to date, but the app never moves money.</p></details>
+          <details><summary>How do we split a cost?<Plus size={19} /></summary><p>Choose the people sharing each grocery run or bill. Roomlings splits the amount equally between them, including any leftover cents. Not everyone has to share every purchase.</p></details>
+          <details><summary>Can I keep my existing kitchen?<Plus size={19} /></summary><p>Yes. Your saved kitchen still opens as usual. You can sign in and link that existing access to your account without starting over. If you have a recovery code, <a href="/#recover">recover your original place</a>.</p></details>
+          <details><summary>Will it work on my phone?<Plus size={19} /></summary><p>Yes, right in your browser. Your account brings the same kitchen to your phone, tablet or computer. The kitchen tools also work when 3D is unavailable.</p></details>
         </div>
       </section>
-      <section className="welcome-chapter" id="receipts" ref={(element) => { sections.current[2] = element }} aria-labelledby="receipts-title">
-        <div className="welcome-copy">
-          <h2 id="receipts-title">Bills and receipts</h2>
-          <p>Create recurring bills for rent, internet and other household costs. Record each payment alongside your groceries, with the payer and shared amounts kept together.</p>
-        </div>
-      </section>
-      <section className="welcome-chapter" id="house-pot" ref={(element) => { sections.current[3] = element }} aria-labelledby="pot-title">
-        <div className="welcome-copy">
-          <h2 id="pot-title">Monthly budget</h2>
-          <p>Set a monthly grocery budget and see what's left. Record repayments to keep everyone's balance up to date.</p>
-        </div>
-      </section>
-      <section className="welcome-chapter welcome-finish" id="come-in" ref={(element) => { sections.current[4] = element }} aria-labelledby="come-in-title">
-        <div className="welcome-copy">
-          <h2 id="come-in-title">Open your kitchen.</h2>
-          <p>Start with a private sample kitchen. When you're ready, create a household or return to the one you've already saved.</p>
-          <a className="button primary welcome-enter" href="/">Open kitchen <ArrowRight size={18} /></a>
-          <small className="welcome-payment-note">Roomlings never moves money.</small>
-        </div>
+
+      <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
+        <div><span className="welcome-eyebrow">PULL UP A CHAIR</span><h2 id="invitation-title">There is room for your people.</h2><p>Start a kitchen, invite your roommates, and make the everyday a little easier.</p></div>
+        <a className="button primary welcome-enter" href="/#account=create">Get started <ArrowRight size={18} /></a>
       </section>
     </main>
-    <footer className="welcome-controls" ref={footer}>
-      <nav className="welcome-chapters" aria-label="On this page">
-        {tourChapters.map((chapter, index) => <a href={`#${chapter.id}`} key={chapter.id} aria-label={chapter.label} aria-current={active === index ? 'step' : undefined}>
-          {chapter.short}
-        </a>)}
-      </nav>
+    <footer className="welcome-footer welcome-container">
+      <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning"><span className="brand-mark"><Snowflake size={18} /></span>roomlings<span className="brand-period">.</span></a>
+      <p>Shared homes. Fair shares.<br /><span>Roomlings records payments. It never moves money.</span></p>
+      <a className="welcome-text-link" href="#welcome-top">Back to the top <ArrowDown size={15} className="welcome-up" /></a>
     </footer>
   </div>
 }

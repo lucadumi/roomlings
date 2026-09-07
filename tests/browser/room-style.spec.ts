@@ -97,7 +97,7 @@ test('presets require confirmation and sync to another roommate without WebGL', 
 })
 
 test('a delayed failed preset save keeps the room, draft and dismissal state honest', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/kitchen')
   const picker = await openPicker(page)
   await picker.getByRole('radio', { name: 'Clay', exact: true }).check()
   const pending = await pauseRequest(page, '**/api/household/room-style')
@@ -182,7 +182,7 @@ test('switching saved kitchens loads each household preset without replacing its
 test('saved finishes repaint the same scene and restore Original without resetting the room', { tag: '@room' }, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.clock.setFixedTime(new Date())
-  await page.goto('/')
+  await page.goto('/kitchen')
   const room = page.locator('.kitchen-world')
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   const canvas = await page.locator('.world-canvas canvas').elementHandle()
@@ -237,7 +237,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
 
 test('room controls and the sample invitation stay separate on a narrow tablet', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 900 })
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.getByRole('button', { name: 'Room style', exact: true })).toBeVisible()
   const bounds = await page.locator('.house-tools, .game-demo, .room-caption').evaluateAll((elements) =>
     elements.map((element) => {
@@ -261,7 +261,7 @@ test('room controls and the sample invitation stay separate on a narrow tablet',
 for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }, { width: 320, height: 568 }]) {
   test(`room presets remain keyboard-accessible and contained at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport)
-    await page.goto('/')
+    await page.goto('/kitchen')
     const tools = page.locator('.house-tools')
     await expect(tools).toBeVisible()
     await expect(page.locator('.world-camera-controls')).toBeVisible()

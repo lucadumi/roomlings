@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { PerspectiveCamera, Vector3 } from 'three'
 import { scrollProgress, tourArea, tourChapters, tourFrame } from '../src/landing/tour.ts'
 
-describe('the Step inside scroll story', () => {
+describe('the compact kitchen tour', () => {
   it('follows actual chapter positions, including unequal heights and restored scrolling', () => {
     const stops = [0, 900, 1800, 2800, 3700]
     assert.equal(scrollProgress(-30, stops), 0)

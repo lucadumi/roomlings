@@ -32,7 +32,7 @@ async function clickRoomPoint(page: Page, position: [number, number, number]) {
 test('fridge, expenses, repayment records, and reload persistence', async ({ page }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Close the fridge' }).click()
@@ -70,7 +70,7 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
 })
 
 test('creating a kitchen exposes its invitation in the UI', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/kitchen')
   await page.getByRole('button', { name: 'Make it yours' }).click()
   await page.getByLabel('What do you call home?').fill('The browser house')
   await page.getByLabel('Your name', { exact: true }).fill('Charlie')
@@ -150,7 +150,7 @@ test('saved households restore the original roommate and shared expenses after s
 
 test('mobile layout has no horizontal overflow and supports keyboard dialogs', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
@@ -161,7 +161,7 @@ test('mobile layout has no horizontal overflow and supports keyboard dialogs', a
 })
 
 test('a rejected save keeps the expense draft available to retry', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/kitchen')
   await openGroceryForm(page)
   await page.getByLabel('What did you pick up?').fill('Keep this grocery draft')
   await page.getByLabel('Total (EUR)').fill('4.20')
@@ -179,7 +179,7 @@ test('a rejected save keeps the expense draft available to retry', async ({ page
 })
 
 test('budgets, category filtering, month navigation, and complete ledger export', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/kitchen')
   await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
   await page.getByRole('button', { name: 'Edit monthly budget', exact: true }).click()
   await page.getByRole('textbox', { name: 'Monthly budget', exact: true }).fill('100')
@@ -210,7 +210,7 @@ test('budgets, category filtering, month navigation, and complete ledger export'
 test.describe('room controls', { tag: '@room' }, () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
-    await page.goto('/')
+    await page.goto('/kitchen')
     await expect(page.locator('.world-canvas canvas')).toBeVisible()
   })
 
@@ -266,7 +266,7 @@ test('the ledger remains usable when WebGL is unavailable', async ({ page }) => 
       },
     })
   })
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.locator('.expense-row')).toHaveCount(6)
@@ -274,7 +274,7 @@ test('the ledger remains usable when WebGL is unavailable', async ({ page }) => 
 
 test('the grocery bag and receipt book meshes work without clickable labels', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.hotspot-stock')).toBeVisible()
   await frameRoom(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -305,7 +305,7 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
     })
     Object.defineProperty(window, 'roomlingsTestDrawCalls', { get: () => draws })
   })
-  await page.goto('/')
+  await page.goto('/kitchen')
   const drawCalls = () => page.evaluate(() => Number(Reflect.get(window, 'roomlingsTestDrawCalls')))
   await expect.poll(drawCalls).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
@@ -321,7 +321,7 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
 
 test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const canvas = await page.locator('.world-canvas').boundingBox()
@@ -358,7 +358,7 @@ test('the phone view gives the room most of the screen and keeps panels below it
 })
 
 test('wheel zoom and the kettle respond without changing the household ledger', { tag: '@room' }, async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   const before = await page.locator('.fund-trigger strong').innerText()
   await page.mouse.move(550, 330)
@@ -375,7 +375,7 @@ test('wheel zoom and the kettle respond without changing the household ledger', 
 })
 
 test('header and footer wrappers are transparent while their controls keep their own surfaces', { tag: '@room' }, async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   for (const selector of ['.game-hud', '.game-bottom']) {
     await expect(page.locator(selector)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -401,7 +401,7 @@ test('header and footer wrappers are transparent while their controls keep their
 
 test('touch gestures zoom and turn the room without opening an object', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   const touch = await page.context().newCDPSession(page)

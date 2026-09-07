@@ -84,6 +84,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     let frame = 0
     let available = true
     let disposed = false
+    let onScreen = false
     let width = 1
     let height = 1
     let needsResize = true
@@ -96,11 +97,11 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     let ambientTime = 0
 
     const requestFrame = () => {
-      if (!frame && available && !disposed && !document.hidden) frame = requestAnimationFrame(render)
+      if (!frame && available && !disposed && onScreen && !document.hidden) frame = requestAnimationFrame(render)
     }
     const render = (now: number) => {
       frame = 0
-      if (!available || disposed || document.hidden) return
+      if (!available || disposed || !onScreen || document.hidden) return
       const delta = frameSeconds(previousTime, now)
       previousTime = now
       const reduced = state.current.reducedMotion
@@ -209,7 +210,18 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     }
     wake.current = requestFrame
     const observer = new ResizeObserver(resize)
+    const visibility = new IntersectionObserver((entries) => {
+      onScreen = entries.some((entry) => entry.isIntersecting)
+      previousTime = performance.now()
+      if (onScreen) requestFrame()
+      else {
+        cancelAnimationFrame(frame)
+        frame = 0
+        element.dataset.rendering = 'paused'
+      }
+    })
     observer.observe(element)
+    visibility.observe(element)
     document.addEventListener('visibilitychange', visibilityChanged)
     renderer.domElement.addEventListener('webglcontextlost', contextLost)
     resize()
@@ -219,6 +231,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       wake.current = null
       cancelAnimationFrame(frame)
       observer.disconnect()
+      visibility.disconnect()
       document.removeEventListener('visibilitychange', visibilityChanged)
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
       const geometries = new Set<BufferGeometry>([contacts.geometry])

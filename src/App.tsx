@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowRight, Check, CheckCheck,
@@ -34,6 +34,8 @@ import { RoomStyleForm } from './RoomStyle.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
 
+const Welcome = lazy(() => import('./landing/Welcome.tsx'))
+
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
 type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'help'
   | { account: AccountIntent }
@@ -45,6 +47,7 @@ const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ??
 const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
 const initialAccountInvite = new URLSearchParams(location.hash.slice(1)).get('account-invite') ?? ''
 const initialAccount = new URLSearchParams(location.hash.slice(1)).has('account')
+const initialAccountIntent = new URLSearchParams(location.hash.slice(1)).get('account')
 let initialSession: Promise<KitchenSession | null> | undefined
 
 function loadSession(account: AccountState): Promise<KitchenSession | null> {
@@ -54,7 +57,7 @@ function loadSession(account: AccountState): Promise<KitchenSession | null> {
       if (mode === 'account' || (account.account && mode !== 'browser')) return account.session
       const token = readToken()
       if (token) return { token, ...await getHousehold(token) }
-      return createDemo()
+      return /^\/kitchen\/?$/.test(location.pathname) || initialInvite || initialRecovery ? createDemo() : null
     })().catch((error: unknown) => {
       if (initialSession === pending) initialSession = undefined
       throw error
@@ -75,7 +78,8 @@ export function App() {
   const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
   const [dialog, setDialog] = useState<Dialog>(initialAccountInvite ? { account: 'join' }
-    : initialAccount ? { account: 'manage' } : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
+    : initialAccount ? { account: initialAccountIntent === 'create' || initialAccountIntent === 'join' ? initialAccountIntent : 'manage' }
+      : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
   const [invitation, setInvitation] = useState(initialInvite)
   const [accountInvitation, setAccountInvitation] = useState(initialAccountInvite)
   const [accessRouteVersion, setAccessRouteVersion] = useState(0)
@@ -110,8 +114,10 @@ export function App() {
       setSession(next)
       if (!next) {
         setSaved(savedKitchens())
-        setError(accountState.account ? 'Choose, create or link a kitchen from your account.' : 'Sign in to return to your account.')
-        setDialog((previous) => previous ?? { account: 'manage' })
+        if (accountState.account) {
+          setError('Choose, create or link a kitchen from your account.')
+          setDialog((previous) => previous ?? { account: 'manage' })
+        }
         return
       }
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
@@ -140,7 +146,10 @@ export function App() {
       const accountInvite = params.get('account-invite') ?? ''
       const invite = params.get('join') ?? ''
       if (accountInvite) setDialog({ account: 'join' })
-      else if (params.has('account')) setDialog({ account: 'manage' })
+      else if (params.has('account')) {
+        const intent = params.get('account')
+        setDialog({ account: intent === 'create' || intent === 'join' ? intent : 'manage' })
+      }
       else if (invite) setDialog('join')
       else if (params.has('recover')) setDialog('recover')
       else return
@@ -152,6 +161,9 @@ export function App() {
     window.addEventListener('hashchange', navigateAccess)
     return () => window.removeEventListener('hashchange', navigateAccess)
   }, [])
+  useEffect(() => {
+    if (session?.household.id) window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [session?.household.id])
   useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(''), 6500)
@@ -426,7 +438,13 @@ export function App() {
 
   const renderDialog = () => {
     if (!dialog) return null
-    const close = () => setDialog(null)
+    const close = () => {
+      const params = new URLSearchParams(location.hash.slice(1))
+      if (['account', 'account-invite', 'join', 'recover'].some((key) => params.has(key))) {
+        history.replaceState(history.state, '', `${location.pathname}${location.search}`)
+      }
+      setDialog(null)
+    }
     const footerError = formError && <p className="form-error" role="alert">{formError}</p>
     const accountIntent = typeof dialog === 'object' && 'account' in dialog ? dialog.account
       : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
@@ -547,10 +565,13 @@ export function App() {
     return null
   }
 
-  if (!household || !session) return <div className="welcome-screen">
-    <div className="brand"><span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span></div>
-    <div className="welcome-content"><span className="eyebrow">A HAPPIER SHARED KITCHEN</span><h1>A full fridge.<br /><em>A fair share.</em></h1>
-      {loading ? <p className="inline"><LoaderCircle className="spin" size={19} /> Opening the kitchen...</p> : <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button primary" onClick={initialize}>Try again</button><button className="button secondary" onClick={() => openDialog('recover')}>Recover access</button><button className="button secondary" onClick={() => openDialog('join')}>Join a kitchen</button><button className="text-button" onClick={() => openDialog('create')}>Create a kitchen</button></div></>}
+  if (!household || !session) return <div className="entry-shell">
+    <div inert={!!dialog}>
+      <Suspense fallback={<div className="scene-loading" role="status">Putting the kettle on...</div>}>
+        <Welcome paused={!!dialog} accessNotice={loading
+          ? <p className="inline" role="status"><LoaderCircle className="spin" size={17} />Checking saved access...</p>
+          : error ? <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button secondary" onClick={initialize}>Try again</button><button className="text-button" onClick={() => openDialog('recover')}>Recover access</button></div></> : null} />
+      </Suspense>
     </div>{renderDialog()}
   </div>
 

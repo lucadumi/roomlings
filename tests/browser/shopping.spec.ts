@@ -64,7 +64,7 @@ test.describe('shared shopping', () => {
   test.use({ reducedMotion: 'reduce' })
 
   test('plans without debts, checks out selected items once and keeps an archive after receipt removal', async ({ page, request }) => {
-    await page.goto('/')
+    await page.goto('/kitchen')
     const pot = page.locator('.fund-trigger strong')
     const share = page.locator('.game-balance strong')
     const beforePot = await pot.innerText()
@@ -253,7 +253,7 @@ test.describe('shared shopping', () => {
         },
       })
     })
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openShoppingBag(page)
     await expect(page.getByRole('button', { name: 'Add item', exact: true })).toBeInViewport({ ratio: 1 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

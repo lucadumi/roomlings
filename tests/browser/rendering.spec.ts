@@ -4,7 +4,7 @@ import { trackDrawing } from './fixtures.ts'
 test('the full-size kitchen stays within its static-geometry draw-call budget', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await trackDrawing(page)
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const draws = await page.evaluate(() => new Promise<number[]>((resolve) => {
@@ -29,7 +29,7 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
-  await page.goto('/')
+  await page.goto('/kitchen')
   const room = page.locator('.kitchen-world')
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   const idle = await drawing()

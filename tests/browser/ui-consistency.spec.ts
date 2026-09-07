@@ -42,7 +42,7 @@ test.describe('UI consistency', () => {
   for (const viewport of [{ width: 1440, height: 960 }, { width: 1024, height: 900 }, { width: 850, height: 900 }, { width: 801, height: 900 }, { width: 390, height: 844 }]) {
     test(`focus labels stay centered while panels change at ${viewport.width}px`, { tag: '@room' }, async ({ page }) => {
       await page.setViewportSize(viewport)
-      await page.goto('/')
+      await page.goto('/kitchen')
       const world = page.locator('.kitchen-world')
       const label = page.locator('.world-view-label')
       await expect(page.locator('.world-canvas canvas')).toBeVisible()
@@ -76,7 +76,7 @@ test.describe('UI consistency', () => {
   for (const viewport of [{ width: 1440, height: 960 }, { width: 320, height: 568 }]) {
     test(`shared headings omit boilerplate and leave room for close controls at ${viewport.width}px`, async ({ page }) => {
       await page.setViewportSize(viewport)
-      await page.goto('/')
+      await page.goto('/kitchen')
       for (const button of ['Grocery runs', 'Monthly budget', 'Shopping bag, plan and record groceries', 'Settle up', 'The roommates']) {
         await page.locator('.game-dock').getByRole('button', { name: button, exact: true }).click()
         const panel = page.locator('.room-panel')
@@ -103,7 +103,7 @@ test.describe('UI consistency', () => {
   }
 
   test('grocery counts and category selections agree with the visible ledger', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/kitchen')
     await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
     const rows = page.locator('.expense-row')
     const total = await rows.count()
@@ -133,7 +133,7 @@ test.describe('UI consistency', () => {
   })
 
   test('access action stacks separate all control types without changing inline rows', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/kitchen')
     await expect(page.locator('.game-dock')).toBeVisible()
     await page.locator('.game-app').evaluate((app) => {
       const fixture = document.createElement('div')
@@ -251,7 +251,7 @@ test.describe('UI consistency', () => {
   })
 
   test('outstanding repayments are not presented as already paid', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/kitchen')
     await page.locator('.game-dock').getByRole('button', { name: 'Settle up', exact: true }).click()
     await expect(page.locator('.repayments-panel').getByRole('heading')).toHaveText('Suggested repayments')
     expect(await page.locator('.transfer-row').count()).toBeGreaterThan(0)
@@ -265,7 +265,7 @@ test('camera movement copy also describes zooming out', { tag: '@room' }, async 
   await page.clock.install({ time: now - 60_000 })
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
+  await page.goto('/kitchen')
   const world = page.locator('.kitchen-world')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await page.clock.pauseAt(now)

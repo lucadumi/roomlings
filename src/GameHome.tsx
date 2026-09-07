@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense } from 'react'
+import { Component, lazy, Suspense, useLayoutEffect, useRef } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { ArrowRight, CircleHelp, Coins, Home, LoaderCircle, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
 import { money } from '../shared/domain.ts'
@@ -52,9 +52,31 @@ export function GameHome({
   household, memberId, counts, selected, remaining, yourBalance, transferCount, expenseCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onCreate, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
 }: Props) {
+  const home = useRef<HTMLElement>(null)
+  const dock = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const bar = dock.current
+    const app = home.current?.closest<HTMLElement>('.game-app')
+    if (!bar || !app) return
+    // The bottom sheet and the room must reserve the same actual dock height.
+    const measure = () => {
+      const style = getComputedStyle(bar)
+      const height = bar.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
+      app.style.setProperty('--game-dock-space', `${height}px`)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(bar)
+    window.addEventListener('resize', measure)
+    measure()
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+      app.style.removeProperty('--game-dock-space')
+    }
+  }, [])
   const viewer = household.members.find((member) => member.id === memberId)!
   const activeMembers = household.members.filter((member) => !member.inactive)
-  return <main className="game-home" id="main" data-panel-open={panelOpen} inert={inert} aria-hidden={inert || undefined}>
+  return <main className="game-home" id="main" ref={home} data-panel-open={panelOpen} inert={inert} aria-hidden={inert || undefined}>
     <header className="game-hud">
       <div className="game-identity">
         <div className="brand"><span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span></div>
@@ -82,7 +104,7 @@ export function GameHome({
     </div>
     {household.demo && <div className="game-demo"><span>Sample kitchen</span><button className="control-surface" onClick={onCreate} aria-haspopup="dialog">Make it yours <ArrowRight size={13} /></button></div>}
     <div className="house-tools"><button className="icon-button control-surface" onClick={onRoomStyle} aria-label="Room style" title="Room style" aria-haspopup="dialog"><Palette size={19} /></button><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>
-    <div className="game-bottom">
+    <div className="game-bottom" ref={dock}>
       <button className="game-balance control-surface" onClick={() => onAction('settle')} aria-label="Your household balance" aria-pressed={activeTool === 'settle'}><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>
       <nav className="game-dock" aria-label="Kitchen tools">
         <button className="dock-tool" onClick={() => onAction('ledger')} aria-label="Grocery runs" aria-pressed={activeTool === 'ledger'}><ReceiptText size={21} /><span>Receipts</span></button>
