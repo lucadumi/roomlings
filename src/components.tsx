@@ -62,9 +62,10 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
   }, [])
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose() }}>
     <div className={`modal${wide ? ' wide' : ''}`} ref={dialog} role="dialog" aria-modal="true" aria-busy={busy || undefined} aria-labelledby={titleId} aria-describedby={subtitle ? descriptionId : undefined} tabIndex={-1}>
-      <button type="button" className="icon-button control-surface modal-close" aria-label="Close dialog" disabled={busy} onClick={onClose}><X size={20} /></button>
-      <div className="eyebrow">A LITTLE HOUSEKEEPING</div>
-      <h2 id={titleId}>{title}</h2>
+      <header className="modal-header">
+        <h2 id={titleId}>{title}</h2>
+        <button type="button" className="icon-button control-surface modal-close" aria-label="Close dialog" disabled={busy} onClick={onClose}><X size={20} /></button>
+      </header>
       {subtitle && <p className="modal-subtitle" id={descriptionId}>{subtitle}</p>}
       {children}
     </div>
@@ -102,7 +103,7 @@ export function RoomPanel({ title, subtitle, children, onClose, view }: {
     }
   }, [])
   return <aside className="room-panel" role="region" aria-labelledby={titleId} ref={panel} tabIndex={-1}>
-    <header className="room-panel-header"><div><span className="eyebrow">A LITTLE HOUSEKEEPING</span><h2 id={titleId}>{title}</h2></div><button type="button" className="icon-button control-surface" aria-label="Close panel" onClick={onClose}><X size={20} /></button></header>
+    <header className="room-panel-header"><h2 id={titleId}>{title}</h2><button type="button" className="icon-button control-surface" aria-label="Close panel" onClick={onClose}><X size={20} /></button></header>
     <div className="room-panel-scroll" ref={scroll}><p className="room-panel-subtitle">{subtitle}</p>{children}</div>
   </aside>
 }
