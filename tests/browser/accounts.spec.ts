@@ -4,7 +4,7 @@ import { balances, localDate } from '../../shared/domain.ts'
 import { accountStateSchema } from '../../shared/accounts.ts'
 import { openGroceryForm, savedKitchen } from './fixtures.ts'
 import {
-  accountState, browserAccountRequest, expect, routeAccountApi, test,
+  accountState, browserAccountRequest, closeAccountContext, expect, routeAccountApi, test,
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 
@@ -74,14 +74,14 @@ test.describe('verified accounts and household membership', () => {
   })
 
   test('links an existing Coldshare identity and restores that exact ledger on another device', async ({ page, accounts, browser, baseURL }) => {
-    const legacy = accounts.store.create('The original household', 'Ada', 'EUR', 45000)
+    const legacy = (await accounts.store.create('The original household', 'Ada', 'EUR', 45000))
     const roommate = { id: randomUUID(), name: 'Ben', color: '#7d9070' }
     legacy.household.members.push(roommate)
     legacy.household.expenses.push({
       id: randomUUID(), description: 'Original groceries', amount: 1201, paidBy: legacy.memberId,
       participants: [legacy.memberId, roommate.id], category: 'produce', date: localDate(), createdAt: new Date().toISOString(),
     })
-    accounts.store.save(legacy.household)
+    await accounts.store.save(legacy.household)
     const before = structuredClone(legacy.household)
     await page.addInitScript((kitchen) => {
       if (!localStorage.getItem('coldshare.session')) {
@@ -123,10 +123,11 @@ test.describe('verified accounts and household membership', () => {
       expect(restored.session?.memberId).toBe(legacy.memberId)
       expect(restored.session?.household.expenses).toEqual(before.expenses)
       await phone.getByRole('dialog').getByRole('button', { name: 'Open The original household', exact: true }).click()
+      await expect(phone.getByRole('dialog')).toHaveCount(0)
       await expect(phone.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Ada')
       await expect(phone.locator('.game-house')).toContainText('The original household')
     } finally {
-      await phoneContext.close()
+      await closeAccountContext(phoneContext)
     }
   })
 
@@ -146,12 +147,14 @@ test.describe('verified accounts and household membership', () => {
       await signIn(guest, accounts, 'guest@example.com', 'Ben')
       await expect(guest.getByRole('dialog').getByLabel('Account invitation link or code', { exact: true })).toHaveValue(new URLSearchParams(new URL(link).hash.slice(1)).get('account-invite') ?? '')
       await guest.getByRole('dialog').getByRole('button', { name: 'Accept kitchen invitation', exact: true }).click()
+      await expect(guest.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
       const joined = await accountState(guest)
       expect(joined.memberships).toHaveLength(1)
       expect(joined.memberships[0].role).toBe('member')
       expect(joined.session?.household.members).toHaveLength(2)
       await guest.goto(link)
       await guest.getByRole('dialog').getByRole('button', { name: 'Accept kitchen invitation', exact: true }).click()
+      await expect(guest.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
       expect((await accountState(guest)).session?.household.members).toHaveLength(2)
 
       const owner = await accountState(page)
@@ -162,7 +165,7 @@ test.describe('verified accounts and household membership', () => {
         version: owner.session.household.version,
       })
       expect(expense.status).toBe(200)
-      const before = accounts.store.get(owner.session.household.id)
+      const before = (await accounts.store.get(owner.session.household.id))
       if (!before) throw new Error('The shared household was not saved.')
       await ownerDialog.getByRole('button', { name: 'Refresh membership settings', exact: true }).click()
       await ownerDialog.getByRole('button', { name: 'Make Ben owner', exact: true }).click()
@@ -172,7 +175,7 @@ test.describe('verified accounts and household membership', () => {
       await ownerDialog.getByRole('button', { name: 'Leave kitchen', exact: true }).click()
       await expect(ownerDialog).toHaveAccessibleName('Your Roomlings account.')
       expect((await accountState(page)).memberships).toHaveLength(0)
-      const after = accounts.store.get(before.id)
+      const after = (await accounts.store.get(before.id))
       if (!after) throw new Error('Leaving deleted the shared financial history.')
       expect(after.expenses).toEqual(before.expenses)
       expect([...balances(after)]).toEqual([...balances(before)])
@@ -180,13 +183,13 @@ test.describe('verified accounts and household membership', () => {
       const guestState = await accountState(guest)
       expect(guestState.memberships[0].role).toBe('owner')
     } finally {
-      await guestContext.close()
+      await closeAccountContext(guestContext)
     }
   })
 
   test('preserves unrelated browser access on account sign-out and keeps retained shortcuts reachable', async ({ page, accounts }) => {
-    const linked = accounts.store.create('The linked home', 'Ada', 'EUR', 45000)
-    const unrelated = accounts.store.create('An unrelated saved home', 'Riley', 'EUR', 45000)
+    const linked = (await accounts.store.create('The linked home', 'Ada', 'EUR', 45000))
+    const unrelated = (await accounts.store.create('An unrelated saved home', 'Riley', 'EUR', 45000))
     await page.addInitScript((kitchens) => {
       if (!localStorage.getItem('test.seeded')) {
         localStorage.setItem('roomlings.session', kitchens[0].token)
@@ -227,7 +230,7 @@ test.describe('verified accounts and household membership', () => {
   })
 
   test('ignores a delayed browser switch after a newer account kitchen selection', async ({ page, accounts }) => {
-    const legacy = accounts.store.create('The delayed browser home', 'Riley', 'EUR', 45000)
+    const legacy = (await accounts.store.create('The delayed browser home', 'Riley', 'EUR', 45000))
     await page.addInitScript((kitchen) => {
       if (!localStorage.getItem('roomlings.kitchens')) localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
     }, savedKitchen(legacy))
@@ -330,12 +333,14 @@ test.describe('verified accounts and household membership', () => {
       await expect(phone.getByRole('dialog').getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
       await dialog.getByRole('button', { name: 'Sign out all devices', exact: true }).click()
       await dialog.getByRole('button', { name: 'Sign out all devices', exact: true }).click()
+      await expect(dialog.getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
       expect((await accountState(page)).account).toBeNull()
       await renewal.evaluate(() => window.dispatchEvent(new Event('focus')))
       await expect(renewal.getByRole('dialog').getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
     } finally {
+      await renewal.unrouteAll({ behavior: 'wait' })
       await renewal.close()
-      await phoneContext.close()
+      await closeAccountContext(phoneContext)
     }
   })
 
@@ -350,7 +355,7 @@ test.describe('verified accounts and household membership', () => {
       participants: [state.session.memberId], category: 'pantry', date: localDate(), version: state.session.household.version,
     })
     expect(saved.status).toBe(200)
-    const before = accounts.store.get(state.session.household.id)
+    const before = (await accounts.store.get(state.session.household.id))
     if (!before) throw new Error('The ledger was not saved.')
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
@@ -363,7 +368,7 @@ test.describe('verified accounts and household membership', () => {
     await expect(dialog.getByRole('status')).toContainText('account has been deleted')
     expect((await accountState(page)).account).toBeNull()
     expect(accounts.provider.deleted).toHaveLength(1)
-    const after = accounts.store.get(before.id)
+    const after = (await accounts.store.get(before.id))
     if (!after) throw new Error('Account deletion erased historical financial data.')
     expect(after.expenses).toEqual(before.expenses)
     expect([...balances(after)]).toEqual([...balances(before)])

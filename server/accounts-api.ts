@@ -63,12 +63,12 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       throw new ApiError(403, 'This account action must come from the Roomlings app.', 'CSRF_REJECTED')
     }
   }
-  const current = (req: Request, res: Response) => {
+  const current = async (req: Request, res: Response) => {
     const cookies = (req.headers.cookie ?? '').split(';').map((entry) => entry.trim())
       .filter((entry) => entry.startsWith(`${accountCookieName}=`))
     if (!cookies.length) return null
     const token = cookies.length === 1 ? cookies[0].slice(accountCookieName.length + 1) : ''
-    const session = /^[A-Za-z0-9_-]{43}$/.test(token) ? store.accounts.authenticate(token) : null
+    const session = /^[A-Za-z0-9_-]{43}$/.test(token) ? (await store.accounts.authenticate(token)) : null
     if (!session) clearCookie(res)
     return session
   }
@@ -79,8 +79,8 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       throw new ApiError(403, 'This browser safety token has expired. Refresh the page and try again.', 'CSRF_REJECTED')
     }
   }
-  const authenticated = (req: Request, res: Response, allowDeleting = false) => {
-    const session = current(req, res)
+  const authenticated = async (req: Request, res: Response, allowDeleting = false) => {
+    const session = (await current(req, res))
     if (!session) throw noSession()
     if (isMutation(req)) csrf(req, session)
     if (session.deleting && !allowDeleting) {
@@ -99,9 +99,12 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     if (isMutation(req)) browserRequest(req)
     next()
   }
-  app.get('/api/account', (req, res) => {
-    const session = current(req, res)
-    res.json(session ? { ...store.accounts.state(session), configured: !!provider } : signedOut())
+  app.get('/api/account', async (req, res) => {
+    const state = await store.transaction(async () => {
+      const session = await current(req, res)
+      return session ? { ...await store.accounts.state(session), configured: !!provider } : signedOut()
+    })
+    res.json(state)
   })
   app.use('/api/account', configured)
   const ip = (req: Request) => req.ip ?? 'local'
@@ -117,86 +120,86 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       const input = verifyAccountCodeSchema.parse(req.body)
       const identity = await invokeProvider(() => provider!.verifyCode(input.email, input.code))
       if (!identity.providerId || identity.email !== input.email) throw new ApiError(401, 'The verified email did not match the requested account.')
-      const { token, session } = store.accounts.signIn(identity, input.name, input.label)
+      const { token, session } = (await store.accounts.signIn(identity, input.name, input.label))
       res.cookie(accountCookieName, token, { ...cookieOptions, maxAge: accountAbsoluteLifetime })
-      res.json(store.accounts.state(session))
+      res.json((await store.accounts.state(session)))
     })
-  app.patch('/api/account', (req, res) => {
-    const session = authenticated(req, res)
+  app.patch('/api/account', async (req, res) => {
+    const session = (await authenticated(req, res))
     const { name } = z.object({ name: nameSchema }).parse(req.body)
-    res.json(store.accounts.profile(session, name))
+    res.json((await store.accounts.profile(session, name)))
   })
-  app.patch('/api/account/device', (req, res) => {
-    const session = authenticated(req, res)
+  app.patch('/api/account/device', async (req, res) => {
+    const session = (await authenticated(req, res))
     const { label } = z.object({ label: nameSchema }).parse(req.body)
-    res.json(store.accounts.renameDevice(session, label))
+    res.json((await store.accounts.renameDevice(session, label)))
   })
-  app.post('/api/account/logout', (req, res) => {
-    const session = authenticated(req, res, true)
+  app.post('/api/account/logout', async (req, res) => {
+    const session = (await authenticated(req, res, true))
     const { all } = z.object({ all: z.boolean() }).parse(req.body)
-    store.accounts.logout(session, all)
+    await store.accounts.logout(session, all)
     clearCookie(res)
     res.json(signedOut())
   })
-  app.delete('/api/account/devices/:id', (req, res) => {
-    const session = authenticated(req, res)
-    const state = store.accounts.revokeDevice(session, z.string().uuid().parse(req.params.id))
+  app.delete('/api/account/devices/:id', async (req, res) => {
+    const session = (await authenticated(req, res))
+    const state = (await store.accounts.revokeDevice(session, z.string().uuid().parse(req.params.id)))
     if (!state) clearCookie(res)
     res.json(state ?? signedOut())
   })
-  app.post('/api/account/link', (req, res) => {
-    res.json(store.accounts.link(authenticated(req, res), linkAccountSchema.parse(req.body)))
+  app.post('/api/account/link', async (req, res) => {
+    res.json((await store.accounts.link((await authenticated(req, res)), linkAccountSchema.parse(req.body))))
   })
-  app.post('/api/account/households', (req, res) => {
-    const session = authenticated(req, res)
+  app.post('/api/account/households', async (req, res) => {
+    const session = (await authenticated(req, res))
     const input = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema }).parse(req.body)
-    res.status(201).json(store.accounts.createHousehold(session, input))
+    res.status(201).json((await store.accounts.createHousehold(session, input)))
   })
-  app.post('/api/account/households/:id/select', (req, res) => {
-    res.json(store.accounts.select(authenticated(req, res), z.string().uuid().parse(req.params.id)))
+  app.post('/api/account/households/:id/select', async (req, res) => {
+    res.json((await store.accounts.select((await authenticated(req, res)), z.string().uuid().parse(req.params.id))))
   })
-  app.get('/api/account/households/:id', (req, res) => {
-    res.json(store.accounts.access(authenticated(req, res), z.string().uuid().parse(req.params.id)))
+  app.get('/api/account/households/:id', async (req, res) => {
+    res.json((await store.accounts.access((await authenticated(req, res)), z.string().uuid().parse(req.params.id))))
   })
-  app.post('/api/account/households/:id/invitations', (req, res) => {
-    const session = authenticated(req, res)
+  app.post('/api/account/households/:id/invitations', async (req, res) => {
+    const session = (await authenticated(req, res))
     const input = createAccountInvitationSchema.parse(req.body)
-    res.status(201).json(store.accounts.invite(session, z.string().uuid().parse(req.params.id), input.version, input.expiresInDays))
+    res.status(201).json((await store.accounts.invite(session, z.string().uuid().parse(req.params.id), input.version, input.expiresInDays)))
   })
-  app.delete('/api/account/households/:id/invitations/:inviteId', (req, res) => {
-    const session = authenticated(req, res)
+  app.delete('/api/account/households/:id/invitations/:inviteId', async (req, res) => {
+    const session = (await authenticated(req, res))
     const { version } = accountVersionSchema.parse(req.body)
-    res.json(store.accounts.revokeInvitation(session, z.string().uuid().parse(req.params.id), z.string().uuid().parse(req.params.inviteId), version))
+    res.json((await store.accounts.revokeInvitation(session, z.string().uuid().parse(req.params.id), z.string().uuid().parse(req.params.inviteId), version)))
   })
-  app.post('/api/account/invitations/accept', (req, res) => {
-    const session = authenticated(req, res)
+  app.post('/api/account/invitations/accept', async (req, res) => {
+    const session = (await authenticated(req, res))
     const input = acceptAccountInvitationSchema.parse(req.body)
-    res.json(store.accounts.accept(session, input.code, input.memberName))
+    res.json((await store.accounts.accept(session, input.code, input.memberName)))
   })
-  app.post('/api/account/households/:id/owner', (req, res) => {
-    const session = authenticated(req, res)
+  app.post('/api/account/households/:id/owner', async (req, res) => {
+    const session = (await authenticated(req, res))
     const input = transferOwnershipSchema.parse(req.body)
-    res.json(store.accounts.transfer(session, z.string().uuid().parse(req.params.id), input.memberId, input.version))
+    res.json((await store.accounts.transfer(session, z.string().uuid().parse(req.params.id), input.memberId, input.version)))
   })
-  app.delete('/api/account/households/:id/members/:memberId', (req, res) => {
-    const session = authenticated(req, res)
+  app.delete('/api/account/households/:id/members/:memberId', async (req, res) => {
+    const session = (await authenticated(req, res))
     const { version } = accountVersionSchema.parse(req.body)
-    res.json(store.accounts.remove(session, z.string().uuid().parse(req.params.id), z.string().uuid().parse(req.params.memberId), version))
+    res.json((await store.accounts.remove(session, z.string().uuid().parse(req.params.id), z.string().uuid().parse(req.params.memberId), version)))
   })
-  app.delete('/api/account/households/:id/membership', (req, res) => {
-    const session = authenticated(req, res)
+  app.delete('/api/account/households/:id/membership', async (req, res) => {
+    const session = (await authenticated(req, res))
     const { version } = accountVersionSchema.parse(req.body)
-    res.json(store.accounts.leave(session, z.string().uuid().parse(req.params.id), version))
+    res.json((await store.accounts.leave(session, z.string().uuid().parse(req.params.id), version)))
   })
   app.delete('/api/account', async (req, res) => {
-    const session = authenticated(req, res, true)
+    const session = (await authenticated(req, res, true))
     const input = deleteAccountSchema.parse(req.body)
     // Unlike sign-in normalization, destructive confirmation must exactly match the stored email.
     if (req.body.confirmation !== input.confirmation) throw new ApiError(400, 'Enter your exact normalized account email to confirm deletion.')
-    const providerId = store.accounts.beginDeletion(session, input.confirmation)
+    const providerId = (await store.accounts.beginDeletion(session, input.confirmation))
     try {
       await invokeProvider(() => provider!.deleteUser(providerId))
-      store.accounts.finishDeletion(session.accountId)
+      await store.accounts.finishDeletion(session.accountId)
     } catch {
       throw new ApiError(503, 'Your kitchen access is disabled. Account deletion is queued for retry; retry this action to finish sooner.', 'ACCOUNT_DELETION_PENDING')
     }
@@ -206,20 +209,20 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
   return {
     configured: !!provider,
     authenticated,
-    kitchen(req: Request, res: Response) {
-      const session = authenticated(req, res)
+    async kitchen(req: Request, res: Response) {
+      const session = (await authenticated(req, res))
       const header = req.get('X-Roomlings-Household')
       const householdId = header === undefined ? session.selectedHouseholdId : z.string().uuid().parse(header)
-      return store.accounts.household(session, householdId)
+      return (await store.accounts.household(session, householdId))
     },
   }
 }
 
 export async function retryAccountDeletions(store: Store, provider: AccountProvider) {
-  for (const account of store.accounts.pendingDeletions()) {
+  for (const account of (await store.accounts.pendingDeletions())) {
     try {
       await provider.deleteUser(account.providerId)
-      store.accounts.finishDeletion(account.id)
+      await store.accounts.finishDeletion(account.id)
     } catch {
       // The durable deletion barrier remains in place until the next retry.
       console.error('An account deletion is pending; the provider or database is temporarily unavailable.')

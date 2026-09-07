@@ -1,125 +1,85 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 import { householdSchema, localDate, memberColors, nameSchema } from '../shared/domain.ts'
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
 import { AccountStore } from './accounts-store.ts'
+import { SQLiteDatabase, transactional } from './database.ts'
+import type { Database } from './database.ts'
 
 export type AuthenticatedSession = { household: Household; memberId: string; sessionId: string }
 
 export class Store {
-  private db: DatabaseSync
+  private db: Database
   readonly accounts: AccountStore
+  get driver() { return this.db.driver }
 
-  constructor(filename: string, options: { now?: () => number } = {}) {
-    if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true })
-    this.db = new DatabaseSync(filename)
-    try {
-      this.db.exec(`
-        PRAGMA journal_mode = WAL;
-        PRAGMA foreign_keys = ON;
-        PRAGMA busy_timeout = 5000;
-        CREATE TABLE IF NOT EXISTS households (id TEXT PRIMARY KEY, invite TEXT UNIQUE NOT NULL, state TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS sessions (
-          hash TEXT PRIMARY KEY, household_id TEXT NOT NULL REFERENCES households(id), member_id TEXT NOT NULL
-        );
-      `)
-      this.migrateAccess()
-      this.accounts = new AccountStore(this.db, this, options.now)
-    } catch (error) {
-      this.db.close()
-      throw error
-    }
+  constructor(database: string | Database, options: { now?: () => number } = {}) {
+    this.db = typeof database === 'string' ? new SQLiteDatabase(database) : database
+    this.accounts = new AccountStore(this.db, this, options.now)
+    this.get = transactional(this.db, this.get.bind(this))
+    this.byInvite = transactional(this.db, this.byInvite.bind(this))
+    this.save = transactional(this.db, this.save.bind(this))
+    this.authenticate = transactional(this.db, this.authenticate.bind(this))
+    this.session = transactional(this.db, this.session.bind(this))
+    this.accessState = transactional(this.db, this.accessState.bind(this))
+    this.renameCurrentDevice = transactional(this.db, this.renameCurrentDevice.bind(this))
+    this.rotateRecovery = transactional(this.db, this.rotateRecovery.bind(this))
+    this.recover = transactional(this.db, this.recover.bind(this))
+    this.revokeDevice = transactional(this.db, this.revokeDevice.bind(this))
+    this.create = transactional(this.db, this.create.bind(this))
   }
 
-  close() { this.db.close() }
+  async close() { await this.db.close() }
 
-  private transaction<T>(operation: () => T): T {
-    this.db.exec('BEGIN IMMEDIATE')
-    try {
-      const result = operation()
-      this.db.exec('COMMIT')
-      return result
-    } catch (error) {
-      this.db.exec('ROLLBACK')
-      throw error
-    }
+  async transaction<T>(operation: () => Promise<T>): Promise<T> {
+    return (await this.db.transaction(operation))
   }
 
-  private migrateAccess() {
-    this.transaction(() => {
-      const columns = new Set(this.db.prepare('PRAGMA table_info(sessions)').all().map((column) => String(column.name)))
-      if (!columns.has('id')) this.db.exec('ALTER TABLE sessions ADD COLUMN id TEXT')
-      if (!columns.has('label')) this.db.exec("ALTER TABLE sessions ADD COLUMN label TEXT NOT NULL DEFAULT 'Saved browser'")
-      if (!columns.has('created_at')) this.db.exec('ALTER TABLE sessions ADD COLUMN created_at TEXT')
-      if (!columns.has('last_used_at')) this.db.exec('ALTER TABLE sessions ADD COLUMN last_used_at TEXT')
-      const identify = this.db.prepare('UPDATE sessions SET id = ? WHERE hash = ? AND id IS NULL')
-      // Retain legacy token hashes so existing browsers remain signed in.
-      for (const row of this.db.prepare('SELECT hash FROM sessions WHERE id IS NULL').all()) {
-        identify.run(randomUUID(), row.hash)
-      }
-      this.db.exec(`
-        CREATE UNIQUE INDEX IF NOT EXISTS sessions_id ON sessions(id);
-        CREATE INDEX IF NOT EXISTS sessions_member ON sessions(household_id, member_id);
-        CREATE TABLE IF NOT EXISTS recovery_codes (
-          household_id TEXT NOT NULL REFERENCES households(id),
-          member_id TEXT NOT NULL,
-          hash TEXT NOT NULL UNIQUE,
-          version INTEGER NOT NULL CHECK(version > 0),
-          updated_at TEXT NOT NULL,
-          PRIMARY KEY (household_id, member_id)
-        );
-      `)
-    })
-  }
-
-  get(id: string): Household | null {
-    const row = this.db.prepare('SELECT state FROM households WHERE id = ?').get(id)
+  async get(id: string): Promise<Household | null> {
+    const row = (await this.db.prepare('SELECT state FROM households WHERE id = ?').get(id))
     return row ? householdSchema.parse(JSON.parse(String(row.state))) : null
   }
 
-  byInvite(invite: string): Household | null {
-    const row = this.db.prepare('SELECT state FROM households WHERE invite = ?').get(invite)
+  async byInvite(invite: string): Promise<Household | null> {
+    const row = (await this.db.prepare('SELECT state FROM households WHERE invite = ?').get(invite))
     return row ? householdSchema.parse(JSON.parse(String(row.state))) : null
   }
 
-  save(household: Household) {
+  async save(household: Household) {
     const checked = householdSchema.parse(household)
-    this.db.prepare('INSERT INTO households (id, invite, state) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET invite = excluded.invite, state = excluded.state')
+    await this.db.prepare('INSERT INTO households (id, invite, state) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET invite = excluded.invite, state = excluded.state')
       .run(checked.id, checked.inviteCode, JSON.stringify(checked))
   }
 
   private tokenHash(token: string) { return createHash('sha256').update(token).digest('hex') }
 
-  authenticate(token: string): AuthenticatedSession | null {
+  async authenticate(token: string): Promise<AuthenticatedSession | null> {
     const hash = this.tokenHash(token)
-    const row = this.db.prepare('SELECT id, household_id, member_id FROM sessions WHERE hash = ?').get(hash)
+    const row = (await this.db.prepare('SELECT id, household_id, member_id FROM sessions WHERE hash = ?').get(hash))
     if (!row) return null
-    const household = this.get(String(row.household_id))
+    const household = (await this.get(String(row.household_id)))
     const memberId = String(row.member_id)
     if (!household?.members.some((member) => member.id === memberId && !member.inactive)) return null
     const now = new Date()
-    this.db.prepare('UPDATE sessions SET last_used_at = ? WHERE hash = ? AND (last_used_at IS NULL OR last_used_at < ?)')
+    await this.db.prepare('UPDATE sessions SET last_used_at = ? WHERE hash = ? AND (last_used_at IS NULL OR last_used_at < ?)')
       .run(now.toISOString(), hash, new Date(now.getTime() - 60_000).toISOString())
     return { household, memberId, sessionId: String(row.id) }
   }
 
-  session(household: Household, memberId: string, label = 'Saved browser'): Session {
+  async session(household: Household, memberId: string, label = 'Saved browser'): Promise<Session> {
     if (!household.members.some((member) => member.id === memberId && !member.inactive)) throw new Error('A browser session needs an active roommate.')
     const checkedLabel = nameSchema.parse(label)
     const token = randomBytes(32).toString('base64url')
     const now = new Date().toISOString()
-    this.db.prepare('INSERT INTO sessions (hash, household_id, member_id, id, label, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    await this.db.prepare('INSERT INTO sessions (hash, household_id, member_id, id, label, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(this.tokenHash(token), household.id, memberId, randomUUID(), checkedLabel, now, now)
     return { token, memberId, household }
   }
 
-  accessState(session: AuthenticatedSession): AccessState | null {
-    const rows = this.db.prepare('SELECT id, label, created_at, last_used_at FROM sessions WHERE household_id = ? AND member_id = ?')
-      .all(session.household.id, session.memberId)
+  async accessState(session: AuthenticatedSession): Promise<AccessState | null> {
+    const rows = (await this.db.prepare('SELECT id, label, created_at, last_used_at FROM sessions WHERE household_id = ? AND member_id = ?')
+      .all(session.household.id, session.memberId))
     const devices = rows.map((row) => ({
       id: String(row.id), label: String(row.label),
       createdAt: row.created_at === null ? null : String(row.created_at),
@@ -128,63 +88,63 @@ export class Store {
     })).sort((a, b) => Number(b.current) - Number(a.current)
       || (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? '') || a.id.localeCompare(b.id))
     if (!devices.some((device) => device.current)) return null
-    const recovery = this.db.prepare('SELECT version, updated_at FROM recovery_codes WHERE household_id = ? AND member_id = ?')
-      .get(session.household.id, session.memberId)
+    const recovery = (await this.db.prepare('SELECT version, updated_at FROM recovery_codes WHERE household_id = ? AND member_id = ?')
+      .get(session.household.id, session.memberId))
     return accessStateSchema.parse({
       devices,
       recovery: { enabled: !!recovery, version: recovery ? Number(recovery.version) : 0, updatedAt: recovery ? String(recovery.updated_at) : null },
     })
   }
 
-  renameCurrentDevice(session: AuthenticatedSession, label: string): AccessState | null {
-    const result = this.db.prepare('UPDATE sessions SET label = ? WHERE id = ? AND household_id = ? AND member_id = ?')
-      .run(nameSchema.parse(label), session.sessionId, session.household.id, session.memberId)
-    return result.changes ? this.accessState(session) : null
+  async renameCurrentDevice(session: AuthenticatedSession, label: string): Promise<AccessState | null> {
+    const result = (await this.db.prepare('UPDATE sessions SET label = ? WHERE id = ? AND household_id = ? AND member_id = ?')
+      .run(nameSchema.parse(label), session.sessionId, session.household.id, session.memberId))
+    return result.changes ? (await this.accessState(session)) : null
   }
 
-  rotateRecovery(session: AuthenticatedSession, input: RecoveryRotationInput): RecoveryRotation | 'conflict' | null {
-    return this.transaction(() => {
-      const current = this.accessState(session)
+  async rotateRecovery(session: AuthenticatedSession, input: RecoveryRotationInput): Promise<RecoveryRotation | 'conflict' | null> {
+    return (await this.transaction(async () => {
+      const current = (await this.accessState(session))
       if (!current) return null
       if (current.recovery.version !== input.version) return 'conflict'
       const code = `${recoveryCodePrefix}${randomBytes(32).toString('base64url')}`
-      this.db.prepare(`INSERT INTO recovery_codes (household_id, member_id, hash, version, updated_at) VALUES (?, ?, ?, ?, ?)
+      await this.db.prepare(`INSERT INTO recovery_codes (household_id, member_id, hash, version, updated_at) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(household_id, member_id) DO UPDATE SET hash = excluded.hash, version = excluded.version, updated_at = excluded.updated_at`)
         .run(session.household.id, session.memberId, this.tokenHash(code), input.version + 1, new Date().toISOString())
       if (input.revokeOthers) {
-        this.db.prepare('DELETE FROM sessions WHERE household_id = ? AND member_id = ? AND id <> ?')
+        await this.db.prepare('DELETE FROM sessions WHERE household_id = ? AND member_id = ? AND id <> ?')
           .run(session.household.id, session.memberId, session.sessionId)
       }
-      const access = this.accessState(session)
+      const access = (await this.accessState(session))
       if (!access) throw new Error('The current browser disappeared during recovery setup.')
       return { code, access }
-    })
+    }))
   }
 
-  recover(code: string, label: string): Session | null {
+  async recover(code: string, label: string): Promise<Session | null> {
     const hash = this.tokenHash(recoveryCodeSchema.parse(code))
     const checkedLabel = nameSchema.parse(label)
-    return this.transaction(() => {
-      const recovery = this.db.prepare('SELECT household_id, member_id FROM recovery_codes WHERE hash = ?').get(hash)
+    return (await this.transaction(async () => {
+      const recovery = (await this.db.prepare('SELECT household_id, member_id FROM recovery_codes WHERE hash = ?').get(hash))
       if (!recovery) return null
-      const household = this.get(String(recovery.household_id))
+      const household = (await this.get(String(recovery.household_id)))
       const memberId = String(recovery.member_id)
       if (!household?.members.some((member) => member.id === memberId && !member.inactive)) return null
-      return this.session(household, memberId, checkedLabel)
-    })
+      return (await this.session(household, memberId, checkedLabel))
+    }))
   }
 
-  revokeDevice(session: AuthenticatedSession, id: string): AccessState | 'current' | 'missing' | null {
-    return this.transaction(() => {
-      if (!this.accessState(session)) return null
+  async revokeDevice(session: AuthenticatedSession, id: string): Promise<AccessState | 'current' | 'missing' | null> {
+    return (await this.transaction(async () => {
+      if (!(await this.accessState(session))) return null
       if (id === session.sessionId) return 'current'
-      const result = this.db.prepare('DELETE FROM sessions WHERE id = ? AND household_id = ? AND member_id = ?')
-        .run(id, session.household.id, session.memberId)
-      return result.changes ? this.accessState(session) : 'missing'
-    })
+      const result = (await this.db.prepare('DELETE FROM sessions WHERE id = ? AND household_id = ? AND member_id = ?')
+        .run(id, session.household.id, session.memberId))
+      return result.changes ? (await this.accessState(session)) : 'missing'
+    }))
   }
 
-  create(name: string, memberName: string, currency: Household['currency'], budget: number, demo = false): Session {
+  async create(name: string, memberName: string, currency: Household['currency'], budget: number, demo = false): Promise<Session> {
     const memberId = randomUUID()
     const household: Household = {
       id: randomUUID(), name, currency, budget, roomStyle: 'original', demo, version: 0,
@@ -216,7 +176,7 @@ export class Store {
         }
       })
     }
-    this.save(household)
-    return this.session(household, memberId)
+    await this.save(household)
+    return (await this.session(household, memberId))
   }
 }

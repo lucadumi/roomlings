@@ -45,7 +45,7 @@ Bill dates use the first creator's time zone. Edits preserve earlier months and 
 
 ## Accounts and household membership
 
-Accounts use **Supabase Auth email codes**. Supabase manages the verified sign-in identity; household data and the shared ledger remain in SQLite. Roomlings creates its own expiring, server-validated account sessions in `HttpOnly` cookies. Provider tokens, email codes and account session credentials are never saved in browser storage.
+Accounts use **Supabase Auth email codes**. Supabase manages the verified sign-in identity; application data can use SQLite or a dedicated Postgres schema. Roomlings creates its own expiring, server-validated account sessions in `HttpOnly` cookies. Provider tokens, email codes and account session credentials are never saved in browser storage.
 
 Account setup is opt-in during local development. Without provider configuration, `npm run dev` keeps its existing private sample kitchens, browser access and recovery flows, and the account dialog explains that email sign-in is unavailable. Partial provider configuration fails explicitly. `npm start` refuses to run without complete Supabase configuration and an HTTPS application origin, rather than silently exposing browser-only account creation.
 
@@ -91,6 +91,39 @@ Account deletion requires explicit email confirmation, sign-in within the previo
 If the provider cannot finish deletion, access is disabled immediately and the deletion stays pending, not successful. The server retries pending deletions at startup and every minute. Keep the server's administrative Supabase credential available until pending deletions have completed.
 
 Before public deployment, configure HTTPS, mail delivery and abuse limits, backups and a clear privacy/retention policy for both Roomlings and its authentication provider.
+
+## Postgres storage and migration
+
+SQLite remains the default. Select Postgres explicitly with `DATABASE_DRIVER=postgres`, a server-only `DATABASE_URL`, and `DATABASE_SCHEMA=roomlings`. A missing or invalid Postgres configuration fails instead of silently falling back to SQLite.
+
+For a persistent backend on an IPv4 network, use Supabase's **Connect > Session pooler** URI. Download the database CA certificate from **Database > Settings > SSL Configuration** and set `DATABASE_SSL_ROOT_CERT` to its path. Certificate and hostname verification stay enabled. `DATABASE_TLS=disable` is accepted only for explicit loopback development/test databases.
+
+The application tables live in the **roomlings** schema; select that schema in Supabase's Table Editor. Supabase's managed **auth** schema is not changed. Household JSON is retained as canonical text so IDs, integer-cent amounts, versions and historical records migrate without reformatting. RLS is enabled and browser roles have no application-schema privileges. The Express server remains the authorization boundary.
+
+Both engines use the same storage and account rules. SQLite operations are serialized on its connection. Postgres transactions pin one pool connection and use a schema-wide advisory lock to preserve the existing cross-household account/deletion invariants and prevent lost updates. This deliberately favors correctness over high write concurrency.
+
+### Safe cutover
+
+1. Put the target `DATABASE_URL`, `DATABASE_SCHEMA` and `DATABASE_SSL_ROOT_CERT` in an ignored `.env.migration` file. Never put database credentials in browser code or Git.
+2. Run a dry run with a new backup filename:
+
+   ```sh
+   npm run database:migrate -- --source "C:\path\to\kitchen.sqlite" --backup "C:\path\to\backups\preflight.sqlite"
+   ```
+
+3. Stop all SQLite writers before the final migration. Run again with a different backup filename and explicit target confirmation:
+
+   ```sh
+   npm run database:migrate -- --source "C:\path\to\kitchen.sqlite" --backup "C:\path\to\backups\before-postgres.sqlite" --apply --confirm-schema roomlings
+   ```
+
+4. Only after success, configure `.env` with the same Postgres settings and `DATABASE_DRIVER=postgres`, retaining the existing Supabase Auth settings, and restart the preview or production server.
+
+The command creates a consistent SQLite backup including committed WAL data, validates household balances and references, refuses a populated target, copies all application tables transactionally and compares every imported row before committing. It never deletes the original SQLite database. Startup requires the supported schema version; it does not apply migrations automatically.
+
+For immediate rollback before any Postgres writes, stop the server and select SQLite with the original `DATA_DIR`. Once Postgres has accepted new data or account lifecycle changes, do not switch to an older SQLite copy: first reconcile/export the current state or explicitly choose a point-in-time recovery.
+
+Postgres coverage requires an explicit `TEST_DATABASE_URL` and uses unique `roomlings_test_*` schemas that are removed afterward. It never falls back to `DATABASE_URL`. CI runs a separate PostgreSQL service and requires its storage and account-flow job to pass.
 
 ## Contributing
 

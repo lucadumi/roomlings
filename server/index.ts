@@ -1,7 +1,7 @@
 import { resolve, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import express from 'express'
-import { Store } from './store.ts'
+import { openStore } from './storage.ts'
 import { createApp } from './app.ts'
 import { providerFromEnvironment } from './provider.ts'
 import { retryAccountDeletions } from './accounts-api.ts'
@@ -11,7 +11,7 @@ const production = process.env.NODE_ENV === 'production' || process.argv.include
 if (production && (!provider || !process.env.APP_ORIGIN?.startsWith('https://'))) {
   throw new Error('Production startup requires complete Supabase account configuration and an HTTPS APP_ORIGIN.')
 }
-const store = new Store(join(resolve(process.env.DATA_DIR ?? './data'), 'kitchen.sqlite'))
+const store = await openStore()
 const app = createApp(store, {
   provider, appOrigin: process.env.APP_ORIGIN,
   allowLocalDevelopment: !production,
@@ -34,11 +34,11 @@ if (existsSync(join(dist, 'index.html'))) {
 const port = Number(process.env.PORT ?? 4311)
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be a valid port number.')
 const server = app.listen(port, process.env.HOST ?? '127.0.0.1', () => {
-  console.log(`Roomlings API ready at http://${process.env.HOST ?? '127.0.0.1'}:${port}`)
+  console.log(`Roomlings API ready at http://${process.env.HOST ?? '127.0.0.1'}:${port} (${store.driver} storage)`)
 })
 const shutdown = () => {
   clearInterval(deletionTimer)
-  server.close(() => { store.close(); process.exit(0) })
+  server.close(async () => { await store.close(); process.exit(0) })
 }
 process.on('SIGINT', shutdown)
 process.on('SIGTERM', shutdown)

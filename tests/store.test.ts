@@ -7,11 +7,11 @@ import { DatabaseSync } from 'node:sqlite'
 import { Store } from '../server/store.ts'
 import { localDate } from '../shared/domain.ts'
 
-it('persists household data and hashed member sessions across database restarts', () => {
+it('persists household data and hashed member sessions across database restarts', async () => {
   const filename = resolve('data', `test-store-${randomUUID()}.sqlite`)
   let store = new Store(filename)
   try {
-    const original = store.create('Persistent kitchen', 'Ada', 'EUR', 35000)
+    const original = (await store.create('Persistent kitchen', 'Ada', 'EUR', 35000))
     const originalId = original.household.id
     const month = localDate().slice(0, 7)
     const billId = randomUUID()
@@ -39,10 +39,10 @@ it('persists household data and hashed member sessions across database restarts'
       id: receiptId, description: 'Milk run', amount: 503, category: 'dairy', date: localDate(),
       paidBy: original.memberId, participants: [original.memberId], createdAt: now, shoppingRunId: runId,
     })
-    store.save(original.household)
-    store.close()
+    await store.save(original.household)
+    await store.close()
     store = new Store(filename)
-    const restored = store.authenticate(original.token)
+    const restored = (await store.authenticate(original.token))
     assert.ok(restored)
     assert.equal(restored.household.id, originalId)
     assert.equal(restored.household.budget, 35000)
@@ -53,22 +53,22 @@ it('persists household data and hashed member sessions across database restarts'
     assert.equal(restored.household.shopping.items[0].name, 'Bread')
     assert.equal(restored.household.shopping.runs[0].items[0].quantity, '2 cartons')
     assert.equal(restored.household.expenses[1].shoppingRunId, runId)
-    assert.equal(store.authenticate('not-the-session-token'), null)
+    assert.equal((await store.authenticate('not-the-session-token')), null)
   } finally {
-    store.close()
+    await store.close()
     for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) {
       if (existsSync(path)) unlinkSync(path)
     }
   }
 })
 
-it('restores a pre-bills database without replacing its household or member session', () => {
+it('restores a pre-bills database without replacing its household or member session', async () => {
   const filename = resolve('data', `test-legacy-store-${randomUUID()}.sqlite`)
   let store = new Store(filename)
   try {
-    const original = store.create('Legacy kitchen', 'Ada', 'EUR', 35000)
+    const original = (await store.create('Legacy kitchen', 'Ada', 'EUR', 35000))
     const legacy = { ...original.household, bills: undefined, billingTimeZone: undefined, shopping: undefined }
-    store.close()
+    await store.close()
     const database = new DatabaseSync(filename)
     try {
       database.prepare('UPDATE households SET state = ? WHERE id = ?').run(JSON.stringify(legacy), original.household.id)
@@ -76,7 +76,7 @@ it('restores a pre-bills database without replacing its household or member sess
       database.close()
     }
     store = new Store(filename)
-    const restored = store.authenticate(original.token)
+    const restored = (await store.authenticate(original.token))
     assert.ok(restored)
     assert.equal(restored.household.id, original.household.id)
     assert.equal(restored.memberId, original.memberId)
@@ -84,7 +84,7 @@ it('restores a pre-bills database without replacing its household or member sess
     assert.equal(restored.household.billingTimeZone, 'UTC')
     assert.deepEqual(restored.household.shopping, { items: [], runs: [] })
   } finally {
-    store.close()
+    await store.close()
     for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) {
       if (existsSync(path)) unlinkSync(path)
     }
