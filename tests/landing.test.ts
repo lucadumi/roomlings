@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { PerspectiveCamera, Vector3 } from 'three'
-import { scrollProgress, tourChapters, tourFrame } from '../src/landing/tour.ts'
+import { scrollProgress, tourArea, tourChapters, tourFrame } from '../src/landing/tour.ts'
 
 describe('the Step inside scroll story', () => {
   it('follows actual chapter positions, including unequal heights and restored scrolling', () => {
@@ -35,7 +35,7 @@ describe('the Step inside scroll story', () => {
     assert.ok(views[2].paper > views[1].paper)
     assert.ok(views[3].coins > views[2].coins)
     assert.ok(views[4].evening > views[0].evening)
-    assert.ok(views[4].screen[0] < 0.5)
+    assert.deepEqual(views[4].bounds, views[0].bounds)
   })
 
   it('keeps the entire reduced-motion scene stationary at every scroll position', () => {
@@ -64,23 +64,30 @@ describe('the Step inside scroll story', () => {
     assert.deepEqual(tourFrame(2, 1440, 960), tourFrame(1, 1440, 960))
   })
 
-  it('places the focus beside desktop copy and below phone copy without distorting the perspective', () => {
-    for (const [width, height] of [[1440, 960], [768, 1024], [1024, 1366], [390, 844]]) {
-      for (const progress of [0, 0.25, 0.5, 0.75, 1]) {
+  it('fits every object volume inside its scene area at narrow, wide and short aspect ratios', () => {
+    for (const [width, height] of [[760, 740], [340, 350], [280, 120], [250, 600], [950, 180]]) {
+      for (const progress of [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.9, 1]) {
         const frame = tourFrame(progress, width, height)
-        const camera = new PerspectiveCamera(frame.fov, width / height, 0.1, 150)
+        const camera = new PerspectiveCamera(frame.fov, width / height, 0.1, Math.max(150, Math.hypot(...frame.position) + 30))
         camera.position.set(...frame.position)
         camera.lookAt(...frame.target)
-        camera.setViewOffset(width, height, (0.5 - frame.screen[0]) * width, (0.5 - frame.screen[1]) * height, width, height)
         camera.updateMatrixWorld()
-        const projected = new Vector3(...frame.target).project(camera)
-        assert.ok(Math.abs(projected.x * 0.5 + 0.5 - frame.screen[0]) < 0.00001)
-        assert.ok(Math.abs(-projected.y * 0.5 + 0.5 - frame.screen[1]) < 0.00001)
-        if (width < 1000 || width / height <= 1.15) {
-          assert.equal(frame.screen[0], 0.5)
-          assert.ok(frame.screen[1] >= 0.65)
+        for (const x of [frame.bounds[0][0], frame.bounds[1][0]]) for (const y of [frame.bounds[0][1], frame.bounds[1][1]]) for (const z of [frame.bounds[0][2], frame.bounds[1][2]]) {
+          const point = new Vector3(x, y, z).project(camera)
+          assert.ok(Math.abs(point.x) <= 0.901, `Horizontal fit at ${width}x${height}, ${progress}`)
+          assert.ok(Math.abs(point.y) <= 0.901, `Vertical fit at ${width}x${height}, ${progress}`)
+          assert.ok(point.z > -1 && point.z < 1)
         }
       }
     }
+  })
+  it('uses measured CSS areas and leaves room for header and footer controls', () => {
+    const layout = { width: 1200, height: 800, start: { x: 520, y: 100, width: 620, height: 650 }, end: { x: 60, y: 100, width: 620, height: 650 }, top: 88, bottom: 720 }
+    assert.deepEqual(tourArea(0, layout), { x: 520, y: 100, width: 620, height: 620 })
+    assert.deepEqual(tourArea(1, layout), { x: 60, y: 100, width: 620, height: 620 })
+    assert.deepEqual(tourArea(1, layout, true), tourArea(0, layout))
+    assert.equal(tourArea(0.875, layout).x, 290)
+    assert.equal(tourArea(0, { ...layout, start: { ...layout.start, y: 800 } }).height, 0)
+    assert.throws(() => tourArea(NaN, layout), /valid measured layout/)
   })
 })

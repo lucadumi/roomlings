@@ -9,20 +9,22 @@ import { buildKitchenModel } from '../kitchenModel.ts'
 import { batchStaticMeshes } from '../batchStaticMeshes.ts'
 import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, eveningLight } from '../lighting.ts'
 import { dampTo, frameSeconds } from '../motion.ts'
-import { tourFrame } from './tour.ts'
+import { tourArea, tourFrame } from './tour.ts'
+import type { TourLayout } from './tour.ts'
 
 export type TourStatus = 'loading' | 'ready' | 'unavailable'
 
 type Props = {
   progress: RefObject<number>
+  layout: RefObject<TourLayout | null>
+  wake: RefObject<(() => void) | null>
   reducedMotion: boolean
   onStatus: (status: TourStatus) => void
 }
 
-export default function TourScene({ progress, reducedMotion, onStatus }: Props) {
+export default function TourScene({ progress, layout, wake, reducedMotion, onStatus }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const state = useRef({ reducedMotion, onStatus })
-  const wake = useRef<(() => void) | null>(null)
   state.current = { reducedMotion, onStatus }
 
   useEffect(() => {
@@ -113,12 +115,21 @@ export default function TourScene({ progress, reducedMotion, onStatus }: Props) 
         needsResize = false
       }
       displayedProgress = reduced ? progress.current : dampTo(displayedProgress, progress.current, 9, delta, 0.0001)
-      const view = tourFrame(displayedProgress, width, height, reduced)
+      const measured = layout.current
+      if (!measured) { requestFrame(); return }
+      const area = tourArea(displayedProgress, measured, reduced)
+      const visible = area.height >= 48
+      const view = tourFrame(displayedProgress, area.width, Math.max(1, area.height), reduced)
       camera.position.set(...view.position)
       camera.lookAt(...view.target)
-      camera.fov = view.fov
-      camera.setViewOffset(width, height, (0.5 - view.screen[0]) * width, (0.5 - view.screen[1]) * height, width, height)
+      camera.far = Math.max(150, Math.hypot(...view.position) + 30)
+      camera.fov = 2 * Math.atan(Math.tan(view.fov * Math.PI / 360) * height / Math.max(1, area.height)) * 180 / Math.PI
+      camera.setViewOffset(width, height, width / 2 - area.x - area.width / 2, height / 2 - area.y - area.height / 2, width, height)
       camera.updateProjectionMatrix()
+      renderer.domElement.style.clipPath = visible
+        ? `inset(${area.y}px ${Math.max(0, width - area.x - area.width)}px ${Math.max(0, height - area.y - area.height)}px ${area.x}px)`
+        : 'inset(50%)'
+      element.dataset.sceneArea = JSON.stringify(area)
       element.dataset.cameraMoving = String(!reduced && displayedProgress !== progress.current)
       element.dataset.tourPosition = reduced ? 'static' : displayedProgress.toFixed(3)
 
@@ -165,9 +176,11 @@ export default function TourScene({ progress, reducedMotion, onStatus }: Props) 
       scenery.windowDisc.emissiveIntensity = view.evening * 0.35
       // The camera can travel freely without repainting shadows for the unchanged room.
       sunlight.shadow.needsUpdate = shadowDirty || (!reduced && now - lastShadow >= 250)
-      if (sunlight.shadow.needsUpdate) { lastShadow = now; shadowDirty = false }
-      renderer.render(scene, camera)
-      element.dataset.rendering = reduced ? 'paused' : 'active'
+      if (visible || !ready) {
+        if (sunlight.shadow.needsUpdate) { lastShadow = now; shadowDirty = false }
+        renderer.render(scene, camera)
+      }
+      element.dataset.rendering = reduced || !visible ? 'paused' : 'active'
       if (!ready) {
         ready = true
         state.current.onStatus('ready')
@@ -220,7 +233,7 @@ export default function TourScene({ progress, reducedMotion, onStatus }: Props) 
       renderer.forceContextLoss()
       renderer.domElement.remove()
     }
-  }, [progress])
+  }, [progress, layout, wake])
 
   useEffect(() => { wake.current?.() }, [reducedMotion])
 
