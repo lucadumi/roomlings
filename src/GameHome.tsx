@@ -45,7 +45,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
     console.error('The kitchen scene could not be displayed:', error.message)
   }
   render() {
-    if (this.state.failed) return <div className="scene-loading scene-error" role="alert"><Snowflake size={36} /><strong>The 3D kitchen could not open.</strong><p>Your ledger is safe. All grocery, budget, and roommate tools below still work.</p></div>
+    if (this.state.failed) return <div className="scene-loading scene-error" role="alert"><Snowflake size={36} /><strong>The 3D room could not open.</strong><p>Your ledger is safe. The tools below still work.</p></div>
     return this.props.children
   }
 }
@@ -95,7 +95,7 @@ export function GameHome({
         <button className="player-button" onClick={() => onAction('roommates')} aria-label={`The roommates, playing as ${viewer.name}`} aria-pressed={activeTool === 'roommates'}><Avatar member={viewer} /></button>
       </div>
     </header>
-    <h1 className="sr-only">{household.name}: your shared kitchen</h1>
+    <h1 className="sr-only">{household.name}: {roomCatalog[roomId].label}</h1>
     <SceneBoundary>
       <Suspense fallback={<div className="scene-loading"><LoaderCircle size={28} className="spin" /><span>Putting the kettle on...</span></div>}>
         <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || panelOpen} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} />
