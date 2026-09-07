@@ -15,6 +15,18 @@ Open http://localhost:5173 (API: port 4311). Start with the private sample kitch
 
 `preview:local` keeps the API process stable while retaining frontend hot reload, so dependency-watcher restarts do not interrupt sign-in requests. Restart it after changing server code, shared schemas or `.env`. Use `npm run dev` while actively developing the API if automatic backend restarts are wanted.
 
+## A little tour
+
+Open http://localhost:5173/welcome for **Step inside**, a scroll-driven tour of the same low-poly kitchen. Native scrolling moves from the whole room to the groceries, receipt book and house pot, then back home. Chapter links, keyboard navigation, reduced motion and an illustrated WebGL fallback keep the story accessible.
+
+The tour does not create a kitchen session, access kitchen session storage or call the API. It remembers its scroll position only in the current browser history entry. **Open kitchen** takes you to the existing app at `/`, retaining your saved kitchen and invitation behavior. The landing does not replace the app's current entry point.
+
+The responsive layout measures its copy, header and navigation. The camera fits each object to the remaining CSS-defined scene area; constrained screens use normal document flow rather than covering controls. Keep the content-growth and orientation scenarios when changing the page.
+
+Browser coverage can target an already-running isolated test server with `PLAYWRIGHT_BASE_URL`. Such servers are temporary; use http://localhost:5173 for review and preserve its data and sessions.
+
+Scroll and camera references: the local Scroll Worlds and Object Studio experiments, [ATMOS](https://www.awwwards.com/case-study-atmos.html), and [Igloo Inc.](https://www.awwwards.com/igloo-inc-case-study.html). Roomlings uses its own kitchen geometry, local fonts and native scrolling, not third-party artwork or a scroll-hijacking library.
+
 ## Use
 
 - **Shopping bag:** add and claim items, fill your basket, then record one paid grocery run. Items archive only after saving; ticking them creates no debt.
