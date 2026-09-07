@@ -308,7 +308,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 .toast .icon-button { color: #c3d0b5; margin-left: auto; }
 .toast .icon-button:hover { background: #657559; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 70; background: #303d2d63; backdrop-filter: blur(5px); padding: 24px; display: flex; justify-content: center; align-items: center; overflow-y: auto; animation: fade-in 150ms ease-out; }
-.modal { position: relative; background: #fafaf2; box-shadow: 0 30px 100px #23331835; border: 1px solid #e2e8d6; border-radius: 15px; width: min(100%, 475px); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #c0ceaa transparent; padding: 32px; }
+.modal { position: relative; background: #fafaf2; box-shadow: 0 30px 100px #23331835; border: 1px solid #e2e8d6; border-radius: 15px; width: min(100%, 475px); max-height: calc(100dvh - 48px); overflow-y: auto; overflow-wrap: anywhere; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #c0ceaa transparent; padding: 32px; }
 .modal.wide { width: min(100%, 580px); }
 .modal-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 12px; }
 .modal-close { flex-shrink: 0; }

@@ -132,39 +132,92 @@ test.describe('UI consistency', () => {
     await expect(resultCount).toHaveText(String(total))
   })
 
-  test('full-width access actions keep their gap inside sections without changing button rows', async ({ page }) => {
+  test('access action stacks separate all control types without changing inline rows', async ({ page }) => {
     await page.goto('/')
     await expect(page.locator('.game-dock')).toBeVisible()
     await page.locator('.game-app').evaluate((app) => {
       const fixture = document.createElement('div')
       fixture.className = 'modal access-spacing-fixture'
-      fixture.innerHTML = `<div class="access-content">
+      const longName = 'A'.repeat(50)
+      fixture.innerHTML = `<p class="modal-subtitle">${longName} in ${longName}.</p><div class="access-content">
+        <div class="access-heading"><h3>${longName}</h3><button class="icon-button control-surface" aria-label="Refresh access">+</button></div>
+        <form><label class="field">Account name<input value="UI review" /></label><button class="button secondary full">Save account name</button></form>
+        <form><p class="field-hint">${longName} will keep access until you confirm.</p><label class="field">Browser name<input value="Browser" /></label><button class="button primary full">Verify and sign in</button>
+          <div class="button-row"><button class="text-button">Use another email</button><button class="text-button">Send another code</button></div>
+        </form>
+        <button class="text-button">Back from form</button>
         <button class="button secondary full">First direct action</button><button class="button secondary full">Second direct action</button>
+        <button class="text-button">First direct text action</button><button class="text-button">Second direct text action</button>
         <section class="access-section">
           <button class="button secondary full">Create a kitchen</button><button class="button secondary full">Accept an invitation</button>
+          <button class="text-button">Link existing kitchen access</button>
+        </section>
+        <section class="access-section">
+          <button class="text-button">Verify email again</button><button class="text-button">Delete my account</button>
           <div class="button-row"><button class="button secondary">Cancel</button><button class="button primary">Continue</button></div>
         </section>
+        <section class="access-section">
+          <button class="button secondary full">Create invitation</button>
+          <label class="field">Invitation link<input readOnly value="Invitation" /></label>
+          <button class="button primary full">Copy invitation</button><p class="field-hint">Share with your roommates.</p>
+        </section>
+        <button class="text-button">Back from section</button>
       </div>`
       app.append(fixture)
     })
     const fixture = page.locator('.access-spacing-fixture')
-    for (const width of [1440, 320]) {
+    for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 960 })
-      const gaps: number[] = []
-      for (const [first, second] of [
-        ['First direct action', 'Second direct action'],
-        ['Create a kitchen', 'Accept an invitation'],
-      ]) {
-        const upper = await fixture.getByRole('button', { name: first, exact: true }).boundingBox()
-        const lower = await fixture.getByRole('button', { name: second, exact: true }).boundingBox()
-        expect(upper).not.toBeNull()
-        expect(lower).not.toBeNull()
-        const gap = lower!.y - upper!.y - upper!.height
-        expect(gap).toBeGreaterThanOrEqual(12)
-        gaps.push(gap)
+      expect(await fixture.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+      for (const content of await fixture.locator('.access-content, .access-heading, .field-hint, .modal-subtitle, form').all()) {
+        expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
       }
-      expect(Math.abs(gaps[0] - gaps[1])).toBeLessThan(1)
-      await expect(fixture.getByRole('button', { name: 'Continue', exact: true })).toHaveCSS('margin-top', '0px')
+      const heading = await fixture.locator('.access-heading h3').boundingBox()
+      const refresh = await fixture.getByRole('button', { name: 'Refresh access', exact: true }).boundingBox()
+      expect(heading).not.toBeNull()
+      expect(refresh).not.toBeNull()
+      expect(heading!.x + heading!.width).toBeLessThanOrEqual(refresh!.x - 12)
+      expect(refresh!.width).toBeGreaterThanOrEqual(36)
+      const gaps = await fixture.locator('.access-content, .access-section').evaluateAll((groups) => groups.flatMap((group) =>
+        [...group.children].flatMap((element) => {
+          const next = element.nextElementSibling
+          if (!element.matches('.button, .text-button') || !next?.matches('.button, .text-button, .field, .field-hint')) return []
+          return [{ first: element.textContent, second: next.textContent, gap: next.getBoundingClientRect().top - element.getBoundingClientRect().bottom }]
+        }),
+      ))
+      expect(gaps).toHaveLength(9)
+      for (const { first, second, gap } of gaps) {
+        expect(gap, `${first} / ${second} at ${width}px`).toBeGreaterThanOrEqual(12)
+      }
+      const section = await fixture.locator('.access-section').last().boundingBox()
+      const forms = await fixture.locator('.access-content > form').evaluateAll((elements) => elements.map((element) => {
+        const { top, bottom } = element.getBoundingClientRect()
+        return { top, bottom }
+      }))
+      expect(forms).toHaveLength(2)
+      expect(forms[1].top - forms[0].bottom).toBeGreaterThanOrEqual(24)
+      const backFromForm = await fixture.getByRole('button', { name: 'Back from form', exact: true }).boundingBox()
+      const backFromSection = await fixture.getByRole('button', { name: 'Back from section', exact: true }).boundingBox()
+      expect(backFromForm).not.toBeNull()
+      expect(backFromSection).not.toBeNull()
+      expect(section).not.toBeNull()
+      expect(backFromForm!.y - forms[1].bottom).toBeGreaterThanOrEqual(12)
+      expect(backFromSection!.y - section!.y - section!.height).toBeGreaterThanOrEqual(12)
+      const verify = await fixture.getByRole('button', { name: 'Verify and sign in', exact: true }).boundingBox()
+      const resendRow = await fixture.locator('.button-row').first().boundingBox()
+      expect(verify).not.toBeNull()
+      expect(resendRow).not.toBeNull()
+      expect(resendRow!.y - verify!.y - verify!.height).toBeGreaterThanOrEqual(12)
+      for (const row of await fixture.locator('.button-row').all()) {
+        const buttons = row.getByRole('button')
+        const first = await buttons.first().boundingBox()
+        const second = await buttons.last().boundingBox()
+        expect(first).not.toBeNull()
+        expect(second).not.toBeNull()
+        expect(second!.x - first!.x - first!.width).toBeGreaterThanOrEqual(10)
+        expect(Math.abs(first!.y + first!.height / 2 - second!.y - second!.height / 2)).toBeLessThan(1)
+        await expect(buttons.last()).toHaveCSS('margin-top', '0px')
+      }
     }
   })
 
@@ -198,38 +251,32 @@ test.describe('UI consistency', () => {
 })
 
 test('camera movement copy also describes zooming out', { tag: '@room' }, async ({ page }) => {
+  const now = Date.now()
+  await page.clock.install({ time: now - 60_000 })
   await page.setViewportSize({ width: 1440, height: 960 })
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   const world = page.locator('.kitchen-world')
+  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await page.clock.pauseAt(now)
+  await page.clock.runFor(32)
   await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
+  await page.clock.runFor(32)
   await expect(world).toHaveAttribute('data-focus', 'fridge')
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
-  // Capture the transient state in the browser, even if rendering delays the click response.
-  const movement = await world.evaluateHandle((element) => {
-    const samples: { text: string | null; offset: number }[] = []
-    const observer = new MutationObserver(() => {
-      const label = element.querySelector('.world-view-label')
-      const status = element.querySelector('.view-moving')
-      if (element.getAttribute('data-camera-moving') !== 'true' || !label || !status) return
-      const bounds = label.getBoundingClientRect()
-      samples.push({ text: status.textContent, offset: Math.abs(bounds.x + bounds.width / 2 - innerWidth / 2) })
-    })
-    observer.observe(element, { attributes: true, attributeFilter: ['data-camera-moving'], childList: true, characterData: true, subtree: true })
-    return { samples, disconnect: () => observer.disconnect() }
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.getByRole('button', { name: 'Zoom out', exact: true }).click()
+  // A slow real frame can finish the transition; hold one animation frame for the status assertion.
+  await page.clock.runFor(16)
+  await expect(page.locator('.world-camera-controls > span')).toHaveText('80%')
+  await expect(world).toHaveAttribute('data-camera-moving', 'true')
+  await expect(page.locator('.view-moving')).toHaveText('Adjusting view')
+  const offset = await page.locator('.world-view-label').evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return Math.abs(bounds.x + bounds.width / 2 - innerWidth / 2)
   })
-  try {
-    await page.getByRole('button', { name: 'Zoom out', exact: true }).click()
-    await expect(page.locator('.world-camera-controls > span')).toHaveText('80%')
-    await expect.poll(() => movement.evaluate((state) => state.samples.length)).toBeGreaterThan(0)
-    for (const sample of await movement.evaluate((state) => state.samples)) {
-      expect(sample.text).toBe('Adjusting view')
-      expect(sample.offset).toBeLessThan(1)
-    }
-  } finally {
-    await movement.evaluate((state) => state.disconnect())
-    await movement.dispose()
-  }
+  expect(offset).toBeLessThan(1)
+  await page.clock.fastForward(1000)
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
   await expect(page.locator('.world-view-label')).toHaveText('The shared fridge')
 })
