@@ -6,8 +6,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   --paper: #f8f7f2;
-  --paper-texture: radial-gradient(#71846b4d 1px, transparent 1.3px);
-  --paper-texture-size: 14px 14px;
+  --paper-texture: radial-gradient(#71846b26 1px, transparent 1.3px);
+  --paper-texture-size: 32px 32px;
   --ink: #343c32;
   --muted: #69725e;
   --line: #e5e6dc;
