@@ -81,7 +81,7 @@ test('room choices and shared exploration controls remain contained through resi
       expect(bounds?.height).toBeGreaterThanOrEqual(44)
     }
     const controls = explore.getByRole('navigation', { name: 'Bathroom tour', exact: true })
-    await controls.scrollIntoViewIfNeeded()
+    await controls.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
     await expect(controls).toBeInViewport({ ratio: 1 })
     expect(await explore.locator('.welcome-tour-pin').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

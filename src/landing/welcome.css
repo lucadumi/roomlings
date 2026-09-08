@@ -11,6 +11,7 @@
 .welcome a { color: inherit; text-decoration: none; }
 .welcome a, .welcome button, .welcome summary { touch-action: manipulation; }
 .welcome main { max-width: none; margin: 0; padding: 0; outline: none; }
+.welcome main > section { min-height: 100svh; }
 .welcome section, .welcome main, .welcome-tour-stop { scroll-margin-top: 24px; }
 .welcome-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 28px; min-height: 100px; padding-block: 20px; border-bottom: 2px solid var(--welcome-green); }
 .welcome-header .brand { min-height: 44px; font-size: 31px; }
@@ -37,7 +38,7 @@
 .welcome-vignette::before { content: ''; position: absolute; inset: 8% 0 12px; background: #e9ecdf; clip-path: polygon(9% 0, 100% 0, 100% 88%, 91% 100%, 0 100%, 0 12%); }
 .welcome-home-illustration { position: relative; display: block; width: 108%; height: auto; margin-left: -4%; }
 .welcome-illustration { display: block; width: 100%; height: 100%; }
-.welcome-features { padding-block: 44px; }
+.welcome-features { display: flex; flex-direction: column; justify-content: center; padding-block: 44px; }
 .welcome-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px 40px; margin-bottom: 22px; }
 .welcome h2 { font-size: clamp(27px, 2.65vw, 36px); line-height: 1.16; letter-spacing: -1px; font-weight: 500; }
 .welcome-section-heading h2 { margin: 0; }
@@ -68,8 +69,8 @@
 .journal-envelope-front { position: absolute; inset: 0; background: #e3cfaa; clip-path: polygon(0 0, 50% 63%, 100% 0, 100% 100%, 0 100%); }
 .journal-envelope-front::after { content: ''; position: absolute; inset: 0; background: #dcc39a; clip-path: polygon(0 100%, 50% 53%, 100% 100%); }
 .journal-envelope-seal { position: absolute; bottom: 14px; left: calc(50% - 14px); display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #a95238; border-radius: 50%; background: #c16a4b; color: #f2dac0; transform: rotate(-15deg); }
-.welcome-tour { position: relative; padding-top: 5px; }
-.welcome-tour-track { position: relative; --welcome-tour-travel: 56svh; height: calc(var(--welcome-tour-height, 490px) + var(--welcome-tour-travel)); }
+.welcome-tour { position: relative; display: flex; flex-direction: column; justify-content: center; padding-block: 48px; }
+.welcome-tour-track { position: relative; flex-shrink: 0; --welcome-tour-travel: 56svh; height: calc(var(--welcome-tour-height, 490px) + var(--welcome-tour-travel)); }
 .welcome-tour-track[hidden] { display: none; }
 .welcome-tour-stop { position: absolute; width: 1px; height: 1px; pointer-events: none; }
 .welcome-tour-pin { position: sticky; top: 24px; border: 1px solid #d8ddcb; border-radius: 7px; background: #f0f1e7; }
@@ -101,7 +102,7 @@
 .welcome-tour-track[data-flow="true"] { height: auto; --welcome-tour-travel: 0px; }
 .welcome-tour-track[data-flow="true"] .welcome-tour-pin { position: relative; top: 0; }
 .welcome-tour-track[data-flow="true"] .welcome-tour-hint { visibility: hidden; }
-.welcome-questions { display: grid; grid-template-columns: 1fr 1.3fr; gap: clamp(30px, 6vw, 90px); padding-block: 64px; }
+.welcome-questions { display: grid; grid-template-columns: 1fr 1.3fr; align-content: center; align-items: start; gap: clamp(30px, 6vw, 90px); padding-block: 64px; }
 .welcome-questions h2 { margin: 0; }
 .welcome-faq details { border-top: 1px solid var(--welcome-rule); }
 .welcome-faq details:last-child { border-bottom: 1px solid var(--welcome-rule); }
@@ -112,6 +113,7 @@
 .welcome-faq details[open] summary svg { transform: rotate(45deg); }
 .welcome-faq details p { margin: 0; padding: 0 30px 22px 0; font-size: 14px; line-height: 1.85; color: #617055; }
 .welcome-faq details p a { text-decoration: underline; text-underline-offset: 3px; }
+.welcome-invitation-stage { display: grid; align-items: center; padding-block: 48px; }
 .welcome-invitation { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px 40px; padding: clamp(26px, 3.2vw, 40px); background: #f1dfaa; border: 1px solid #d9bd71; border-top: 3px solid #a68130; border-radius: 0 0 5px 5px; box-shadow: 0 6px 0 -3px #d9bd7166; }
 .welcome-invitation::after { content: ''; position: absolute; top: -3px; right: -1px; width: 27px; height: 27px; background: linear-gradient(45deg, #d9bd71 49%, var(--paper) 50%); pointer-events: none; }
 .welcome-invitation h2 { margin: 0 0 12px; }

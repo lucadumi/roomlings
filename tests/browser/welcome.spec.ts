@@ -81,7 +81,7 @@ test('the public welcome page explains the product without opening or changing a
   expect(errors).toEqual([])
 })
 
-test('the three steps stay compact and the landing avoids redundant promotional copy', async ({ page }) => {
+test('landing sections fill the viewport without clipping content or repeating promotional copy', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const [width, height, maximum] of [[1440, 960, 700], [390, 844, 1050]]) {
     await page.setViewportSize({ width, height })
@@ -93,10 +93,13 @@ test('the three steps stay compact and the landing avoids redundant promotional 
       return {
         words: element.innerText.split(/\s+/).length,
         steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
+        sections: [...element.querySelectorAll('main > section')].map((section) => section.getBoundingClientRect().height),
       }
     })
     expect(metrics.words).toBeLessThanOrEqual(230)
-    expect(metrics.steps).toBeLessThanOrEqual(maximum)
+    expect(metrics.steps).toBeLessThanOrEqual(Math.max(height, maximum))
+    expect(metrics.sections).toHaveLength(5)
+    for (const section of metrics.sections) expect(section).toBeGreaterThanOrEqual(height - 1)
     await expect(page.locator('.welcome-edition, .welcome-eyebrow, .welcome-interlude, .welcome-margin-mark, .welcome-signature')).toHaveCount(0)
   }
 })
