@@ -19,7 +19,7 @@ describe('room-first camera framing', () => {
     }
   })
   it('provides finite, centered views for every interactive object', () => {
-    const focuses: SceneFocus[] = ['room', 'fridge', 'stock', 'ledger', 'budget', 'roommates', 'settle', 'brew']
+    const focuses: SceneFocus[] = ['room', 'fridge', 'stock', 'ledger', 'budget', 'roommates', 'settle', 'brew', 'chores', 'supplies', 'sink', 'counters', 'floor']
     for (const focus of focuses) {
       for (const [width, height] of [[390, 636], [390, 255], [960, 778]]) {
         const framing = cameraFraming(width, height, focus, false)

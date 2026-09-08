@@ -11,11 +11,13 @@ test('the public home, personal room and anonymous sample are distinct entries',
   assert.deepEqual(resolveEntry(samplePath()), { kind: 'sample', roomId: defaultRoom })
   assert.deepEqual(resolveEntry('/rooms'), resolveEntry(roomPath()))
   assert.deepEqual(resolveEntry('/sample/'), resolveEntry(samplePath()))
+  assert.deepEqual(resolveEntry(roomPath('bathroom')), { kind: 'room', roomId: 'bathroom' })
+  assert.deepEqual(resolveEntry(samplePath('bathroom')), { kind: 'sample', roomId: 'bathroom' })
 })
 
 test('registered rooms have implementations and unknown rooms never open a placeholder', () => {
   assert.deepEqual(Object.keys(roomViews), Object.keys(roomCatalog))
-  for (const path of ['/rooms/bathroom', '/sample/bathroom', '/rooms/toString', '/rooms/kitchen/unknown', '/unknown']) {
+  for (const path of ['/rooms/bedroom', '/sample/bedroom', '/rooms/toString', '/rooms/kitchen/unknown', '/unknown']) {
     assert.deepEqual(resolveEntry(path), { kind: 'unavailable' })
   }
 })

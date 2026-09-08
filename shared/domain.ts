@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { choreAreaSchema, roomCatalog, roomIdSchema } from './rooms.ts'
+import type { ChoreArea, RoomId } from './rooms.ts'
 
 export const categories = ['produce', 'dairy', 'pantry', 'drinks', 'other'] as const
 export type Category = (typeof categories)[number]
@@ -72,6 +74,76 @@ export const shoppingCheckoutSchema = expenseInputSchema.extend({
   items: z.array(z.object({ id, version: z.number().int().nonnegative() })).min(1, 'Choose at least one item.').max(shoppingItemLimit)
     .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Choose each item only once.'),
 })
+export const choreLimit = 200
+export const choreCompletionLimit = 20_000
+const choreTitleSchema = z.string().trim().min(1, 'Give this chore a name.').max(80)
+const choreDateSchema = dateSchema.refine((date) => date >= '1900-01-01', 'Choose a chore date from 1900 onward.')
+const choreFieldsSchema = z.object({
+  title: choreTitleSchema,
+  notes: z.string().trim().max(240).default(''),
+  roomId: roomIdSchema.nullable(),
+  area: choreAreaSchema.nullable(),
+  dueDate: choreDateSchema,
+  repeatDays: z.number().int().min(1).max(365).nullable(),
+  rotation: z.array(id).min(1, 'Choose at least one roommate for this chore.').max(activeMemberLimit)
+    .refine((ids) => new Set(ids).size === ids.length, 'Choose each roommate only once in the rotation.'),
+  turn: z.number().int().nonnegative().default(0),
+})
+type ChoreLocation = { roomId: RoomId | null; area: ChoreArea | null }
+function validateChoreLocation(chore: ChoreLocation, context: z.RefinementCtx) {
+  if (chore.roomId === null ? chore.area !== null
+    : chore.area !== null && !roomCatalog[chore.roomId].areas.some((area) => area.id === chore.area)) {
+    context.addIssue({ code: 'custom', message: 'Choose an area in this room, or no area for a whole-home chore.', path: ['area'] })
+  }
+}
+function validateChoreFields(chore: ChoreLocation & { rotation: string[]; turn: number }, context: z.RefinementCtx) {
+  validateChoreLocation(chore, context)
+  if (chore.turn >= chore.rotation.length) {
+    context.addIssue({ code: 'custom', message: 'Choose the next roommate from this chore rotation.', path: ['turn'] })
+  }
+}
+export const choreInputSchema = choreFieldsSchema.superRefine(validateChoreFields)
+export const choreVersionSchema = z.object({ choreVersion: z.number().int().nonnegative() })
+export const choreEditInputSchema = choreFieldsSchema.extend(choreVersionSchema.shape).superRefine(validateChoreFields)
+export const choreArchiveSchema = choreVersionSchema.extend({ archived: z.boolean() })
+export const choreSchema = choreFieldsSchema.extend({
+  id, createdBy: id, createdAt: z.string().datetime(), updatedAt: z.string().datetime(),
+  dueDate: choreDateSchema.nullable(),
+  version: z.number().int().nonnegative(),
+  occurrence: z.number().int().nonnegative(),
+  archived: z.boolean(),
+}).superRefine((chore, context) => {
+  validateChoreFields(chore, context)
+  if (chore.dueDate === null && chore.repeatDays !== null) {
+    context.addIssue({ code: 'custom', message: 'A repeating chore must keep its next due date.', path: ['dueDate'] })
+  }
+  if (chore.occurrence > chore.version) {
+    context.addIssue({ code: 'custom', message: 'A chore occurrence cannot be ahead of its version.', path: ['occurrence'] })
+  }
+})
+export const choreCompletionSchema = z.object({
+  id, choreId: id,
+  occurrence: z.number().int().nonnegative(),
+  title: choreTitleSchema,
+  roomId: roomIdSchema.nullable(),
+  area: choreAreaSchema.nullable(),
+  dueDate: choreDateSchema,
+  turn: z.number().int().nonnegative().max(activeMemberLimit - 1),
+  assignedTo: id.nullable(),
+  completedBy: id,
+  completedAt: z.string().datetime(),
+  resultVersion: z.number().int().positive(),
+  undoneAt: z.string().datetime().nullable(),
+  undoneBy: id.nullable(),
+}).superRefine((completion, context) => {
+  validateChoreLocation(completion, context)
+  if ((completion.undoneAt === null) !== (completion.undoneBy === null)) {
+    context.addIssue({ code: 'custom', message: 'An undone chore completion needs both its time and roommate.', path: ['undoneAt'] })
+  }
+  if (completion.resultVersion <= completion.occurrence) {
+    context.addIssue({ code: 'custom', message: 'A completion must record the resulting chore version.', path: ['resultVersion'] })
+  }
+})
 export const billEditInputSchema = z.object({
   name: nameSchema, amount: centsSchema, dueDay: z.number().int().min(1).max(31), participants: participantsSchema,
 })
@@ -130,6 +202,10 @@ export const householdSchema = z.object({
     items: z.array(shoppingItemSchema).max(shoppingItemLimit),
     runs: z.array(shoppingRunSchema).max(shoppingRunLimit),
   }).default(() => ({ items: [], runs: [] })),
+  chores: z.object({
+    items: z.array(choreSchema).max(choreLimit),
+    history: z.array(choreCompletionSchema).max(choreCompletionLimit),
+  }).default(() => ({ items: [], history: [] })),
 }).superRefine((household, context) => {
   if (household.members.filter((member) => !member.inactive).length > activeMemberLimit) {
     context.addIssue({ code: 'custom', message: 'A kitchen can have at most 12 active roommates.', path: ['members'] })
@@ -191,6 +267,32 @@ export const householdSchema = z.object({
       context.addIssue({ code: 'custom', message: 'A shopping receipt references an unknown roommate.', path: ['expenses', index] })
     }
   })
+  const chores = new Map(household.chores.items.map((chore) => [chore.id, chore]))
+  if (chores.size !== household.chores.items.length) {
+    context.addIssue({ code: 'custom', message: 'Chores need unique identifiers.', path: ['chores', 'items'] })
+  }
+  household.chores.items.forEach((chore, index) => {
+    if (!members.has(chore.createdBy) || chore.rotation.some((member) => !members.has(member))) {
+      context.addIssue({ code: 'custom', message: 'A chore references an unknown roommate.', path: ['chores', 'items', index] })
+    }
+  })
+  const completions = new Set<string>()
+  const completedOccurrences = new Set<string>()
+  household.chores.history.forEach((completion, index) => {
+    const chore = chores.get(completion.choreId)
+    const key = `${completion.choreId}:${completion.occurrence}`
+    const active = completion.undoneAt === null
+    if (completions.has(completion.id) || !chore || completion.resultVersion > chore.version
+      || (active && (completedOccurrences.has(key) || completion.occurrence >= chore.occurrence))) {
+      context.addIssue({ code: 'custom', message: 'A chore occurrence can have only one active completion with a valid chore version.', path: ['chores', 'history', index] })
+    }
+    if (!members.has(completion.completedBy) || (completion.assignedTo !== null && !members.has(completion.assignedTo))
+      || (completion.undoneBy !== null && !members.has(completion.undoneBy))) {
+      context.addIssue({ code: 'custom', message: 'A chore completion references an unknown roommate.', path: ['chores', 'history', index] })
+    }
+    completions.add(completion.id)
+    if (active) completedOccurrences.add(key)
+  })
 })
 
 export type Member = z.infer<typeof memberSchema>
@@ -208,6 +310,9 @@ export type ShoppingItem = z.infer<typeof shoppingItemSchema>
 export type ShoppingItemInput = z.infer<typeof shoppingItemInputSchema>
 export type ShoppingRun = z.infer<typeof shoppingRunSchema>
 export type ShoppingCheckoutInput = z.infer<typeof shoppingCheckoutSchema>
+export type ChoreInput = z.infer<typeof choreInputSchema>
+export type Chore = z.infer<typeof choreSchema>
+export type ChoreCompletion = z.infer<typeof choreCompletionSchema>
 export type Transfer = Pick<Settlement, 'from' | 'to' | 'amount'>
 export type Session = { token: string; memberId: string; household: Household }
 

@@ -356,17 +356,21 @@ test('the in-app brand stays compact, accessible and unclipped after orientation
   }
 })
 
-for (const module of ['App', 'Welcome', 'KitchenWorld'] as const) {
+for (const module of ['App', 'Welcome', 'KitchenWorld', 'BathroomWorld'] as const) {
   test(`the ${module} lazy boundary shows only the 2D scene loader until its import resolves`,
-    module === 'KitchenWorld' ? { tag: '@room' } : {},
+    module === 'KitchenWorld' || module === 'BathroomWorld' ? { tag: '@room' } : {},
     async ({ page, request }) => {
       await page.emulateMedia({ reducedMotion: 'reduce' })
-      if (module !== 'Welcome') await restoreKitchen(page, await sampleSession(request))
+      if (module !== 'Welcome') {
+        const session = await sampleSession(request)
+        if (module === 'BathroomWorld') await page.addInitScript((token) => localStorage.setItem('roomlings.sample-session', token), session.token)
+        else await restoreKitchen(page, session)
+      }
       const pending = await pauseRequest(page, `**/{${module}.tsx*,${module}-*.js}`)
-      await page.goto(module === 'Welcome' ? '/' : '/kitchen', { waitUntil: 'commit' })
+      await page.goto(module === 'Welcome' ? '/' : module === 'BathroomWorld' ? '/sample/bathroom' : '/kitchen', { waitUntil: 'commit' })
       const route = await pending.pending
       const status = page.locator('.scene-loading[role="status"]')
-      await expect(status).toHaveText('Putting the kettle on...')
+      await expect(status).toHaveText(module === 'KitchenWorld' ? 'Opening the kitchen...' : module === 'BathroomWorld' ? 'Opening the bathroom...' : 'Opening Roomlings...')
       await expectLoader(status.locator('img.roomlings-loader'))
       await expect(status.locator('canvas, svg, .spin, [role="progressbar"]')).toHaveCount(0)
       await route.continue()
@@ -376,7 +380,7 @@ for (const module of ['App', 'Welcome', 'KitchenWorld'] as const) {
         await expect(page.locator('.game-house')).toContainText('The Sunday House')
       }
       await expect(page.locator('.scene-loading')).toHaveCount(0)
-      if (module === 'KitchenWorld') await expect(page.locator('.world-canvas canvas')).toBeVisible()
+      if (module === 'KitchenWorld' || module === 'BathroomWorld') await expect(page.locator('.world-canvas canvas')).toBeVisible()
     })
 }
 

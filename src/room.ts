@@ -10,6 +10,8 @@ import { roomPresets } from './roomStyles.ts'
 
 export type KitchenAction = 'stock' | 'ledger' | 'budget' | 'roommates' | 'settle'
 export type SceneAction = KitchenAction | 'fridge' | 'light' | 'brew'
+export const kitchenUtilities = ['chores', 'supplies', 'sink', 'counters', 'floor'] as const
+export type KitchenUtility = typeof kitchenUtilities[number]
 export type Shapes = {
   material: (color: string, roughness?: number) => MeshStandardMaterial
   box: (parent: Group, dimensions: [number, number, number], position: [number, number, number], material: MeshStandardMaterial, radius?: number) => Mesh
@@ -23,6 +25,12 @@ export const sceneAnchors: { action: KitchenAction | 'brew'; label: string; posi
   { action: 'roommates', label: 'Your people', position: [3.7, 4.65, -3.15] },
   { action: 'settle', label: 'Settle up', position: [2.35, 1.9, 1.45] },
   { action: 'brew', label: 'Put the kettle on', position: [1.65, 2.5, -2.45] },
+]
+
+export const kitchenUtilityAnchors: { utility: KitchenUtility; label: string; position: [number, number, number] }[] = [
+  { utility: 'chores', label: 'Kitchen chores', position: [-1.55, 1.2, -0.45] },
+  { utility: 'supplies', label: 'Kitchen supplies', position: [-4.55, 2.55, -1.8] },
+  { utility: 'sink', label: 'Sink chores', position: [3.35, 2.55, -2.56] },
 ]
 
 export function buildRoom(room: Group, { material, box, cylinder }: Shapes, style: RoomStyle = 'original') {
@@ -54,6 +62,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   handles.metalness = 0.12
   const contacts: ContactShadow[] = []
   const actors = new Map<SceneAction, Group>()
+  const utilityActors = new Map<KitchenUtility, Group>()
   const actor = (action: SceneAction, position: [number, number, number]) => {
     const group = new Group()
     group.position.set(...position)
@@ -62,11 +71,20 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     room.add(group)
     return group
   }
+  const utility = (kind: KitchenUtility, position: [number, number, number]) => {
+    const group = new Group()
+    group.position.set(...position)
+    group.userData.utility = kind
+    utilityActors.set(kind, group)
+    room.add(group)
+    return group
+  }
 
   box(room, [10.5, 0.25, 6.7], [0, -0.15, 0], lightWood, 0.14)
+  const floor = utility('floor', [0, 0, 0])
   for (let x = 0; x < 10; x++) {
     for (let z = 0; z < 6; z++) {
-      const square = box(room, [1.015, 0.025, 1.075], [-4.58 + x * 1.017, -0.008, -2.69 + z * 1.078], (x + z) % 2 ? tile : tileAlternate)
+      const square = box(floor, [1.015, 0.025, 1.075], [-4.58 + x * 1.017, -0.008, -2.69 + z * 1.078], (x + z) % 2 ? tile : tileAlternate)
       square.castShadow = false
     }
   }
@@ -96,9 +114,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     }
   }
 
-  const cupboard = new Group()
-  cupboard.position.set(2.05, 0, -2.56)
-  room.add(cupboard)
+  const cupboard = utility('counters', [2.05, 0, -2.56])
   contacts.push({ position: [2.05, 0.007, -2.56], size: [5.1, 1.65] })
   box(cupboard, [4.77, 1.48, 1.18], [0, 0.85, 0], cabinet, 0.045)
   box(cupboard, [4.88, 0.15, 1.31], [0, 1.66, 0.015], counter, 0.035)
@@ -109,10 +125,14 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     box(cupboard, [0.735, 1.08, 0.012], [x, 0.86, 0.65], cabinetPanel, 0.006)
     box(cupboard, [0.24, 0.04, 0.08], [x, 1.31, 0.68], handles, 0.014)
   }
-  box(cupboard, [1.05, 0.035, 0.78], [1.3, 1.76, 0], handles, 0.025)
-  box(cupboard, [0.86, 0.04, 0.61], [1.3, 1.775, 0], ink, 0.07)
-  cylinder(cupboard, 0.035, 0.48, [1.3, 1.99, -0.46], handles)
-  box(cupboard, [0.07, 0.07, 0.31], [1.3, 2.2, -0.32], handles, 0.018)
+  const sink = new Group()
+  sink.userData.utility = 'sink'
+  utilityActors.set('sink', sink)
+  cupboard.add(sink)
+  box(sink, [1.05, 0.035, 0.78], [1.3, 1.76, 0], handles, 0.025)
+  box(sink, [0.86, 0.04, 0.61], [1.3, 1.775, 0], ink, 0.07)
+  cylinder(sink, 0.035, 0.48, [1.3, 1.99, -0.46], handles)
+  box(sink, [0.07, 0.07, 0.31], [1.3, 2.2, -0.32], handles, 0.018)
   box(cupboard, [0.95, 0.04, 0.91], [-0.45, 1.76, 0], ink, 0.025)
   for (const x of [-0.67, -0.23]) for (const z of [-0.21, 0.2]) cylinder(cupboard, 0.135, 0.016, [x, 1.79, z], handles)
   const kettle = new Group()
@@ -280,6 +300,25 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   plant([-4.29, 0.02, 1.59], 1)
   plant([4.24, 1.76, -2.66], 0.48)
 
+  const caddy = utility('chores', [-1.55, 0.025, -0.45])
+  box(caddy, [0.78, 0.18, 0.5], [0, 0.12, 0], cabinet, 0.02)
+  box(caddy, [0.67, 0.025, 0.39], [0, 0.22, 0], ink)
+  for (const x of [-0.32, 0.32]) box(caddy, [0.045, 0.42, 0.045], [x, 0.39, 0], wood)
+  box(caddy, [0.68, 0.05, 0.045], [0, 0.6, 0], wood, 0.012)
+  cylinder(caddy, 0.09, 0.25, [-0.18, 0.35, 0.09], tomato)
+  cylinder(caddy, 0.055, 0.08, [-0.18, 0.515, 0.09], paper)
+  box(caddy, [0.18, 0.2, 0.12], [0.16, 0.32, 0.1], paper, 0.014)
+  box(caddy, [0.2, 0.05, 0.14], [0.16, 0.44, 0.1], leaf)
+  const supplies = utility('supplies', [-4.58, 1.25, -1.8])
+  box(supplies, [0.075, 1.4, 0.88], [-0.37, 0.56, 0], wood, 0.015)
+  for (const y of [0.04, 0.68]) box(supplies, [0.75, 0.07, 0.88], [0, y, 0], lightWood, 0.015)
+  for (const [z, mat] of [[-0.2, tomato], [0.2, paper]] as const) {
+    cylinder(supplies, 0.095, 0.31, [0.08, 0.23, z], mat)
+    cylinder(supplies, 0.05, 0.065, [0.08, 0.415, z], ink)
+  }
+  box(supplies, [0.33, 0.15, 0.49], [0.08, 0.795, 0], paper, 0.015)
+  box(supplies, [0.35, 0.04, 0.5], [0.08, 0.89, 0], leaf)
+
   const light = new PointLight('#ffca78', 0, 8, 2)
   light.position.set(0.5, 3.55, 0.2)
   room.add(light)
@@ -315,5 +354,5 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     wall: plaster, trim: wallTrim, floor: tile, floorAlternate: tileAlternate,
     cabinet, cabinetPanel, counter, wood, lightWood, woodGrain,
   }
-  return { actors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts, styleMaterials }
+  return { actors, utilityActors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts, styleMaterials }
 }

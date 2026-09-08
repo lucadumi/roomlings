@@ -60,7 +60,7 @@ test('room finishes update batched material references without rebuilding or rec
   const preserved = new Set([...scenery.coins, ...scenery.receipts, ...scenery.steam, scenery.kettleLid])
   batchStaticMeshes(room, preserved)
   const children = [...room.children]
-  const floor = room.children.find((object) => object instanceof Mesh && object.material === finishes.floor)
+  const floor = scenery.utilityActors.get('floor')?.children.find((object) => object instanceof Mesh && object.material === finishes.floor)
   assert.ok(floor instanceof Mesh)
   assert.equal(floor.name, 'Static room details')
   const geometry = floor.geometry

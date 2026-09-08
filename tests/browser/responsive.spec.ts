@@ -144,7 +144,7 @@ test.describe('responsive current app', () => {
       expect(issues, `${viewport.width}x${viewport.height}`).toEqual([])
       await expectContentFits(page.locator('.game-hud'))
       await expectContentFits(page.locator('.game-demo'))
-      for (const button of await page.getByRole('navigation', { name: 'Kitchen tools', exact: true }).getByRole('button').all()) {
+      for (const button of await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button').all()) {
         await expectReachable(button, viewport.width <= 1024 ? 44 : 36)
       }
     }
@@ -178,7 +178,7 @@ test.describe('responsive current app', () => {
       await expect(page.getByRole('button', { name: 'New monthly bill', exact: true }).locator('span')).toBeVisible()
 
       for (const name of ['Monthly budget', 'Settle up', 'The roommates']) {
-        await page.getByRole('navigation', { name: 'Kitchen tools', exact: true }).getByRole('button', { name, exact: true }).click()
+        await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name, exact: true }).click()
         await expectContentFits(panel)
       }
       await openShoppingBag(page)
@@ -281,7 +281,7 @@ test.describe('responsive current app', () => {
       await page.getByLabel('Default amount (RON)', { exact: true }).fill('205.09')
       await page.getByRole('button', { name: 'Save monthly bill', exact: true }).click()
       await expect(page.locator('.bill-schedule')).toContainText(money(20509, 'RON'))
-      await page.getByRole('navigation', { name: 'Kitchen tools', exact: true }).getByRole('button', { name: 'Settle up', exact: true }).click()
+      await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Settle up', exact: true }).click()
       await page.getByRole('button', { name: 'Record paid', exact: true }).click()
       await expectContentFits(dialog)
       await expectReachable(page.getByRole('button', { name: 'Yes, record payment', exact: true }))

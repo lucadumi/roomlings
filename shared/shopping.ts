@@ -1,5 +1,9 @@
 import type { Household, ShoppingItem } from './domain.ts'
 
+export function normalizeShoppingName(name: string): string {
+  return name.trim().normalize('NFKC').toLocaleLowerCase()
+}
+
 export function inBasket(item: ShoppingItem, memberId: string): boolean {
   return item.pickedUp && item.claimedBy === memberId
 }
