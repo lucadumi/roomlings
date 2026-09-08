@@ -236,9 +236,13 @@ test('the landing remains readable across phones, tablets, short landscapes and 
     await openTour(page)
     await chooseChapter(page, 2)
     await expect(page.locator('.welcome-tour-track')).toHaveAttribute('data-flow', 'true')
-    await expect(page.getByRole('button', { name: 'Bills and receipts', exact: true })).toBeInViewport({ ratio: 1 })
-    await page.locator('#get-started').getByRole('link', { name: 'Get started', exact: true }).scrollIntoViewIfNeeded()
-    await expect(page.locator('#get-started').getByRole('link', { name: 'Get started', exact: true })).toBeInViewport({ ratio: 1 })
+    const selected = page.getByRole('button', { name: 'Bills and receipts', exact: true })
+    // Avoid testing a fractionally rounded edge left by the browser's minimum auto-scroll.
+    await selected.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
+    await expect(selected).toBeInViewport({ ratio: 1 })
+    const entry = page.locator('#get-started').getByRole('link', { name: 'Get started', exact: true })
+    await entry.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
+    await expect(entry).toBeInViewport({ ratio: 1 })
   }
 })
 
