@@ -10,7 +10,7 @@ import { samplePath } from '../roomNavigation.ts'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
 const chapters = [
-  { icon: Home, title: 'The kitchen', copy: 'Open the shopping list, receipts and budget through objects in the room.' },
+  { icon: Home, title: 'The kitchen', copy: 'Open shopping, chores, receipts and budget through objects in the room. The room menu also takes you to the bathroom.' },
   { icon: ShoppingBasket, title: 'Groceries', copy: 'Claim items from the shopping list. Record a paid run to add it to the ledger and stock the fridge.' },
   { icon: ReceiptText, title: 'Bills and receipts', copy: 'Keep grocery receipts and recurring household bills together, with the payer and shares recorded.' },
   { icon: Wallet, title: 'Monthly budget', copy: 'The house pot shows the grocery budget left this month. Bills are tracked separately from this pot.' },

@@ -1,8 +1,10 @@
 import { expect } from '@playwright/test'
-import type { APIRequestContext, Page, Route } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, Route } from '@playwright/test'
 import { sessionSchema } from '../../src/api.ts'
 import type { SavedKitchen } from '../../src/api.ts'
 import type { Session } from '../../shared/domain.ts'
+import { roomCatalog } from '../../shared/rooms.ts'
+import type { RoomId } from '../../shared/rooms.ts'
 
 export async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
@@ -75,4 +77,24 @@ export async function openGroceryForm(page: Page) {
   await openShoppingBag(page)
   await page.getByRole('button', { name: 'Record without a list', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'What is in the bag?', exact: true })).toBeVisible()
+}
+
+export async function selectRoom(page: Page, roomId: RoomId) {
+  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
+  await picker.getByRole('button', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
+  await expect(picker).toHaveCount(0)
+}
+
+export async function chooseOption(control: Locator, value: string | { label: string }) {
+  await control.click()
+  const menu = control.page().getByRole('listbox')
+  const option = typeof value === 'string'
+    ? menu.locator(`[data-option-value=${JSON.stringify(value)}]`)
+    : menu.getByRole('option', { name: value.label, exact: true })
+  const expected = await option.getAttribute('data-option-value')
+  if (expected === null) throw new Error('The dropdown option has no value.')
+  await option.click()
+  await expect(menu).toHaveCount(0)
+  await expect(control).toHaveAttribute('data-value', expected)
 }

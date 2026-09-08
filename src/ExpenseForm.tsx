@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react'
 import { categories, categoryLabels, localDate, parseMoney } from '../shared/domain.ts'
 import type { Category, Household } from '../shared/domain.ts'
 import { Form, SplitParticipants } from './components.tsx'
+import { Dropdown } from './Dropdown.tsx'
 import { LoadingIcon } from './Branding.tsx'
 
 export function ExpenseForm({
@@ -36,7 +37,11 @@ export function ExpenseForm({
     {children}
     <label className="field">What did you pick up?<input required maxLength={100} placeholder="e.g. The big weekly shop" value={description} onChange={(event) => setDescription(event.target.value)} disabled={busy} /></label>
     <div className="field-row"><label className="field">Total ({household.currency})<input required inputMode="decimal" placeholder="0.00" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={busy} /></label><label className="field">Date<input type="date" required value={date} max={localDate()} onChange={(event) => setDate(event.target.value)} disabled={busy} /></label></div>
-    <div className="field-row"><label className="field">Paid by<select value={paidBy} onChange={(event) => setPaidBy(event.target.value)} disabled={busy}>{household.members.filter((member) => !member.inactive || member.id === paidBy).map((member) => <option key={member.id} value={member.id} disabled={member.inactive}>{member.name}{member.inactive ? ' (former roommate)' : ''}</option>)}</select></label><label className="field">On which shelf?<select value={category} onChange={(event) => setCategory(event.target.value as Category)} disabled={busy}>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}</select></label></div>
+    <div className="field-row"><label className="field">Paid by<Dropdown label="Paid by" value={paidBy} onValueChange={setPaidBy} disabled={busy}>{household.members.filter((member) => !member.inactive || member.id === paidBy).map((member) => <option key={member.id} value={member.id} disabled={member.inactive}>{member.name}{member.inactive ? ' (former roommate)' : ''}</option>)}</Dropdown></label><label className="field">On which shelf?<Dropdown label="On which shelf?" value={category} onValueChange={(value) => {
+      const selected = categories.find((category) => category === value)
+      if (!selected) { setLocalError('Choose a grocery category.'); return }
+      setCategory(selected)
+    }} disabled={busy}>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}</Dropdown></label></div>
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
     <button className="button primary full" disabled={busy || submitDisabled}>{busy ? <LoadingIcon size={17} tone="light" /> : <Plus size={17} />}{busy ? 'Adding to the kitchen...' : submitLabel}</button>

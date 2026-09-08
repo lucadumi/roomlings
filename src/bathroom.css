@@ -1,0 +1,28 @@
+.bathroom-scene-area {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bathroom-unavailable {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(330px, calc(100% - 32px));
+  padding: 22px;
+  border: 1px solid #d8dfc8;
+  border-radius: 12px;
+  background: #faf7ea;
+  color: #526644;
+  text-align: center;
+}
+
+.bathroom-unavailable p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}

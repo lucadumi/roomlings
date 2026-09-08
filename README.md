@@ -1,10 +1,11 @@
 # Roomlings
 
-Shared shopping, bills and repayments, built around an interactive 3D kitchen. Roomlings records payments; it never moves money.
+Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlings records payments; it never moves money.
 
 ## What it does
 
 - Plan grocery runs with a shared list and individual shopping baskets.
+- Assign one-off or recurring chores across the kitchen, bathroom and whole home.
 - Split paid groceries and recurring bills between the people sharing them.
 - Track the monthly grocery budget and record roommate repayments.
 - Share a household through verified-email accounts, invitations and saved access.
@@ -25,14 +26,14 @@ Open http://localhost:5173 (API: port 4311). Sign in to create a household, or t
 | Entry | Purpose |
 | --- | --- |
 | `/` | Public landing page |
-| `/rooms/kitchen` | Personal room and sign-in |
-| `/sample/kitchen` | Anonymous sample room |
+| `/rooms/kitchen`, `/rooms/bathroom` | Personal rooms and sign-in |
+| `/sample/kitchen`, `/sample/bathroom` | Anonymous sample home |
 
 Email sign-in needs [Supabase setup](docs/accounts.md). Without it, local samples and existing browser recovery still work.
 
 ## Development
 
-TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. Only the kitchen is currently interactive; room registration supports adding more rooms to the same household.
+TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. Kitchen and bathroom share household access, chores, shopping and financial history; room registration supports further expansion.
 
 | Command | Purpose |
 | --- | --- |

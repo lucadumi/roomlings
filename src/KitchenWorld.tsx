@@ -8,34 +8,20 @@ import {
   Vector2, Vector3, WebGLRenderer,
 } from 'three'
 import type { BufferGeometry } from 'three'
-import type { Category, RoomStyle } from '../shared/domain.ts'
+import type { Category } from '../shared/domain.ts'
 import { categoryLabels } from '../shared/domain.ts'
-import { sceneAnchors } from './room.ts'
-import type { KitchenAction, SceneAction } from './room.ts'
+import { kitchenUtilities, kitchenUtilityAnchors, sceneAnchors } from './room.ts'
+import type { KitchenAction, KitchenUtility, SceneAction } from './room.ts'
 import { buildKitchenModel } from './kitchenModel.ts'
 import { baseCameraOffset, cameraFraming, cameraProjection, focusLabels } from './camera.ts'
-import type { FocusRequest, SceneFocus } from './camera.ts'
+import type { SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
 import { applyRoomStyle } from './roomStyles.ts'
+import type { RoomWorldProps } from './roomViewTypes.ts'
 
-type Props = {
-  roomStyle: RoomStyle
-  paused: boolean
-  panelOpen: boolean
-  focusRequest: FocusRequest
-  counts: Record<Category, number>
-  selected: Category | 'all'
-  fundFraction: number
-  memberCount: number
-  expenseCount: number
-  stockEvent: { id: string; category: Category } | null
-  onSelect: (category: Category) => void
-  onAction: (action: KitchenAction) => void
-}
-
-type Target = { category: Category } | { action: SceneAction }
+type Target = { category: Category } | { action: SceneAction } | { utility: KitchenUtility }
 const targetLabels: Record<SceneAction, string> = {
   fridge: 'Open or close your fridge',
   stock: 'Open the shared shopping list',
@@ -59,12 +45,13 @@ type WorldControls = {
   brew: () => void
 }
 
-export default function KitchenWorld({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }: Props) {
+export default function KitchenWorld({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, dueChores }: RoomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<KitchenAction | 'brew', HTMLButtonElement>())
+  const utilityLabels = useRef(new Map<KitchenUtility, HTMLButtonElement>())
   const controls = useRef<WorldControls | null>(null)
-  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction })
+  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -77,7 +64,7 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
   const [renderingPaused, setRenderingPaused] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [brewing, setBrewing] = useState(false)
-  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction }
+  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock }
   hoverRef.current = hovered
 
   useEffect(() => {
@@ -138,6 +125,7 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     const contacts = addContactShadows(room, shadowTexture, [
       ...scenery.contacts,
       { position: [kitchen.position.x, 0.007, kitchen.position.z], size: [2.55, 2.1] },
+      { position: [-1.55, 0.012, -0.45], size: [1.05, 0.75] },
     ])
     const shadowMaterial = new MeshBasicMaterial({
       map: shadowTexture, color: '#535d45', opacity: 0.2, transparent: true, depthWrite: false, toneMapped: false,
@@ -267,6 +255,8 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       while (object && object !== room) {
         if (object.userData.category) return { category: object.userData.category as Category }
         if (object.userData.action) return { action: object.userData.action as SceneAction }
+        const utility = kitchenUtilities.find((kind) => kind === object?.userData.utility)
+        if (utility) return { utility }
         object = object.parent ?? undefined
       }
       return null
@@ -325,7 +315,11 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       if (!moved && Math.abs(event.clientX - startX) < 5) {
         const target = hitTarget(event)
         if (target && 'category' in target) state.current.onSelect(target.category)
-        else if (target?.action === 'fridge') {
+        else if (target && 'utility' in target) {
+          focusOn(target.utility)
+          if (target.utility === 'supplies') state.current.onRestock()
+          else state.current.onOpenChores(target.utility === 'chores' ? null : target.utility)
+        } else if (target?.action === 'fridge') {
           currentControls.open = !currentControls.open
           setOpen(currentControls.open)
           focusOn('fridge')
@@ -548,6 +542,15 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
         label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
         label.style.visibility = x < 18 || x > viewport.width - 18 || y < 18 || y > viewport.height - 18 ? 'hidden' : 'visible'
       }
+      for (const anchor of kitchenUtilityAnchors) {
+        const label = utilityLabels.current.get(anchor.utility)
+        if (!label) continue
+        projected.set(...anchor.position).applyMatrix4(room.matrixWorld).project(camera)
+        const x = (projected.x * 0.5 + 0.5) * viewport.width
+        const y = (-projected.y * 0.5 + 0.5) * viewport.height
+        label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
+        label.style.visibility = x < 24 || x > viewport.width - 24 || y < 24 || y > viewport.height - 24 ? 'hidden' : 'visible'
+      }
     }
     resize()
     frame = requestAnimationFrame(animate)
@@ -596,6 +599,11 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     setEvening(next)
     controls.current?.wake()
   }
+  const openUtility = (utility: KitchenUtility) => {
+    controls.current?.focusOn(utility)
+    if (utility === 'supplies') onRestock()
+    else onOpenChores(utility === 'chores' ? null : utility)
+  }
 
   return (
     <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={focused} data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
@@ -604,10 +612,13 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       {!unavailable && <>
         <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label="Objects in your kitchen">
           {sceneAnchors.map((anchor) => <button key={anchor.action} ref={(element) => { if (element) labels.current.set(anchor.action, element); else labels.current.delete(anchor.action) }} className={`world-hotspot hotspot-${anchor.action}`} aria-label={anchor.label} data-selected={focused === anchor.action} onClick={() => { if (anchor.action === 'brew') controls.current?.brew(); else onAction(anchor.action) }} onMouseEnter={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onMouseLeave={() => { setHovered(null); controls.current?.wake() }} onFocus={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onBlur={() => { setHovered(null); controls.current?.wake() }}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{anchor.label}</span></button>)}
+          {kitchenUtilityAnchors.map((anchor) => <button key={anchor.utility} ref={(element) => { if (element) utilityLabels.current.set(anchor.utility, element); else utilityLabels.current.delete(anchor.utility) }}
+            className={`world-hotspot hotspot-${anchor.utility}`} aria-label={anchor.label} data-selected={focused === anchor.utility}
+            onClick={() => openUtility(anchor.utility)}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{anchor.label}{anchor.utility === 'sink' && dueChores.sink ? ` (${dueChores.sink} due)` : ''}</span></button>)}
         </div>
         <div className="world-view-label"><span className="view-label-dot" />{focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.9} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.65} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Frame the whole room" title="Whole room" aria-pressed={fittingRoom}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels} title="Object labels">{showLabels ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
-        <div className="world-interaction-hint"><Move size={13} />{hovered ? ('category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : targetLabels[hovered.action]) : 'Drag to explore. Select an object to get closer.'}</div>
+        <div className="world-interaction-hint"><Move size={13} />{hovered ? ('category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : 'Drag to explore. Select an object to get closer.'}</div>
         <button className="world-fridge-toggle" onClick={toggle} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size={15} />{open ? 'Close the fridge' : 'Peek inside'}<span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>
         <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size={16} /><span>{brewing ? 'Kettle is on' : 'Tea break'}</span></button>
       </>}

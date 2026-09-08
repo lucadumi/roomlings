@@ -9,6 +9,7 @@ import { Form, SplitParticipants } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import './bills.css'
+import { Dropdown } from './Dropdown.tsx'
 
 const statusLabels = { paid: 'Paid', overdue: 'Overdue', due: 'Due today', upcoming: 'Upcoming' }
 
@@ -155,7 +156,7 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
       <label className="field">Amount paid ({household.currency})<input required inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} disabled={disabled} /></label>
       <label className="field">Payment date<input type="date" required value={date} max={today} onChange={(event) => setDate(event.target.value)} disabled={disabled} /></label>
     </div>
-    <label className="field">Paid by<select value={paidBy} onChange={(event) => setPaidBy(event.target.value)} disabled={disabled}>{household.members.filter((member) => !member.inactive || member.id === paidBy).map((member) => <option key={member.id} value={member.id} disabled={member.inactive}>{member.name}{member.inactive ? ' (former roommate)' : ''}</option>)}</select></label>
+    <label className="field">Paid by<Dropdown label="Paid by" value={paidBy} onValueChange={setPaidBy} disabled={disabled}>{household.members.filter((member) => !member.inactive || member.id === paidBy).map((member) => <option key={member.id} value={member.id} disabled={member.inactive}>{member.name}{member.inactive ? ' (former roommate)' : ''}</option>)}</Dropdown></label>
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={disabled} />
     {participants.some((id) => household.members.some((member) => member.id === id && member.inactive)) && <p className="field-hint">This schedule includes a former roommate. New payment records require active participants; review the split before recording a payment. Existing ledger entries are unchanged.</p>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}

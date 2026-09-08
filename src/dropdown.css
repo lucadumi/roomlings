@@ -1,0 +1,18 @@
+.dropdown-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid #ccdcbc; border-radius: var(--control-radius); background: #fffff8; color: #3f632d; font-family: var(--font-body); font-size: .8125rem; font-weight: 400; text-align: left; line-height: 1.5; }
+.dropdown-value { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dropdown-trigger > svg { flex-shrink: 0; color: var(--control-ink); transition: transform 150ms; }
+.dropdown-trigger[data-state="open"] > svg { transform: rotate(180deg); }
+.dropdown-trigger:hover:not(:disabled) { border-color: #8ba476; background: var(--control-surface); }
+.dropdown-trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.dropdown-trigger:disabled { opacity: 1; background: #eef2e5; border-color: #dbe4ce; color: #768467; cursor: not-allowed; }
+.dropdown-content { z-index: 200; min-width: var(--radix-select-trigger-width); max-width: min(480px, var(--radix-select-content-available-width)); max-height: min(320px, var(--radix-select-content-available-height)); overflow: hidden; border: 1px solid var(--control-border); border-radius: 9px; background: var(--control-surface); box-shadow: 0 3px 0 #b1b99a55, 0 12px 28px #34472e24; color: var(--control-ink); font-family: var(--font-body); font-size: .875rem; line-height: 1.6; }
+.dropdown-viewport { padding: 5px; max-height: min(310px, calc(var(--radix-select-content-available-height) - 10px)); scrollbar-width: thin; scrollbar-color: #adbfa0 transparent; }
+.dropdown-option { position: relative; display: flex; align-items: center; min-width: 0; min-height: 38px; padding: 8px 34px 8px 11px; border-radius: 5px; outline: none; white-space: normal; overflow-wrap: anywhere; cursor: pointer; user-select: none; }
+.dropdown-option[data-state="checked"] { background: #eef2e5; color: #3f6230; }
+.dropdown-option[data-highlighted] { background: #dfe9d4; color: #365629; box-shadow: inset 0 0 0 1px #c2d2b0; }
+.dropdown-option[data-disabled] { opacity: .45; cursor: not-allowed; }
+.dropdown-check { position: absolute; right: 10px; top: 50%; display: flex; transform: translateY(-50%); }
+@media (max-width: 1024px), (any-pointer: coarse) {
+  .dropdown-trigger { font-size: max(16px, 1rem); }
+  .dropdown-option { min-height: 44px; }
+}

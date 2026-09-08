@@ -4,8 +4,8 @@ import { Check, History, Pencil, Plus, ReceiptText, ShoppingBasket, Trash2, User
 import {
   localDate, money, shoppingCheckoutSchema, shoppingItemEditSchema, shoppingItemInputSchema, shoppingItemLimit,
 } from '../shared/domain.ts'
-import type { Household, ShoppingItem } from '../shared/domain.ts'
-import { canEditShoppingItem, checkoutItems, inBasket } from '../shared/shopping.ts'
+import type { Household, ShoppingItem, ShoppingItemInput } from '../shared/domain.ts'
+import { canEditShoppingItem, checkoutItems, inBasket, normalizeShoppingName } from '../shared/shopping.ts'
 import { Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { ExpenseForm } from './ExpenseForm.tsx'
@@ -83,20 +83,23 @@ export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, 
   </section>
 }
 
-export function ShoppingItemForm({ household, memberId, item, busy, error, onSubmit }: {
+export function ShoppingItemForm({ household, memberId, item, initialItem, preventDuplicate = false, busy, error, onSubmit }: {
   household: Household; memberId: string; item?: ShoppingItem; busy: boolean; error: ReactNode
+  initialItem?: ShoppingItemInput; preventDuplicate?: boolean
   onSubmit: (body: Record<string, unknown>) => void
 }) {
-  const [name, setName] = useState(item?.name ?? '')
-  const [quantity, setQuantity] = useState(item?.quantity ?? '1')
-  const [notes, setNotes] = useState(item?.notes ?? '')
+  const [name, setName] = useState(item?.name ?? initialItem?.name ?? '')
+  const [quantity, setQuantity] = useState(item?.quantity ?? initialItem?.quantity ?? '1')
+  const [notes, setNotes] = useState(item?.notes ?? initialItem?.notes ?? '')
   const [baseVersion, setBaseVersion] = useState(item?.version ?? 0)
   const [localError, setLocalError] = useState('')
   const latest = item ? household.shopping.items.find((entry) => entry.id === item.id) : undefined
   const blocked = !!item && (!latest || !canEditShoppingItem(latest, memberId))
   const changed = !!item && !!latest && latest.version !== baseVersion
+  const duplicate = preventDuplicate && !!name.trim() && household.shopping.items.some((entry) => entry.id !== item?.id && normalizeShoppingName(entry.name) === normalizeShoppingName(name))
   return <Form onSubmit={() => {
     if (blocked || changed) { setLocalError('Review the latest shopping item before saving.'); return }
+    if (duplicate) { setLocalError('This supply is already on the shared list. Close this form and review its quantity there.'); return }
     const input = item ? shoppingItemEditSchema.safeParse({ name, quantity, notes, itemVersion: baseVersion })
       : shoppingItemInputSchema.safeParse({ name, quantity, notes })
     if (!input.success) { setLocalError(input.error.issues[0].message); return }
@@ -107,6 +110,7 @@ export function ShoppingItemForm({ household, memberId, item, busy, error, onSub
     <label className="field">Quantity<input required maxLength={40} value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={busy} placeholder="e.g. 2 cartons or 500 g" /></label>
     <label className="field">Notes<textarea maxLength={240} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={busy} placeholder="Brand, preference or anything useful" /></label>
     {blocked && <p className="form-error" role="alert">This item left the list, is in a basket, or is being handled by another roommate. Close this form and review the list.</p>}
+    {duplicate && <p className="field-hint">This supply is already on the shared list. Review its existing quantity instead of adding it again.</p>}
     {!blocked && changed && latest && <div className="shopping-conflict">
       <p role="alert">This item changed. Latest: {latest.quantity} {latest.name}{latest.notes ? `, ${latest.notes}` : ''}.</p>
       <div className="button-row">
@@ -115,7 +119,7 @@ export function ShoppingItemForm({ household, memberId, item, busy, error, onSub
       </div>
     </div>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
+    <button className="button primary full" disabled={busy || blocked || changed || duplicate}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
   </Form>
 }
 

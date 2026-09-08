@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { householdSchema, localDate, memberColors, nameSchema } from '../shared/domain.ts'
+import { billingDate, householdSchema, localDate, memberColors, nameSchema } from '../shared/domain.ts'
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
@@ -152,6 +152,7 @@ export class Store {
       members: [{ id: memberId, name: memberName, color: memberColors[0] }],
       expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
       shopping: { items: [], runs: [] },
+      chores: { items: [], history: [] },
     }
     if (demo) {
       household.members.push(...['Jules', 'Sam', 'Alex'].map((name, index) => ({
@@ -175,6 +176,18 @@ export class Store {
           category: entry.category, date: localDate(date), createdAt: new Date().toISOString(),
         }
       })
+      const now = new Date()
+      const dueDate = billingDate(household.billingTimeZone, now)
+      household.chores.items = ([
+        { title: 'Clear the sink', roomId: 'kitchen', area: 'sink', repeatDays: 1 },
+        { title: 'Take out the rubbish', roomId: 'kitchen', area: 'bins', repeatDays: 3 },
+        { title: 'Wipe the mirror', roomId: 'bathroom', area: 'mirror', repeatDays: 7 },
+        { title: 'Clean the toilet', roomId: 'bathroom', area: 'toilet', repeatDays: 7 },
+      ] as const).map((entry, turn) => ({
+        ...entry, id: randomUUID(), notes: '', dueDate, rotation: household.members.map((member) => member.id), turn,
+        createdBy: memberId, createdAt: now.toISOString(), updatedAt: now.toISOString(),
+        version: 0, occurrence: 0, archived: false,
+      }))
     }
     await this.save(household)
     return (await this.session(household, memberId))

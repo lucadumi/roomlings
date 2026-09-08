@@ -11,6 +11,7 @@ function kitchen(): Household {
     expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
     roomStyle: 'original',
     shopping: { items: [], runs: [] },
+    chores: { items: [], history: [] },
   }
 }
 
