@@ -60,8 +60,11 @@ const savedKitchenSchema = z.object({
   memberId: z.string().uuid(),
   name: z.string(),
   memberName: z.string(),
+  demo: z.boolean().optional(),
+  expired: z.literal(true).optional(),
 })
 export type SavedKitchen = z.infer<typeof savedKitchenSchema>
+export type SavedKitchenChange = Pick<SavedKitchen, 'demo' | 'expired'>
 
 export function readToken(): string | null {
   // Existing kitchens migrate when rememberKitchen saves a successfully restored session.
@@ -87,6 +90,20 @@ export function savedKitchens(): SavedKitchen[] {
   return z.array(savedKitchenSchema).parse(JSON.parse(saved))
 }
 
+export function updateSavedKitchen(token: string, change: SavedKitchenChange): SavedKitchen[] {
+  const updates = [savedKitchensKey, 'coldshare.kitchens'].flatMap((key) => {
+    const value = localStorage.getItem(key)
+    if (!value) return []
+    const kitchens = z.array(savedKitchenSchema).parse(JSON.parse(value))
+    return kitchens.some((kitchen) => kitchen.token === token) ? [{ key, kitchens }] : []
+  })
+  for (const { key, kitchens } of updates) {
+    localStorage.setItem(key, JSON.stringify(kitchens.map((kitchen) =>
+      kitchen.token === token ? { ...kitchen, ...change } : kitchen)))
+  }
+  return savedKitchens()
+}
+
 export function rememberKitchen(session: KitchenSession): SavedKitchen[] {
   const saved = savedKitchens()
   if (session.token === null) {
@@ -98,6 +115,7 @@ export function rememberKitchen(session: KitchenSession): SavedKitchen[] {
   const next = [{
     token: session.token, householdId: session.household.id, memberId: session.memberId,
     name: session.household.name, memberName: member.name,
+    ...(session.household.demo ? { demo: true } : {}),
   }, ...saved.filter((kitchen) => kitchen.token !== session.token
     && (kitchen.householdId !== session.household.id || kitchen.memberId !== session.memberId))]
   localStorage.setItem(savedKitchensKey, JSON.stringify(next))

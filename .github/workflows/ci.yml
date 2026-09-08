@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
 
 permissions:
   contents: read
@@ -84,7 +84,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: node --test tests/postgres.test.ts
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser -- accounts.spec.ts
+      - run: npm run test:browser -- accounts.spec.ts account-recovery.spec.ts
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

@@ -236,8 +236,10 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([kitchen])
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([{ ...kitchen, demo: true }])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(original.token)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([kitchen])
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(original.token)
 
   await page.reload()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
@@ -260,8 +262,10 @@ test('Roomlings sessions take precedence over retained legacy browser storage', 
   await page.goto('/kitchen')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(current.token)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([currentKitchen])
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([{ ...currentKitchen, demo: true }])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(legacy.token)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([savedKitchen(legacy)])
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(current.token)
 })
 
 test('landing branding keeps accessible links and fits phones, the icon breakpoint and landscape', async ({ page }) => {

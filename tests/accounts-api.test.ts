@@ -8,8 +8,10 @@ import { Store } from '../server/store.ts'
 import { ApiError } from '../server/errors.ts'
 import { retryAccountDeletions } from '../server/accounts-api.ts'
 import type { AccountProvider } from '../server/provider.ts'
-import { accountIdleLifetime, accountAbsoluteLifetime } from '../server/accounts-store.ts'
-import { accountInvitationResultSchema, accountStateSchema, householdAccessSchema } from '../shared/accounts.ts'
+import { accountIdleLifetime, accountAbsoluteLifetime, accountReauthLifetime } from '../server/accounts-store.ts'
+import {
+  accountInvitationResultSchema, accountRecoveryResultSchema, accountRecoveryStateSchema, accountStateSchema, householdAccessSchema,
+} from '../shared/accounts.ts'
 import type { AccountState } from '../shared/accounts.ts'
 import { balances, memberColors } from '../shared/domain.ts'
 import type { Household, Session } from '../shared/domain.ts'
@@ -270,6 +272,121 @@ describe('verified account HTTP lifecycle', () => {
   })
 })
 
+describe('account recovery HTTP lifecycle', () => {
+  it('returns codes once and restores the same account through an opaque cookie without email delivery', async () => {
+    const f = await fixture(true, 'https://roomlings.example')
+    const owner = f.browser()
+    await owner.signIn('ada@example.com', 'Ada')
+    const before = await owner.create()
+    const initial = await owner.request('/account/recovery')
+    assert.deepEqual(accountRecoveryStateSchema.parse(initial.data), { version: 0, remaining: 0, updatedAt: null })
+    const response = await owner.request('/account/recovery', { version: 0 })
+    assert.equal(response.status, 200)
+    assert.equal(response.response.headers.get('cache-control'), 'no-store')
+    const generated = accountRecoveryResultSchema.parse(response.data)
+    const status = await owner.request('/account/recovery')
+    assert.ok(!('codes' in status.data))
+    assert.ok(generated.codes.every((code) => !JSON.stringify(status.data).includes(code)))
+    f.provider.failSend = true
+    f.provider.mismatch = true
+    const phone = f.browser()
+    const recovered = await phone.request('/account/recover', {
+      email: ' ADA@EXAMPLE.COM ', code: generated.codes[0].toUpperCase(), label: 'Recovered phone',
+    })
+    assert.equal(recovered.status, 200)
+    assert.match(recovered.response.headers.get('set-cookie')!, /HttpOnly/)
+    assert.match(recovered.response.headers.get('set-cookie')!, /SameSite=Lax/)
+    assert.match(recovered.response.headers.get('set-cookie')!, /Max-Age=2592000/)
+    assert.match(recovered.response.headers.get('set-cookie')!, /; Secure/)
+    const state = accountStateSchema.parse(recovered.data)
+    assert.deepEqual(state.account, before.account)
+    assert.deepEqual(state.memberships, before.memberships)
+    assert.deepEqual(state.session, before.session)
+    assert.ok(!JSON.stringify(recovered.data).includes(phone.cookie.split('=')[1]))
+    assert.equal((await phone.state()).account?.id, before.account?.id)
+    assert.equal((await owner.state()).account?.id, before.account?.id)
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 9)
+    assert.deepEqual(f.provider.sent, [])
+  })
+
+  it('protects recovery-code management and login against cross-origin requests and missing credentials', async () => {
+    const f = await fixture()
+    const owner = f.browser()
+    await owner.signIn('ada@example.com')
+    assert.equal((await f.call('/account/recovery')).status, 401)
+    assert.equal((await f.call('/account/recovery', { version: 0 })).status, 401)
+    assert.equal((await owner.request('/account/recovery', { version: 0 }, { csrf: '' })).status, 403)
+    assert.equal((await owner.request('/account/recovery', { version: 0 }, { headers: { Origin: 'https://attacker.example' } })).status, 403)
+    assert.equal((await owner.request('/account/recovery', { version: -1 })).status, 400)
+    const generated = accountRecoveryResultSchema.parse((await owner.request('/account/recovery', { version: 0 })).data)
+    assert.equal((await owner.request('/account/recovery', { version: 1 }, { method: 'DELETE', csrf: '' })).status, 403)
+    const input = { email: 'ada@example.com', code: generated.codes[0], label: 'New browser' }
+    assert.equal((await f.call('/account/recover', input, { headers: { Origin: 'https://attacker.example' } })).status, 403)
+    assert.equal((await f.call('/account/recover', input, { headers: { 'X-Roomlings-Request': undefined } })).status, 403)
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 10)
+    const other = f.browser()
+    await other.signIn('ben@example.com')
+    assert.equal((await other.request(`/account/recovery?accountId=${(await owner.state()).account?.id}`)).data.remaining, 0)
+    const unconfigured = await fixture(false)
+    assert.equal((await unconfigured.call('/account/recover', input)).status, 503)
+  })
+
+  it('rejects wrong or reused proofs without consuming a code and serializes concurrent recovery', async () => {
+    const f = await fixture()
+    const owner = f.browser()
+    await owner.signIn('ada@example.com')
+    const generated = accountRecoveryResultSchema.parse((await owner.request('/account/recovery', { version: 0 })).data)
+    const wrongEmail = await f.call('/account/recover', { email: 'wrong@example.com', code: generated.codes[0], label: 'Wrong email' })
+    assert.equal(wrongEmail.status, 401)
+    assert.equal(wrongEmail.data.code, 'INVALID_ACCOUNT_RECOVERY_CODE')
+    assert.equal(wrongEmail.response.headers.get('set-cookie'), null)
+    assert.equal((await f.call('/account/recover', { email: 'ada@example.com', code: '12345678', label: 'Not a backup code' })).status, 400)
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 10)
+    const input = { email: 'ada@example.com', code: generated.codes[0], label: 'Concurrent browser' }
+    const attempts = await Promise.all([f.call('/account/recover', input), f.call('/account/recover', input)])
+    assert.deepEqual(attempts.map((result) => result.status).sort(), [200, 401])
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 9)
+    assert.equal((await owner.state()).devices.length, 2)
+  })
+
+  it('rate-limits recovery attempts independently of the email fallback without using valid codes', async () => {
+    const f = await fixture()
+    const owner = f.browser()
+    await owner.signIn('ada@example.com')
+    const generated = accountRecoveryResultSchema.parse((await owner.request('/account/recovery', { version: 0 })).data)
+    const invalid = `roomlings-account-${'0000-'.repeat(7)}0000`
+    for (let attempt = 0; attempt < 10; attempt++) {
+      assert.equal((await f.call('/account/recover', { email: 'ada@example.com', code: invalid, label: 'Invalid attempt' })).status, 401)
+    }
+    assert.equal((await f.call('/account/recover', { email: 'ada@example.com', code: generated.codes[0], label: 'Rate limited' })).status, 429)
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 10)
+    assert.equal((await f.call('/account/code', { email: 'ada@example.com' })).status, 200)
+  })
+
+  it('requires a fresh sign-in to replace or revoke codes and rejects stale code-set versions', async () => {
+    const f = await fixture()
+    const owner = f.browser()
+    await owner.signIn('ada@example.com')
+    const generated = accountRecoveryResultSchema.parse((await owner.request('/account/recovery', { version: 0 })).data)
+    f.advance(accountReauthLifetime + 1)
+    const stale = await owner.request('/account/recovery', { version: 1 })
+    assert.equal(stale.status, 401)
+    assert.equal(stale.data.code, 'REAUTHENTICATION_REQUIRED')
+    assert.equal((await owner.request('/account/recovery', { version: 1 }, { method: 'DELETE' })).status, 401)
+    const fresh = f.browser()
+    assert.equal((await fresh.request('/account/recover', { email: 'ada@example.com', code: generated.codes[0], label: 'Fresh recovery' })).status, 200)
+    const replaced = accountRecoveryResultSchema.parse((await fresh.request('/account/recovery', { version: 1 })).data)
+    assert.equal(replaced.recovery.version, 2)
+    assert.equal((await fresh.request('/account/recovery', { version: 1 }, { method: 'DELETE' })).status, 409)
+    const revoked = await fresh.request('/account/recovery', { version: 2 }, { method: 'DELETE' })
+    assert.deepEqual(accountRecoveryStateSchema.parse(revoked.data), {
+      version: 3, remaining: 0, updatedAt: replaced.recovery.updatedAt,
+    })
+    assert.equal((await f.call('/account/recover', { email: 'ada@example.com', code: replaced.codes[0], label: 'Revoked' })).status, 401)
+    assert.ok((await owner.state()).account)
+  })
+})
+
 describe('account invitations and membership lifecycle', () => {
   it('does not count retained inactive identities toward legacy invitation seats', async () => {
     const f = await fixture(false)
@@ -317,8 +434,15 @@ describe('account invitations and membership lifecycle', () => {
     const third = (await secondLegacy(f.store, first, 'Charlie'))
     assert.equal((await ada.request('/account/link', { token: third.token })).status, 409)
     const demo = (await f.store.create('Practice', 'You', 'EUR', 30000, true))
-    assert.equal((await ada.request('/account/link', { token: demo.token })).status, 400)
-    assert.equal((await ada.request('/account/link', { token: 'invalid-proof-123456789' })).status, 401)
+    const sample = await ada.request('/account/link', { token: demo.token })
+    assert.equal(sample.status, 400)
+    assert.equal(sample.data.code, 'SAMPLE_KITCHEN')
+    const invalidBrowser = await ada.request('/account/link', { token: 'invalid-proof-123456789' })
+    assert.equal(invalidBrowser.status, 401)
+    assert.equal(invalidBrowser.data.code, 'BROWSER_ACCESS_EXPIRED')
+    const invalidRecovery = await ada.request('/account/link', { recoveryCode: `roomlings-${'A'.repeat(43)}` })
+    assert.equal(invalidRecovery.status, 401)
+    assert.equal(invalidRecovery.data.code, 'INVALID_RECOVERY_CODE')
     assert.equal((await ada.request('/invite/rotate', { version: (await f.store.get(first.household.id))!.version }, { token: first.token })).status, 403)
     await ada.request('/account/logout', { all: true })
     assert.equal((await f.store.authenticate(first.token)), null)

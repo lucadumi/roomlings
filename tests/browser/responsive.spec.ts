@@ -329,6 +329,7 @@ test.describe('responsive current app', () => {
       await page.getByLabel('Email address', { exact: true }).fill(email)
       await expectContentFits(dialog)
       await page.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+      await expect(page.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
       await page.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor(email))
       await page.getByLabel('Account display name', { exact: true }).fill(longName)
       await page.getByLabel('Name this browser', { exact: true }).fill(longName)
