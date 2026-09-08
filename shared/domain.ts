@@ -196,7 +196,6 @@ export const householdSchema = z.object({
   budget: centsSchema,
   roomStyle: roomStyleSchema.default('original'),
   inviteCode: z.string(),
-  demo: z.boolean(),
   version: z.number().int().nonnegative(),
   mutationReceipts: z.array(mutationReceiptSchema).max(mutationReceiptLimit).optional(),
   members: z.array(memberSchema).min(1).max(retainedMemberLimit),

@@ -12,7 +12,7 @@ export function RoomPreview({ roomId }: { roomId: RoomId }) {
     {failed
       ? <div className="welcome-preview-unavailable" role="status">
         <ImageOff size={26} aria-hidden="true" />
-        <p>The {roomCatalog[roomId].name.toLowerCase()} preview could not load. You can still open the sample.</p>
+        <p>The {roomCatalog[roomId].name.toLowerCase()} preview could not load. You can still open your room.</p>
       </div>
       : <img src={roomPreviewImages[roomId]} alt="" width={560} height={384} draggable={false} onError={() => setFailed(true)} />}
   </div>

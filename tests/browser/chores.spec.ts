@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Page } from '@playwright/test'
 import { billingDate, householdSchema } from '../../shared/domain.ts'
 import type { Household, Session } from '../../shared/domain.ts'
-import { roomPath, samplePath } from '../../src/roomNavigation.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 import { expect, routeAccountApi, closeAccountContext, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 import { chooseOption, savedKitchen, selectRoom } from './fixtures.ts'
@@ -62,8 +62,6 @@ async function roommateChange(accounts: AccountHarness, session: Session, path: 
 test('chores span rooms, rotate once, and undo without touching financial history', async ({ page, accounts }) => {
   const { owner, ben } = await seedHome(page, accounts)
   const moneyBefore = { expenses: owner.household.expenses, settlements: owner.household.settlements, bills: owner.household.bills, budget: owner.household.budget }
-  const demos: string[] = []
-  page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/demo') demos.push(request.url()) })
   await page.goto(roomPath())
   await openChores(page)
   await addChore(page, 'Wash the dishes', 'kitchen', 'sink', '7')
@@ -112,7 +110,6 @@ test('chores span rooms, rotate once, and undo without touching financial histor
   expect({ expenses: final.expenses, settlements: final.settlements, bills: final.bills, budget: final.budget }).toEqual(moneyBefore)
   expect(final.chores.history[0].undoneAt).not.toBeNull()
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(owner.token)
-  expect(demos).toEqual([])
 })
 
 test('one-off completion, custom recurrence, reassignment and archive restoration remain editable', async ({ page, accounts }) => {
@@ -256,37 +253,23 @@ test('two roommates see the same chore completion while keeping their own room c
   }
 })
 
-test('sample room switching retains sample edits without changing personal access', async ({ page }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem('coldshare.session', 'personal-access-that-must-remain-unchanged')
-    localStorage.setItem('roomlings.access-mode', 'account')
-  })
-  const accountRequests: string[] = []
-  let samples = 0
-  page.on('request', (request) => {
-    const path = new URL(request.url()).pathname
-    if (path.startsWith('/api/account')) accountRequests.push(path)
-    if (path === '/api/demo') samples++
-  })
-  await page.goto(samplePath('bathroom'))
+test('room switching retains real household edits and browser access', async ({ page, accounts }) => {
+  const { owner } = await seedHome(page, accounts)
+  await page.goto(roomPath('bathroom'))
   await openChores(page)
-  await addChore(page, 'A sample-only task', 'bathroom', 'sink')
-  const token = await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))
+  await addChore(page, 'A room-specific task', 'bathroom', 'sink')
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await selectRoom(page, 'kitchen')
-  await expect(page).toHaveURL(new RegExp(`${samplePath()}$`))
+  await expect(page).toHaveURL(new RegExp(`${roomPath()}$`))
   await page.goBack()
-  await expect(page).toHaveURL(new RegExp(`${samplePath('bathroom')}$`))
+  await expect(page).toHaveURL(new RegExp(`${roomPath('bathroom')}$`))
   await openChores(page)
-  await expect(page.getByRole('article', { name: 'A sample-only task', exact: true })).toBeVisible()
+  await expect(page.getByRole('article', { name: 'A room-specific task', exact: true })).toBeVisible()
   await page.reload()
   await openChores(page)
-  await expect(page.getByRole('article', { name: 'A sample-only task', exact: true })).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(token)
-  expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe('personal-access-that-must-remain-unchanged')
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
-  expect(samples).toBe(1)
-  expect(accountRequests).toEqual([])
+  await expect(page.getByRole('article', { name: 'A room-specific task', exact: true })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(owner.token)
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('browser')
 })
 
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {

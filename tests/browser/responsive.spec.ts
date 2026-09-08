@@ -123,7 +123,7 @@ async function openAccount(page: Page) {
 test.describe('responsive current app', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('sample controls reflow through resizing and landscape orientation', { tag: '@room' }, async ({ page }) => {
+  test('room controls reflow through resizing and landscape orientation', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     await expect(page.locator('.world-canvas canvas')).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
@@ -131,7 +131,7 @@ test.describe('responsive current app', () => {
       await page.setViewportSize(viewport)
       await settledLayout(page)
       const issues = await page.locator('.game-home').evaluate((home) => {
-        const selectors = ['.game-hud', '.room-caption', '.game-demo', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']
+        const selectors = ['.game-hud', '.room-caption', '.game-identity', '.game-resources', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']
         const boxes = selectors.map((selector) => ({ selector, box: home.querySelector(selector)!.getBoundingClientRect() }))
         return boxes.flatMap(({ selector, box }, index) => [
           ...(box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1 ? [`${selector} is outside the viewport`] : []),
@@ -143,13 +143,10 @@ test.describe('responsive current app', () => {
       })
       expect(issues, `${viewport.width}x${viewport.height}`).toEqual([])
       await expectContentFits(page.locator('.game-hud'))
-      await expectContentFits(page.locator('.game-demo'))
       for (const button of await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button').all()) {
         await expectReachable(button, viewport.width <= 1024 ? 44 : 36)
       }
     }
-    await page.getByRole('button', { name: 'Make it yours', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Email address', { exact: true })).toBeVisible()
   })
 
   for (const viewport of viewports) {

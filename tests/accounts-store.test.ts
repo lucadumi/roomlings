@@ -9,6 +9,40 @@ import { SQLiteDatabase } from '../server/database.ts'
 import { activeMemberLimit, balances, householdSchema, memberColors, retainedMemberLimit } from '../shared/domain.ts'
 
 describe('account persistence and migration', () => {
+  it('excludes retired examples from account state, invitations and creation retries without rewriting them', async () => {
+    const database = new SQLiteDatabase(':memory:')
+    const store = new Store(database)
+    try {
+      const owner = await store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Laptop')
+      const input = {
+        requestId: randomUUID(), name: 'Old example', memberName: 'Ada', currency: 'EUR' as const, budget: 10000,
+      }
+      const created = await store.accounts.createHousehold(owner.session, input)
+      const household = created.session!.household
+      const invitation = await store.accounts.invite(owner.session, household.id, household.version, 7)
+      const row = await database.prepare('SELECT state FROM households WHERE id = ?').get(household.id)
+      const retiredState = JSON.stringify({ ...JSON.parse(String(row!.state)), demo: true })
+      await database.prepare('UPDATE households SET state = ? WHERE id = ?').run(retiredState, household.id)
+
+      const state = await store.accounts.state(owner.session)
+      assert.deepEqual(state.memberships, [])
+      assert.equal(state.session, null)
+      await assert.rejects(store.accounts.household(owner.session, household.id), /active access/)
+
+      const retried = await store.accounts.createHousehold(owner.session, input)
+      assert.notEqual(retried.session?.household.id, household.id)
+      assert.equal(retried.memberships.length, 1)
+      assert.equal((await database.prepare('SELECT state FROM households WHERE id = ?').get(household.id))?.state, retiredState)
+
+      const newcomer = await store.accounts.signIn(
+        { providerId: randomUUID(), email: 'newcomer@example.com' }, 'Newcomer', 'Phone',
+      )
+      await assert.rejects(store.accounts.accept(newcomer.session, invitation.code, 'Newcomer'), /closed/)
+    } finally {
+      await store.close()
+    }
+  })
+
   it('persists account creation receipts through household saves and fresh account sessions after restart', async () => {
     const directory = join(process.cwd(), `.accounts-creation-${randomUUID()}`)
     mkdirSync(directory)

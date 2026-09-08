@@ -8,11 +8,12 @@ import {
 import type {
   AccountInvitationResult, AccountRecoveryResult, AccountRecoverySignIn, AccountRecoveryState, AccountState, CreateAccountHousehold, HouseholdAccess,
 } from '../shared/accounts.ts'
-import { activeMemberLimit, householdSchema, memberColors, retainedMemberLimit } from '../shared/domain.ts'
+import { activeMemberLimit, memberColors, retainedMemberLimit } from '../shared/domain.ts'
 import type { Household } from '../shared/domain.ts'
 import type { Store } from './store.ts'
 import type { VerifiedAccount } from './provider.ts'
 import { ApiError } from './errors.ts'
+import { parseStoredHousehold } from './retired-household.ts'
 
 export const accountAbsoluteLifetime = 30 * 24 * 60 * 60_000
 export const accountIdleLifetime = 7 * 24 * 60 * 60_000
@@ -211,7 +212,7 @@ export class AccountStore {
       JOIN household_accounts h ON h.household_id = m.household_id
       JOIN households k ON k.id = m.household_id WHERE m.account_id = ? AND m.active = 1`).all(accountId))
     return rows.flatMap((row) => {
-      const household = householdSchema.parse(JSON.parse(String(row.state)))
+      const household = parseStoredHousehold(String(row.state))
       if (!household?.members.some((member) => member.id === row.member_id && !member.inactive)) return []
       return [{
         householdId: household.id, householdName: household.name, memberId: String(row.member_id),
@@ -338,7 +339,6 @@ export class AccountStore {
       const member = household?.members.find((member) => member.id === row?.member_id && !member.inactive)
       if (!household || !member) throw new ApiError(401, 'That browser access or recovery code is invalid or revoked.',
         proof.token ? 'BROWSER_ACCESS_EXPIRED' : 'INVALID_RECOVERY_CODE')
-      if (household.demo) throw new ApiError(400, 'Practice kitchens cannot be linked to accounts. Create a real kitchen instead.', 'SAMPLE_KITCHEN')
       const existing = (await this.db.prepare('SELECT account_id FROM account_memberships WHERE household_id = ? AND member_id = ?').get(household.id, member.id))
       if (existing && existing.account_id !== session.accountId) throw new ApiError(409, 'This roommate identity is already linked to another account.')
       const other = (await this.db.prepare('SELECT member_id FROM account_memberships WHERE household_id = ? AND account_id = ?').get(household.id, session.accountId))
@@ -364,7 +364,11 @@ export class AccountStore {
           JOIN households k ON k.id = m.household_id WHERE m.account_id = ? AND k.state LIKE ?`)
           .all(session.accountId, `%${checked.requestId}%`)
         for (const row of rows) {
-          const receipt = accountHouseholdCreationReceiptSchema.optional().parse(JSON.parse(String(row.state)).accountCreationReceipt)
+          const household = parseStoredHousehold(String(row.state))
+          if (!household) continue
+          const receipt = accountHouseholdCreationReceiptSchema.optional().parse(
+            (JSON.parse(String(row.state)) as Record<string, unknown>).accountCreationReceipt,
+          )
           if (receipt?.requestId !== checked.requestId || receipt.memberId !== row.member_id) continue
           await this.household(session, String(row.id))
           if (receipt.payloadHash !== payloadHash) {
@@ -426,7 +430,7 @@ export class AccountStore {
       }
       const householdId = String(invitation.household_id)
       const household = (await this.store.get(householdId))
-      if (!household || household.demo || !(await this.owner(householdId))) throw new ApiError(410, 'This kitchen is closed and cannot accept new roommates.')
+      if (!household || !(await this.owner(householdId))) throw new ApiError(410, 'This kitchen is closed and cannot accept new roommates.')
       const existing = (await this.db.prepare('SELECT member_id, active FROM account_memberships WHERE household_id = ? AND account_id = ?').get(householdId, session.accountId))
       if (existing?.active) return (await this.select(session, householdId))
       const used = (await this.db.prepare('SELECT 1 FROM account_invitation_uses WHERE invitation_id = ? AND account_id = ?').get(invitation.id, session.accountId))

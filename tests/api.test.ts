@@ -155,13 +155,10 @@ describe('shared kitchen API', () => {
     assert.equal((await call('/household', undefined, session.token)).status, 200)
     assert.equal((await call('/join', { inviteCode: next.household.inviteCode, name: 'Ben' })).status, 201)
   })
-  it('isolates sample kitchens and never opens demo invitations to other roommates', async () => {
-    const a: Session = await (await call('/demo', {})).json()
-    const b: Session = await (await call('/demo', {})).json()
-    assert.notEqual(a.household.id, b.household.id)
-    assert.equal(a.household.demo, true)
-    assert.equal(a.household.expenses.length, 6)
-    assert.equal((await call('/join', { inviteCode: a.household.inviteCode, name: 'Another' })).status, 404)
+  it('does not expose a sample household creation endpoint', async () => {
+    const response = await call('/demo', {})
+    assert.equal(response.status, 404)
+    assert.deepEqual(await response.json(), { error: 'This kitchen action could not be found.' })
   })
   it('records one bill expense per month even with concurrent or repeated submissions', async () => {
     const owner = await create()

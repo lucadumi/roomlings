@@ -6,7 +6,7 @@ import type { TourLayout } from './tour.ts'
 import { TourFallback } from './TourFallback.tsx'
 import { LoadingIcon } from '../Branding.tsx'
 import type { TourStatus } from './TourScene.tsx'
-import { defaultRoom, samplePath } from '../roomNavigation.ts'
+import { defaultRoom, roomPath } from '../roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import { RoomChoices, RoomPreview } from './RoomPreview.tsx'
@@ -178,7 +178,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
               <p>Open chores from the sink, mirror, bath or toilet. Rotate the work and add low supplies to the same shopping list your kitchen uses.</p>
             </div>
           </div>
-          <a className="welcome-text-link" href={samplePath(room)}>Try the sample <ArrowRight size={16} /></a>
+          <a className="welcome-text-link" href={roomPath(room)}>Open bathroom <ArrowRight size={16} /></a>
         </div>
       </div>
       <div className="welcome-tour-controls">{motionControl}</div>
@@ -199,7 +199,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
                 <h3>{title}</h3><p>{copy}</p>
               </div>)}
             </div>
-            <a className="welcome-text-link" href={samplePath()}>Try the sample <ArrowRight size={16} /></a>
+            <a className="welcome-text-link" href={roomPath()}>Open kitchen <ArrowRight size={16} /></a>
             <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll or choose an object.</p>
           </div>
         </div>
@@ -214,7 +214,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         </div>
         <div className="welcome-scene-status" role="status">
           {mounted && status === 'loading' && <span className="loading-status"><LoadingIcon reducedMotion={reducedMotion || paused} />Loading the kitchen preview...</span>}
-          {status === 'unavailable' && '3D is unavailable. Explore the illustration, or open the sample to use the household tools.'}
+          {status === 'unavailable' && '3D is unavailable. Explore the illustration, or sign in to use the household tools.'}
         </div>
       </div>
     </div>

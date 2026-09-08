@@ -1,8 +1,7 @@
 import type { Page } from '@playwright/test'
 import { accountState, browserAccountRequest, expect, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
-import { roomPath, samplePath } from '../../src/roomNavigation.ts'
-import { openGroceryForm } from './fixtures.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 import { accountInvitationResultSchema, accountStateSchema } from '../../shared/accounts.ts'
 
 test.use({ reducedMotion: 'reduce' })
@@ -24,7 +23,7 @@ async function signedInVisitor(page: Page, accounts: AccountHarness, createKitch
   return accountState(page)
 }
 
-test('the home page does not read account access, create a demo or open a sign-in dialog', async ({ page }) => {
+test('the home page does not read account access, create a household or open a sign-in dialog', async ({ page }) => {
   const requests: string[] = []
   page.on('request', (request) => {
     if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url())
@@ -40,8 +39,6 @@ test('the home page does not read account access, create a demo or open a sign-i
 
 test('the landing carries a new account through sign-in, kitchen creation, return and sign-out', async ({ page, accounts }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  const demos: string[] = []
-  page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/demo') demos.push(request.url()) })
   await page.goto('/')
   const start = page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })
   await start.click()
@@ -59,7 +56,6 @@ test('the landing carries a new account through sign-in, kitchen creation, retur
   await expect(page.locator('.game-house')).toContainText('A home from the landing')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page).toHaveURL(new RegExp(`${roomPath()}$`))
-  expect(demos).toEqual([])
   expect((await accountState(page)).memberships).toHaveLength(1)
   await page.getByRole('link', { name: 'Roomlings home', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Share a home.')
@@ -99,7 +95,7 @@ test('closing sign-in restores landing focus and a delivery failure never report
   await expect(dialog.getByLabel('Email address', { exact: true })).toBeVisible()
 })
 
-test('an unavailable account service leaves the landing readable and exposes a retry instead of making a sample', async ({ page }) => {
+test('an unavailable account service leaves the landing readable and exposes a retry without creating a home', async ({ page }) => {
   await page.route('**/api/account', (route) => route.fulfill({ status: 503, json: { error: 'Account access is temporarily unavailable.' } }))
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Share a home.')
@@ -163,56 +159,35 @@ test('a signed-in account without a kitchen remains reachable after browser-only
   await expect(page.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
 })
 
-test('a sample can be edited and revisited without changing a signed-in home or its access preference', async ({ page, accounts }) => {
+test('a landing room link reopens the signed-in home without changing its access preference', async ({ page, accounts }) => {
   const before = await signedInVisitor(page, accounts)
   await page.goto(roomPath())
   await expect(page.locator('.game-house')).toContainText('The signed-in home')
   const personalKeys = ['roomlings.session', 'coldshare.session', 'roomlings.kitchens', 'coldshare.kitchens', 'roomlings.access-mode']
   const snapshot = await page.evaluate((keys) => keys.map((key) => localStorage.getItem(key)), personalKeys)
   await page.getByRole('link', { name: 'Roomlings home', exact: true }).click()
-  await page.locator('.welcome-hero').getByRole('link', { name: 'Try the sample', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`${samplePath()}$`))
-  await expect(page.locator('.game-house')).toContainText('The Sunday House')
-  const token = await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))
-  expect(token).not.toBeNull()
-  await openGroceryForm(page)
-  await page.getByLabel('What did you pick up?', { exact: true }).fill('Sample-only groceries')
-  await page.getByLabel('Total (EUR)', { exact: true }).fill('5.01')
-  await page.getByRole('button', { name: 'Add & split the groceries', exact: true }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.reload()
-  await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
-  await expect(page.getByText('Sample-only groceries', { exact: true })).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(token)
+  await page.locator('.welcome-hero').getByRole('link', { name: 'Explore rooms', exact: true }).click()
+  const tour = page.locator('#tour')
+  await tour.getByRole('radio', { name: 'Bathroom', exact: true }).check()
+  await tour.getByRole('link', { name: 'Open bathroom', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`${roomPath('bathroom')}$`))
+  await expect(page.locator('.game-house')).toContainText('The signed-in home')
   expect(await page.evaluate((keys) => keys.map((key) => localStorage.getItem(key)), personalKeys)).toEqual(snapshot)
   expect((await accountState(page)).session?.household).toEqual(before.session?.household)
-  await page.getByRole('link', { name: 'Roomlings home', exact: true }).click()
-  await page.getByRole('link', { name: 'Sign in', exact: true }).click()
-  await expect(page.locator('.game-house')).toContainText('The signed-in home')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
-test('expired samples restart explicitly without reading or replacing personal credentials', async ({ page }) => {
-  await page.addInitScript(() => {
-    if (!localStorage.getItem('roomlings.sample-session')) {
-      localStorage.setItem('roomlings.sample-session', 'expired-sample-that-is-not-in-this-store')
-      localStorage.setItem('coldshare.session', 'personal-access-that-must-be-kept')
-      localStorage.setItem('roomlings.access-mode', 'account')
-    }
-  })
-  const accountRequests: string[] = []
+test('the legacy kitchen alias without saved access stays on entry and creates no household', async ({ page }) => {
+  const mutations: string[] = []
   page.on('request', (request) => {
-    if (new URL(request.url()).pathname.startsWith('/api/account')) accountRequests.push(request.url())
+    const path = new URL(request.url()).pathname
+    if (request.method() !== 'GET') mutations.push(path)
   })
-  await page.goto(samplePath())
-  await expect(page.locator('.game-house')).toContainText('The Sunday House')
-  await expect(page.locator('.toast[role="status"]')).toContainText('new private sample')
-  expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe('personal-access-that-must-be-kept')
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
-  expect(accountRequests).toEqual([])
-  await page.reload()
-  await expect(page.locator('.game-house')).toContainText('The Sunday House')
-  await expect(page.getByRole('alert')).toHaveCount(0)
+  await page.goto('/kitchen')
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Share a home.')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.locator('.game-house')).toHaveCount(0)
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
+  expect(mutations).toEqual([])
 })
 
 test('revoked account access requires a fresh sign-in and then reopens the same saved room directly', async ({ page, accounts }) => {
@@ -239,7 +214,7 @@ test('revoked account access requires a fresh sign-in and then reopens the same 
   expect((await accountState(page)).session?.household).toEqual(before.session?.household)
 })
 
-test('unimplemented rooms do not create samples or show placeholder controls', async ({ page }) => {
+test('unimplemented rooms do not create households or show placeholder controls', async ({ page }) => {
   const requests: string[] = []
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()) })
   await page.goto('/rooms/bedroom')

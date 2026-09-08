@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { billingDate, householdSchema, localDate, memberColors, nameSchema } from '../shared/domain.ts'
+import { householdSchema, memberColors, nameSchema } from '../shared/domain.ts'
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
@@ -7,6 +7,7 @@ import { accountHouseholdCreationReceiptSchema } from '../shared/accounts.ts'
 import { AccountStore } from './accounts-store.ts'
 import { SQLiteDatabase, transactional } from './database.ts'
 import type { Database } from './database.ts'
+import { isRetiredHouseholdState, parseStoredHousehold } from './retired-household.ts'
 
 export type AuthenticatedSession = { household: Household; memberId: string; sessionId: string }
 
@@ -39,19 +40,24 @@ export class Store {
 
   async get(id: string): Promise<Household | null> {
     const row = (await this.db.prepare('SELECT state FROM households WHERE id = ?').get(id))
-    return row ? householdSchema.parse(JSON.parse(String(row.state))) : null
+    return row ? parseStoredHousehold(String(row.state)) : null
   }
 
   async byInvite(invite: string): Promise<Household | null> {
     const row = (await this.db.prepare('SELECT state FROM households WHERE invite = ?').get(invite))
-    return row ? householdSchema.parse(JSON.parse(String(row.state))) : null
+    return row ? parseStoredHousehold(String(row.state)) : null
   }
 
   async save(household: Household) {
+    if (isRetiredHouseholdState(household)) throw new Error('Retired example households are read-only.')
     const checked = householdSchema.parse(household)
     const previous = await this.db.prepare('SELECT state FROM households WHERE id = ?').get(checked.id)
+    const previousState: unknown = previous ? JSON.parse(String(previous.state)) : undefined
+    if (isRetiredHouseholdState(previousState)) throw new Error('Retired example households are read-only.')
     const receipt = accountHouseholdCreationReceiptSchema.optional().parse(
-      previous ? JSON.parse(String(previous.state)).accountCreationReceipt : undefined,
+      previousState && typeof previousState === 'object'
+        ? (previousState as Record<string, unknown>).accountCreationReceipt
+        : undefined,
     )
     // Creation receipts are private persistence metadata, not client-editable household state.
     const state = receipt ? { ...checked, accountCreationReceipt: receipt } : checked
@@ -151,50 +157,15 @@ export class Store {
     }))
   }
 
-  async create(name: string, memberName: string, currency: Household['currency'], budget: number, demo = false): Promise<Session> {
+  async create(name: string, memberName: string, currency: Household['currency'], budget: number): Promise<Session> {
     const memberId = randomUUID()
     const household: Household = {
-      id: randomUUID(), name, currency, budget, roomStyle: 'original', demo, version: 0,
+      id: randomUUID(), name, currency, budget, roomStyle: 'original', version: 0,
       inviteCode: randomBytes(12).toString('base64url'),
       members: [{ id: memberId, name: memberName, color: memberColors[0] }],
       expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
       shopping: { items: [], runs: [] },
       chores: { items: [], history: [] },
-    }
-    if (demo) {
-      household.members.push(...['Jules', 'Sam', 'Alex'].map((name, index) => ({
-        id: randomUUID(), name, color: memberColors[index + 1],
-      })))
-      const entries = [
-        { description: 'The big weekly shop', amount: 8632, paidBy: 0, category: 'pantry', days: 0 },
-        { description: 'Farmers market finds', amount: 2840, paidBy: 1, category: 'produce', days: 1 },
-        { description: 'Milk, eggs & a little cheese', amount: 1875, paidBy: 2, category: 'dairy', days: 2 },
-        { description: 'Coffee for the whole house', amount: 2490, paidBy: 0, category: 'drinks', days: 3 },
-        { description: 'Pasta night essentials', amount: 3620, paidBy: 3, category: 'pantry', days: 4 },
-        { description: 'Something green', amount: 1260, paidBy: 1, category: 'produce', days: 5 },
-      ] as const
-      household.expenses = entries.map((entry) => {
-        const date = new Date()
-        date.setDate(Math.max(1, date.getDate() - entry.days))
-        return {
-          id: randomUUID(), description: entry.description, amount: entry.amount,
-          paidBy: household.members[entry.paidBy].id,
-          participants: household.members.map((member) => member.id),
-          category: entry.category, date: localDate(date), createdAt: new Date().toISOString(),
-        }
-      })
-      const now = new Date()
-      const dueDate = billingDate(household.billingTimeZone, now)
-      household.chores.items = ([
-        { title: 'Clear the sink', roomId: 'kitchen', area: 'sink', repeatDays: 1 },
-        { title: 'Take out the rubbish', roomId: 'kitchen', area: 'bins', repeatDays: 3 },
-        { title: 'Wipe the mirror', roomId: 'bathroom', area: 'mirror', repeatDays: 7 },
-        { title: 'Clean the toilet', roomId: 'bathroom', area: 'toilet', repeatDays: 7 },
-      ] as const).map((entry, turn) => ({
-        ...entry, id: randomUUID(), notes: '', dueDate, rotation: household.members.map((member) => member.id), turn,
-        createdBy: memberId, createdAt: now.toISOString(), updatedAt: now.toISOString(),
-        version: 0, occurrence: 0, archived: false,
-      }))
     }
     await this.save(household)
     return (await this.session(household, memberId))

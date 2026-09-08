@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { billingDate, householdSchema, localDate } from '../../shared/domain.ts'
 import type { Session } from '../../shared/domain.ts'
@@ -6,6 +6,8 @@ import { addMonths } from '../../shared/bills.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { monthTitle } from '../../src/format.ts'
 import { chooseOption, createHousehold, savedKitchen } from './fixtures.ts'
+
+test.use({ providerEnabled: false })
 
 async function createBill(request: APIRequestContext, session: Session, firstDueDate: string): Promise<Session> {
   const response = await request.post('/api/bills', {
@@ -35,7 +37,7 @@ async function openBills(page: Page) {
 test.describe('monthly bills', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('records variable payments in the shared ledger without changing groceries and can undo them', async ({ page }) => {
+  test('records variable payments in the shared ledger without changing groceries and can undo them', async ({ page, populatedHousehold: _household }) => {
     const month = localDate().slice(0, 7)
     await page.goto('/kitchen')
     const pot = page.locator('.fund-trigger strong')
@@ -96,10 +98,10 @@ test.describe('monthly bills', () => {
     await expect(share).toHaveText(beforeShare)
   })
 
-  test('edits defaults, keeps earlier dues, pauses future months and persists resumed schedules', async ({ page, request }) => {
+  test('edits defaults, keeps earlier dues, pauses future months and persists resumed schedules', async ({ page, accounts, request }) => {
     const month = billingDate('UTC').slice(0, 7)
     const previous = addMonths(month, -1)
-    const session = await createBill(request, await createHousehold(request, 'The monthly house', 'Charlie'), `${previous}-01`)
+    const session = await createBill(request, await createHousehold(accounts.store, 'The monthly house', 'Charlie'), `${previous}-01`)
     await restoreKitchen(page, session)
     await page.goto('/kitchen')
     await openBills(page)
@@ -131,8 +133,8 @@ test.describe('monthly bills', () => {
     expect(restored.bills[0].revisions).toHaveLength(2)
   })
 
-  test('a concurrent roommate payment cannot create another expense or erase the draft', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'A bill to share', 'Charlie')
+  test('a concurrent roommate payment cannot create another expense or erase the draft', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'A bill to share', 'Charlie')
     const joined = await request.post('/api/join', { data: { inviteCode: owner.household.inviteCode, name: 'Dana' } })
     await expect(joined).toBeOK()
     const roommate = sessionSchema.parse(await joined.json())
@@ -153,7 +155,7 @@ test.describe('monthly bills', () => {
         },
       })
       await expect(paid).toBeOK()
-      await route.continue()
+      await route.fallback()
     })
     await page.getByRole('button', { name: 'Record bill payment', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('A payment is already recorded')
@@ -167,9 +169,9 @@ test.describe('monthly bills', () => {
     expect(current.expenses[0].amount).toBe(3100)
   })
 
-  test('small-screen bill forms retain failed payments and remain keyboard accessible', async ({ page, request }) => {
+  test('small-screen bill forms retain failed payments and remain keyboard accessible', async ({ page, accounts, request }) => {
     const month = billingDate('UTC').slice(0, 7)
-    const session = await createBill(request, await createHousehold(request, 'The small bill house', 'Charlie'), `${month}-01`)
+    const session = await createBill(request, await createHousehold(accounts.store, 'The small bill house', 'Charlie'), `${month}-01`)
     await restoreKitchen(page, session)
     await page.setViewportSize({ width: 320, height: 568 })
     await page.goto('/kitchen')

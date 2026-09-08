@@ -8,7 +8,7 @@ import { canEditShoppingItem, checkoutItems, inBasket, normalizeShoppingName } f
 function household(): Household {
   return householdSchema.parse({
     id: randomUUID(), name: 'The shopping house', currency: 'EUR', budget: 45000, inviteCode: 'test-invitation',
-    demo: false, version: 0, members: ['Ada', 'Ben'].map((name) => ({ id: randomUUID(), name, color: '#789359' })),
+    version: 0, members: ['Ada', 'Ben'].map((name) => ({ id: randomUUID(), name, color: '#789359' })),
     expenses: [], settlements: [],
   })
 }

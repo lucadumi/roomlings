@@ -1,10 +1,14 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
 import { buildKitchenModel } from '../../src/kitchenModel.ts'
-import { samplePath } from '../../src/roomNavigation.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 import { trackDrawing } from './fixtures.ts'
+
+test.beforeEach(({ populatedHousehold }) => {
+  void populatedHousehold
+})
 
 async function frameKitchenBag(page: Page) {
   const world = page.locator('.kitchen-world')
@@ -104,7 +108,7 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
 test('kitchen picking ignores secondary clicks and releases abandoned pointer captures', { tag: '@room' }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 960 })
-  await page.goto(samplePath())
+  await page.goto(roomPath())
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
   await expect(canvas).toBeVisible()
@@ -150,7 +154,7 @@ for (const room of ['kitchen', 'bathroom'] as const) {
   test(`${room} pinch zoom stays continuous when one of three contacts is lifted`, { tag: '@room' }, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto(samplePath(room))
+    await page.goto(roomPath(room))
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
     await page.locator('.world-canvas canvas').evaluate((element) => {
       if (!(element instanceof HTMLCanvasElement)) throw new Error('The room canvas is missing.')
@@ -183,7 +187,7 @@ for (const room of ['kitchen', 'bathroom'] as const) {
   test(`${room} hotspots stay inside the unobscured scene while a panel is open`, { tag: '@room' }, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 1440, height: 960 })
-    await page.goto(samplePath(room))
+    await page.goto(roomPath(room))
     await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
     await expect(page.locator('.room-panel')).toBeVisible()
     const labelToggle = page.getByRole('button', { name: 'Hide object labels', exact: true, includeHidden: true })
@@ -211,7 +215,7 @@ test('changing to reduced motion refreshes shadows for leaves that return to res
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
-  await page.goto(samplePath())
+  await page.goto(roomPath())
   const world = page.locator('.kitchen-world')
   await expect(world.locator('canvas')).toBeVisible()
   await page.getByRole('button', { name: 'House rules', exact: true }).click()
@@ -226,7 +230,7 @@ test('changing to reduced motion refreshes shadows for leaves that return to res
 })
 
 test('kitchen context loss stops its renderer and retains the ordinary household tools', { tag: '@room' }, async ({ page }) => {
-  await page.goto(samplePath())
+  await page.goto(roomPath())
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
   await expect(canvas).toBeVisible()

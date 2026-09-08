@@ -32,7 +32,7 @@ const dateTime = (value: string) => new Intl.DateTimeFormat('en-GB', {
 }).format(new Date(value))
 
 function browserKitchens(session: Session | null, saved: SavedKitchen[]): SavedKitchen[] {
-  const current = session && !session.household.demo ? [{
+  const current = session ? [{
     token: session.token, householdId: session.household.id, memberId: session.memberId,
     name: session.household.name,
     memberName: session.household.members.find((member) => member.id === session.memberId)?.name ?? 'Saved roommate',
@@ -362,8 +362,8 @@ export function AccountDialog({
       if (mounted.current) { navigate('manage'); setNotice('Your existing roommate identity is linked. Its history is unchanged.') }
     } catch (failure) {
       if (mounted.current && contextEpoch.current === epoch && failure instanceof RequestError
-        && (failure.code === 'BROWSER_ACCESS_EXPIRED' || failure.code === 'SAMPLE_KITCHEN')) {
-        const change: SavedKitchenChange = failure.code === 'SAMPLE_KITCHEN' ? { demo: true } : { expired: true }
+        && failure.code === 'BROWSER_ACCESS_EXPIRED') {
+        const change: SavedKitchenChange = { expired: true }
         setLegacy((previous) => previous.map((saved) => saved.token === kitchen.token ? { ...saved, ...change } : saved))
         onLegacyChange(kitchen.token, change)
         setConfirmation(null)
@@ -373,7 +373,7 @@ export function AccountDialog({
   }
 
   const account = state?.account
-  const browserLegacy = legacy.filter((kitchen) => !kitchen.demo)
+  const browserLegacy = legacy
   const disabled = loading || busy
   const title = pendingDeletion ? 'Account deletion is pending.' : confirmation?.title ?? (recoverySignIn && (reauthenticate || !account) ? 'Recover your account.'
     : reauthenticate || !account ? 'Your place, on every device.' : view === 'recovery' ? 'Your account recovery codes.'

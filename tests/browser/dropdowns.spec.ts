@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 import { chooseOption, openGroceryForm, savedKitchen } from './fixtures.ts'
-import { roomPath, samplePath } from '../../src/roomNavigation.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -118,13 +118,6 @@ test('empty whole-home, area and recurrence choices preserve their actual saved 
   expect(chore).toMatchObject({ title: 'Whole-home check', roomId: null, area: null, repeatDays: null })
   await chooseOption(page.getByRole('combobox', { name: 'Chore room', exact: true }), 'home')
   await expect(page.getByRole('article', { name: 'Whole-home check', exact: true })).toBeVisible()
-})
-
-test('locked currencies cannot open a dropdown', async ({ page }) => {
-  await page.goto(samplePath())
-  await page.getByRole('button', { name: 'House rules', exact: true }).click()
-  await expect(page.getByRole('combobox', { name: 'Currency', exact: true })).toBeDisabled()
-  await expect(page.getByRole('listbox')).toHaveCount(0)
 })
 
 test.describe('touch dropdowns', () => {

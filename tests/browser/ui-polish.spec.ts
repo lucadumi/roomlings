@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 import type { Locator } from '@playwright/test'
 import { openGroceryForm } from './fixtures.ts'
 
@@ -24,7 +24,7 @@ async function expectTouchTarget(control: Locator) {
 test.describe('UI polish', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('the room backdrop blends lighting changes and honors reduced motion', { tag: '@room' }, async ({ page }) => {
+  test('the room backdrop blends lighting changes and honors reduced motion', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     const home = page.locator('.game-home')
     const world = page.locator('.kitchen-world')
@@ -50,7 +50,7 @@ test.describe('UI polish', () => {
     await expect(home).toHaveCSS('background-image', daylight)
   })
 
-  test('shared controls keep their surfaces, selection and keyboard focus', async ({ page }) => {
+  test('shared controls keep their surfaces, selection and keyboard focus', async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/kitchen')
     const rules = page.getByRole('button', { name: 'House rules', exact: true })
@@ -108,7 +108,7 @@ test.describe('UI polish', () => {
 
   // The intermediate width also covers space reserved by non-overlay scrollbars on wider phones.
   for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }, { width: 320, height: 568 }]) {
-    test(`panels and forms stay usable at ${viewport.width}px`, async ({ page }) => {
+    test(`panels and forms stay usable at ${viewport.width}px`, async ({ page, populatedHousehold: _household }) => {
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
       await expect(page.locator('.world-camera-controls')).toBeVisible()
@@ -196,7 +196,7 @@ test.describe('UI polish', () => {
     })
   }
 
-  test('busy and rejected saves keep disabled controls and focus honest', async ({ page }) => {
+  test('busy and rejected saves keep disabled controls and focus honest', async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/kitchen')
     await page.getByRole('button', { name: 'House rules', exact: true }).click()
@@ -206,7 +206,7 @@ test.describe('UI polish', () => {
     let releaseSave!: () => void
     const pendingSave = new Promise<void>((resolve) => { releaseSave = resolve })
     await page.route('**/api/household', async (route) => {
-      if (route.request().method() !== 'PATCH') { await route.continue(); return }
+      if (route.request().method() !== 'PATCH') { await route.fallback(); return }
       await pendingSave
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The house rules could not be saved. Please try again.' }) })
     })
@@ -237,13 +237,14 @@ test.describe('UI polish', () => {
     }
   })
 })
-test('the landing and room share the dot texture while forms keep plain surfaces', { tag: '@room' }, async ({ page }) => {
+test('the landing and room share the dot texture while forms keep plain surfaces', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto('/')
   await expect(page.locator('.welcome')).toBeVisible()
   const texture = await page.locator('.welcome').evaluate((element) => getComputedStyle(element).backgroundImage)
   expect(texture).toContain('radial-gradient')
   await expect(page.locator('body')).toHaveCSS('background-image', texture)
-  await page.locator('.welcome-hero').getByRole('link', { name: 'Try the sample', exact: true }).click()
+  await page.locator('.welcome-hero').getByRole('link', { name: 'Explore rooms', exact: true }).click()
+  await page.locator('#tour').getByRole('link', { name: 'Open kitchen', exact: true }).click()
   await expect(page.locator('.game-house')).toBeVisible()
   const room = await page.locator('.game-home').evaluate((element) => ({
     texture: getComputedStyle(element, '::before').backgroundImage,

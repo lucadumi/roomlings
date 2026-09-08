@@ -13,7 +13,7 @@ import { dateTitle } from '../src/format.ts'
 function household(): Household {
   return householdSchema.parse({
     id: randomUUID(), name: 'The bill house', currency: 'EUR', budget: 45000, inviteCode: 'test-invitation',
-    demo: false, version: 0,
+    version: 0,
     members: ['Ada', 'Ben'].map((name) => ({ id: randomUUID(), name, color: '#789359' })),
     expenses: [], settlements: [],
   })

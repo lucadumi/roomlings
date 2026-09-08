@@ -20,6 +20,8 @@ Application tables live in the `roomlings` schema, not Supabase's managed `auth`
 
 Household JSON remains canonical text, preserving IDs, integer cents, versions and historical references. Both engines share storage rules. SQLite serializes its connection; Postgres transactions pin a connection and use a schema-wide advisory lock to prevent lost updates and preserve account/deletion invariants.
 
+Rows carrying the retired example marker are preserved byte for byte during migration and remain in place, but the application refuses access, recovery, invitations, account membership joins and saves for them. This prevents legacy examples from being reclassified as real kitchens when the current public household schema ignores their old marker. Older legitimate rows with the original false marker remain readable.
+
 ## Postgres schema upgrades
 
 Application schema version 2 adds only `account_recovery_settings`, `account_recovery_codes` and their indexes. The version 1 to 2 upgrade is additive: it does not rewrite existing rows, rotate sessions, change account/member IDs or recalculate the ledger. It does not generate recovery codes. Subsequent account operations store only hashes of the ten single-use codes.

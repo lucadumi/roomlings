@@ -33,6 +33,7 @@ it('migrates legacy sessions without replacing their token, identity or househol
     assert.ok(original)
     assert.equal(original.memberId, memberId)
     assert.equal(original.household.id, householdId)
+    assert.equal('demo' in original.household, false)
     const state = (await store.accessState(original))
     assert.ok(state)
     assert.equal(state.devices[0].label, 'Saved browser')

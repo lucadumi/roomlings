@@ -38,20 +38,14 @@ async function openAccount(page: Page) {
 test.describe('verified accounts and household membership', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('keeps sign-in drafts through startup and opens a first kitchen without remounting its creation form', async ({ page, accounts }) => {
-    let received!: (route: Route) => void
-    const pending = new Promise<Route>((resolve) => { received = resolve })
-    await page.route('**/api/demo', received)
+  test('keeps sign-in drafts and opens a first kitchen without remounting its creation form', async ({ page, accounts }) => {
     await page.goto('/kitchen#account')
-    const demo = await pending
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Email address', { exact: true }).fill('ada@example.com')
     await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
     await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
     await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('ada@example.com'))
     await dialog.getByLabel('Account display name', { exact: true }).fill('Ada draft')
-    await demo.fallback()
-    await expect(page.locator('.game-house')).toContainText('The Sunday House')
     await expect(dialog.getByLabel('Account display name', { exact: true })).toHaveValue('Ada draft')
     await expect(dialog.getByLabel('Account display name', { exact: true })).toBeFocused()
     await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()

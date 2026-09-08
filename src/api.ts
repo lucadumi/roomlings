@@ -1,5 +1,5 @@
 import { householdSchema } from '../shared/domain.ts'
-import type { Household, Session } from '../shared/domain.ts'
+import type { Household } from '../shared/domain.ts'
 import { accountStateSchema } from '../shared/accounts.ts'
 import type { AccountMembership, AccountState, KitchenSession } from '../shared/accounts.ts'
 import { z } from 'zod'
@@ -60,11 +60,12 @@ const savedKitchenSchema = z.object({
   memberId: z.string().uuid(),
   name: z.string(),
   memberName: z.string(),
-  demo: z.boolean().optional(),
   expired: z.literal(true).optional(),
 })
+// Retain old records without offering retired examples as personal kitchen shortcuts.
+const storedKitchensSchema = z.array(savedKitchenSchema.extend({ demo: z.boolean().optional() }))
 export type SavedKitchen = z.infer<typeof savedKitchenSchema>
-export type SavedKitchenChange = Pick<SavedKitchen, 'demo' | 'expired'> & Partial<Pick<SavedKitchen, 'name' | 'memberName'>>
+export type SavedKitchenChange = Pick<SavedKitchen, 'expired'> & Partial<Pick<SavedKitchen, 'name' | 'memberName'>>
 
 export function readToken(): string | null {
   // Existing kitchens migrate when rememberKitchen saves a successfully restored session.
@@ -87,14 +88,15 @@ export function preferAccountAccess(): void {
 export function savedKitchens(): SavedKitchen[] {
   const saved = localStorage.getItem(savedKitchensKey) ?? localStorage.getItem('coldshare.kitchens')
   if (!saved) return []
-  return z.array(savedKitchenSchema).parse(JSON.parse(saved))
+  return storedKitchensSchema.parse(JSON.parse(saved))
+    .filter((kitchen) => kitchen.demo !== true).map((kitchen) => savedKitchenSchema.parse(kitchen))
 }
 
 export function updateSavedKitchen(token: string, change: SavedKitchenChange): SavedKitchen[] {
   const updates = [savedKitchensKey, 'coldshare.kitchens'].flatMap((key) => {
     const value = localStorage.getItem(key)
     if (!value) return []
-    const kitchens = z.array(savedKitchenSchema).parse(JSON.parse(value))
+    const kitchens = storedKitchensSchema.parse(JSON.parse(value))
     return kitchens.some((kitchen) => kitchen.token === token) ? [{ key, kitchens }] : []
   })
   for (const { key, kitchens } of updates) {
@@ -112,19 +114,16 @@ export function rememberKitchen(session: KitchenSession): SavedKitchen[] {
   }
   const member = session.household.members.find((member) => member.id === session.memberId)
   if (!member) throw new Error('The session does not belong to a roommate in this kitchen.')
+  const stored = localStorage.getItem(savedKitchensKey) ?? localStorage.getItem('coldshare.kitchens')
+  const previous = stored ? storedKitchensSchema.parse(JSON.parse(stored)) : []
   const next = [{
     token: session.token, householdId: session.household.id, memberId: session.memberId,
     name: session.household.name, memberName: member.name,
-    ...(session.household.demo ? { demo: true } : {}),
-  }, ...saved.filter((kitchen) => kitchen.token !== session.token
+  }, ...previous.filter((kitchen) => kitchen.token !== session.token
     && (kitchen.householdId !== session.household.id || kitchen.memberId !== session.memberId))]
   localStorage.setItem(savedKitchensKey, JSON.stringify(next))
   saveToken(session.token)
-  return next
-}
-
-export async function createDemo(): Promise<Session> {
-  return sessionSchema.parse(await request('/demo', { body: {} }))
+  return savedKitchens()
 }
 
 export async function getHousehold(token: string | null, householdId?: string): Promise<{ household: Household; memberId: string }> {
@@ -147,7 +146,7 @@ export function forgetAccountKitchens(memberships: AccountMembership[]): SavedKi
   for (const key of [savedKitchensKey, 'coldshare.kitchens']) {
     const value = localStorage.getItem(key)
     if (!value) continue
-    const kitchens = z.array(savedKitchenSchema).parse(JSON.parse(value))
+    const kitchens = storedKitchensSchema.parse(JSON.parse(value))
     for (const kitchen of kitchens.filter(belongs)) removedTokens.add(kitchen.token)
     localStorage.setItem(key, JSON.stringify(kitchens.filter((kitchen) => !belongs(kitchen))))
   }

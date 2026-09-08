@@ -5,6 +5,7 @@ import { existsSync, unlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Store } from '../server/store.ts'
+import { SQLiteDatabase } from '../server/database.ts'
 import { localDate } from '../shared/domain.ts'
 
 it('persists household data and hashed member sessions across database restarts', async () => {
@@ -88,5 +89,37 @@ it('restores a pre-bills database without replacing its household or member sess
     for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) {
       if (existsSync(path)) unlinkSync(path)
     }
+  }
+})
+
+it('keeps legitimate legacy markers readable and retires old examples without rewriting their rows', async () => {
+  const database = new SQLiteDatabase(':memory:')
+  const store = new Store(database)
+  try {
+    const legitimate = await store.create('Original real kitchen', 'Ada', 'EUR', 35000)
+    const legitimateState = JSON.stringify({ ...legitimate.household, demo: false })
+    await database.prepare('UPDATE households SET state = ? WHERE id = ?').run(legitimateState, legitimate.household.id)
+    assert.deepEqual(await store.get(legitimate.household.id), legitimate.household)
+    assert.equal((await store.authenticate(legitimate.token))?.memberId, legitimate.memberId)
+    assert.equal((await database.prepare('SELECT state FROM households WHERE id = ?').get(legitimate.household.id))?.state, legitimateState)
+
+    const retired = await store.create('Old example', 'You', 'EUR', 45000)
+    const authenticated = await store.authenticate(retired.token)
+    assert.ok(authenticated)
+    const recovery = await store.rotateRecovery(authenticated, { version: 0, revokeOthers: false })
+    assert.ok(recovery && recovery !== 'conflict')
+    const retiredState = JSON.stringify({ ...retired.household, demo: true })
+    await database.prepare('UPDATE households SET state = ? WHERE id = ?').run(retiredState, retired.household.id)
+
+    assert.equal(await store.get(retired.household.id), null)
+    assert.equal(await store.byInvite(retired.household.inviteCode), null)
+    assert.equal(await store.authenticate(retired.token), null)
+    assert.equal(await store.recover(recovery.code, 'Recovered browser'), null)
+    await assert.rejects(store.save({ ...retired.household, name: 'Accidentally upgraded' }), /read-only/)
+    assert.equal((await database.prepare('SELECT state FROM households WHERE id = ?').get(retired.household.id))?.state, retiredState)
+    assert.equal((await database.prepare('SELECT COUNT(*) AS count FROM sessions WHERE household_id = ?').get(retired.household.id))?.count, 1)
+    assert.equal((await database.prepare('SELECT COUNT(*) AS count FROM recovery_codes WHERE household_id = ?').get(retired.household.id))?.count, 1)
+  } finally {
+    await store.close()
   }
 })

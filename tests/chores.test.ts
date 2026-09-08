@@ -16,7 +16,7 @@ const undoneAt = '2026-09-08T13:00:00.000Z'
 function household(): Household {
   return householdSchema.parse({
     id: randomUUID(), name: 'The chores house', currency: 'EUR', budget: 45000, inviteCode: 'test-invitation',
-    demo: false, version: 0,
+    version: 0,
     members: ['Ada', 'Ben', 'Cara', 'Drew'].map((name) => ({ id: randomUUID(), name, color: '#789359' })),
     expenses: [], settlements: [],
   })

@@ -4,7 +4,7 @@ import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus } from 'lu
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
-import { roomPath, samplePath } from '../roomNavigation.ts'
+import { roomPath } from '../roomNavigation.ts'
 import './welcome.css'
 
 function subscribeToMotion(callback: () => void) {
@@ -82,9 +82,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           <p>Preview your kitchen and bathroom, then step inside to share chores, shopping and household costs.</p>
           <div className="welcome-actions">
             <a className="button primary welcome-enter" id="home-start" href={createPath}>Get started <ArrowRight size={18} /></a>
-            <a className="welcome-text-link" href={samplePath()}>Try the sample <ArrowUpRight size={16} /></a>
+            <a className="welcome-text-link" href="#tour">Explore rooms <ArrowUpRight size={16} /></a>
           </div>
-          <p className="welcome-small"><Check size={14} />Try a private sample. Your real household stays untouched.</p>
+          <p className="welcome-small"><Check size={14} />Sign in to create or join your household.</p>
         </div>
         <div className="welcome-home-frame">
           <figure className="welcome-vignette" role="img" aria-label="Illustration of a shared home">

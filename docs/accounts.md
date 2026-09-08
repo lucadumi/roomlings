@@ -11,7 +11,7 @@ Supabase Auth verifies email codes. Roomlings keeps its own server-validated ses
 5. Set `APP_ORIGIN=http://localhost:5173` for review, or an HTTPS origin for production. Configure reverse proxies deliberately rather than trusting arbitrary forwarded IP headers.
 6. Restart the API and request a fresh code through sign-in. Template changes apply only to new emails.
 
-Without provider configuration, local sample kitchens and browser recovery still work; email sign-in reports that setup is required. Partial configuration fails explicitly. Production refuses to start without complete account configuration and an HTTPS origin.
+Without provider configuration, browser-only kitchens and browser recovery still work; email sign-in reports that setup is required. Partial configuration fails explicitly. Production refuses to start without complete account configuration and an HTTPS origin.
 
 Provider configuration and gateway failures report that email sign-in is unavailable, rather than incorrectly asking for a different email code. Invalid or expired email codes still require a fresh code.
 
@@ -52,7 +52,7 @@ Saved browser kitchens are shortcuts, not proof of current access. When the serv
 
 Browser-only recovery requires the private kitchen code saved before browser access was lost. Signing in to an account, with either email or an account recovery code, restores that identity only if it was already linked to the account. Neither a matching name nor a kitchen invitation proves ownership of an old browser identity. The two kinds of recovery code are not interchangeable.
 
-Older sample shortcuts are identified only after the server confirms that the household is a sample, never by its name. Confirmed samples are excluded from personal-kitchen and account-linking lists. Opening an older sample uses its existing access on the sample route without replacing a personal session or account preference.
+Households previously stored with the retired example marker remain unchanged in storage, but their old browser sessions, recovery codes, invitations and account memberships no longer grant access. They are never converted into real kitchens or linkable account identities. Legitimate older kitchens stored with the original false marker remain readable and can continue normally.
 
 The original creator remains owner; linking an account does not transfer ownership. One account supports up to 50 active kitchens, but cannot claim two members in the same kitchen. The limit applies equally to creation, invitation acceptance and linking existing browser access. A kitchen already linked to the account can still be reopened at the limit.
 
@@ -72,7 +72,7 @@ Account-managed invitations last seven days and reveal their secret only when cr
 
 - Account sessions expire after 30 days, or seven days without use. An account supports up to 50 saved browsers. Account settings support device labels, revocation and sign-out on one or all devices.
 - Signing in again rotates this browser's session instead of adding another saved device. It keeps the same account's selected active kitchen; other browsers stay signed in. Failed sign-ins leave the previous session intact.
-- Returning to the public home page or trying a sample does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
+- Returning to the public home page does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
 - Signing out all devices also revokes linked browser sessions. Unrelated saved browser identities stay separate.
 - Owners manage invitations, remove access and transfer ownership. All active roommates can edit the shared ledger.
 - Before leaving a kitchen with other members, its owner must transfer ownership.

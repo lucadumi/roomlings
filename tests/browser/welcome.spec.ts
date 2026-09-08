@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
-import { sampleSession, savedKitchen, trackDrawing } from './fixtures.ts'
+import { createHousehold, savedKitchen, trackDrawing } from './fixtures.ts'
 import { tourChapters } from '../../src/landing/tour.ts'
 
 async function openTour(page: Page) {
@@ -168,8 +168,8 @@ test('the tour stops drawing off screen instead of running behind the rest of th
   await expect.poll(async () => (await drawing()).draws).toBeGreaterThan(idle.draws)
 })
 
-test('opening the kitchen from the landing preserves current and Coldshare sessions', async ({ page, request }) => {
-  const session = await sampleSession(request)
+test('opening the kitchen from the landing preserves current and Coldshare sessions', async ({ page, accounts }) => {
+  const session = await createHousehold(accounts.store, 'The retained Coldshare home', 'You')
   await page.addInitScript((kitchen) => {
     localStorage.setItem('coldshare.session', kitchen.token)
     localStorage.setItem('coldshare.kitchens', JSON.stringify([kitchen]))
@@ -215,7 +215,7 @@ function withoutWebGL(page: Page) {
   })
 }
 
-test('WebGL startup failure keeps the illustration, object navigation and actual kitchen tools available', { tag: '@room' }, async ({ page }) => {
+test('WebGL startup failure keeps the illustration, object navigation and real-room entry available', { tag: '@room' }, async ({ page }) => {
   await withoutWebGL(page)
   await page.goto('/welcome')
   await page.locator('#tour').scrollIntoViewIfNeeded()
@@ -224,10 +224,10 @@ test('WebGL startup failure keeps the illustration, object navigation and actual
   await expect(page.locator('.welcome-static')).toBeVisible()
   await chooseChapter(page, 2)
   await expect(page.getByRole('heading', { name: 'Bills that repeat.', exact: true })).toBeVisible()
-  await page.locator('.welcome-tour').getByRole('link', { name: 'Try the sample', exact: true }).click()
-  await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'The receipt book.', exact: true })).toBeVisible()
+  await page.locator('.welcome-tour').getByRole('link', { name: 'Open kitchen', exact: true }).click()
+  await expect(page).toHaveURL(/\/rooms\/kitchen$/)
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your place, on every device.')
+  await expect(page.locator('.game-house')).toHaveCount(0)
 })
 
 test('context loss restores the illustration without breaking the shorter tour', { tag: '@room' }, async ({ page }) => {
@@ -321,10 +321,11 @@ test('skip navigation, FAQ disclosures and tour controls work with a keyboard', 
   await expect(page.locator('.welcome-faq details').first()).toHaveAttribute('open', '')
 })
 
-test('touch gestures scroll the page instead of being captured by the tour', { tag: '@room' }, async ({ browser, baseURL }) => {
+test('touch gestures scroll the page instead of being captured by the tour', { tag: '@room' }, async ({ accounts, browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   try {
     const page = await context.newPage()
+    await routeAccountApi(page, accounts)
     await page.goto('/welcome')
     await openTour(page)
     const before = await page.evaluate(() => scrollY)

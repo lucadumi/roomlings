@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { householdSchema, localDate } from '../../shared/domain.ts'
 import type { Session } from '../../shared/domain.ts'
@@ -39,9 +39,9 @@ async function submitRecovery(page: Page, code: string, label: string) {
 test.describe('roommate recovery', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('creates a private code, restores the same roommate elsewhere and revokes a lost browser', async ({ page, request, browser, baseURL }) => {
+  test('creates a private code, restores the same roommate elsewhere and revokes a lost browser', async ({ page, accounts, request, browser, baseURL }) => {
     if (!baseURL) throw new Error('Recovery tests need a configured base URL.')
-    const owner = await createHousehold(request, 'The recovery home', 'Charlie')
+    const owner = await createHousehold(accounts.store, 'The recovery home', 'Charlie')
     const expense = await request.post('/api/expenses', {
       headers: { Authorization: `Bearer ${owner.token}` },
       data: { description: 'Saved groceries', amount: 803, category: 'produce', date: localDate(), paidBy: owner.memberId, participants: [owner.memberId], version: 0 },
@@ -68,6 +68,7 @@ test.describe('roommate recovery', () => {
     const context = await browser.newContext({ baseURL, reducedMotion: 'reduce' })
     try {
       const phone = await context.newPage()
+      await routeAccountApi(phone, accounts)
       await phone.goto('/#recover')
       await submitRecovery(phone, code, 'Phone')
       await expect(phone.locator('.game-house')).toContainText('The recovery home')
@@ -94,9 +95,9 @@ test.describe('roommate recovery', () => {
     }
   })
 
-  test('replaces codes, signs out other sessions and deduplicates a recovered saved identity', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The original identity', 'Charlie')
-    const other = await createHousehold(request, 'Another saved home', 'Riley')
+  test('replaces codes, signs out other sessions and deduplicates a recovered saved identity', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The original identity', 'Charlie')
+    const other = await createHousehold(accounts.store, 'Another saved home', 'Riley')
     const originalCode = await generateCode(request, owner)
     const phoneResponse = await request.post('/api/recover', { data: { code: originalCode, label: 'Old phone' } })
     await expect(phoneResponse).toBeOK()
@@ -125,16 +126,12 @@ test.describe('roommate recovery', () => {
     await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
   })
 
-  test('keeps recovery input across startup and a rejected request', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The retained recovery', 'Charlie')
+  test('keeps recovery input across a rejected request', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The retained recovery', 'Charlie')
     const code = await generateCode(request, owner)
-    const startup = await pauseRequest(page, '**/api/demo')
     await page.goto('/#recover')
-    const demo = await startup.pending
     await page.getByLabel('Recovery code', { exact: true }).fill(code)
     await page.getByLabel('Name this browser', { exact: true }).fill('Phone draft')
-    await demo.continue()
-    await expect(page.locator('.game-house')).toContainText('The Sunday House')
     await expect(page.getByLabel('Recovery code', { exact: true })).toHaveValue(code)
     await page.route('**/api/recover', (route) => route.fulfill({
       status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Recovery is temporarily unavailable. Try again.' }),
@@ -149,28 +146,27 @@ test.describe('roommate recovery', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0)
   })
 
-  test('does not replace a recovered identity with a late sample kitchen', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The recovered identity', 'Charlie')
+  test('the public recovery route does not open saved household access before recovery', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The recovered identity', 'Charlie')
+    const previous = await createHousehold(accounts.store, 'The unopened saved identity', 'Riley')
     const code = await generateCode(request, owner)
-    const startup = await pauseRequest(page, '**/api/demo')
+    await restoreBrowser(page, previous)
+    const reads: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/household') reads.push(request.url())
+    })
     await page.goto('/#recover')
-    const demo = await startup.pending
+    expect(reads).toEqual([])
     await submitRecovery(page, code, 'A recovered browser')
     await expect(page.locator('.game-house')).toContainText('The recovered identity')
     const token = await page.evaluate(() => localStorage.getItem('roomlings.session'))
-    const response = page.waitForResponse('**/api/demo')
-    await demo.continue()
-    await (await response).finished()
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-    await expect(page.locator('.game-house')).toContainText('The recovered identity')
-    expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(token)
-    await page.unroute('**/api/demo')
+    expect(token).not.toBe(previous.token)
     await page.reload()
     await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
   })
 
-  test('ignores an expired refresh from the session that recovery has already replaced', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The refreshed identity', 'Charlie')
+  test('ignores an expired refresh from the session that recovery has already replaced', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The refreshed identity', 'Charlie')
     const code = await generateCode(request, owner)
     await restoreBrowser(page, owner)
     await page.goto('/kitchen')
@@ -194,8 +190,8 @@ test.describe('roommate recovery', () => {
     await page.unroute('**/api/household')
   })
 
-  test('small-screen access controls surface failed rotation and revocation without showing success', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The careful recovery', 'Charlie')
+  test('small-screen access controls surface failed rotation and revocation without showing success', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The careful recovery', 'Charlie')
     const code = await generateCode(request, owner)
     const restored = await request.post('/api/recover', { data: { code, label: 'Lost phone' } })
     await expect(restored).toBeOK()

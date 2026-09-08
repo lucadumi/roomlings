@@ -95,9 +95,6 @@
 .party-invite { width: var(--control-compact-height); height: var(--control-compact-height); display: flex; align-items: center; justify-content: center; color: #6e8454; border: 1px dashed #a7b990; background: #f4f7e8; border-radius: 50%; }
 .party-invite:hover:not(:disabled) { background: #e7eed8; border-style: solid; }
 .house-tools { position: absolute; top: 90px; right: 28px; display: flex; gap: 6px; z-index: 8; }
-.game-demo { position: absolute; top: 90px; right: calc(3 * var(--control-compact-height) + 57px); z-index: 8; display: flex; align-items: center; gap: 9px; color: #69775b; font-size: 10px; }
-.game-demo > button { display: flex; align-items: center; gap: 4px; min-height: var(--control-compact-height); padding: 5px 8px; color: #a45537; font-size: 11px; font-weight: 550; }
-.game-demo > button:hover:not(:disabled) { color: #843d24; }
 .kitchen-world { position: absolute; top: var(--world-top); right: 0; bottom: var(--world-bottom); left: 0; z-index: 1; transition: right 380ms cubic-bezier(0.2, 0.7, 0.2, 1), bottom 380ms cubic-bezier(0.2, 0.7, 0.2, 1); }
 .game-home[data-panel-open="true"] .kitchen-world { right: calc(var(--panel-width) + 35px); }
 .world-canvas { position: fixed; inset: 0; cursor: grab; touch-action: none; }
@@ -302,7 +299,6 @@
   .room-caption { left: 22px; gap: 9px; }
   .room-label > span { display: none; }
   .house-tools { right: 22px; }
-  .game-demo { right: calc(3 * var(--control-compact-height) + 46px); font-size: 9px; }
   .world-fridge-toggle { left: 22px; }
   .world-kettle-toggle { left: 181px; }
   .world-interaction-hint { font-size: 10px; }
@@ -322,7 +318,6 @@
   .game-house > span:not(.connection-dot) { max-width: 160px; }
   .game-hud { height: 92px; padding-block: 10px; }
   .room-caption { top: 99px; }
-  .game-demo { top: 98px; }
   .house-tools { top: 98px; }
   .world-interaction-hint { display: none; }
   .room-panel { top: 150px; }
@@ -334,7 +329,6 @@
 }
 @media (max-width: 800px) {
   .game-app { --sheet-height: min(47dvh, 425px); }
-  .game-demo { top: 142px; right: 22px; }
   .room-panel { top: auto; bottom: 105px; left: 15px; right: 15px; width: auto; height: var(--sheet-height); border-radius: 15px; }
   .room-panel-header { padding: 16px 18px 14px; align-items: center; }
   .room-panel-header h2 { font-size: 1.625rem; }
@@ -349,7 +343,6 @@
   .game-home[data-panel-open="true"] .world-fridge-toggle,
   .game-home[data-panel-open="true"] .world-kettle-toggle,
   .game-home[data-panel-open="true"] .house-tools,
-  .game-home[data-panel-open="true"] .game-demo { display: none; }
   .game-app .modal-backdrop { padding: 20px; align-items: center; justify-content: center; }
   .game-app .modal { max-height: calc(100dvh - 40px); }
 }
@@ -374,9 +367,6 @@
   .room-label > strong { font-size: 0.6875rem; }
   .room-label > svg { width: 13px; }
   .party-members { display: none; }
-  .game-demo { position: static; grid-column: 2; grid-row: 2; justify-content: flex-end; flex-wrap: wrap; min-width: 0; margin-right: 16px; gap: 4px 7px; font-size: 0.625rem; }
-  .game-demo > button { font-size: 0.6875rem; gap: 3px; }
-  .game-demo > button > svg { width: 12px; }
   .house-tools { grid-column: 1 / -1; grid-row: 3; top: 18px; right: 15px; gap: 7px; }
   .kitchen-world { position: relative; grid-column: 1 / -1; grid-row: 3; inset: auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px; padding: 0 16px 6px; }
   .world-hotspot { width: 44px; height: 44px; }
@@ -423,7 +413,6 @@
   .coin-stamp { width: 25px; height: 25px; }
   .coin-stamp > svg { width: 17px; }
   .game-house > span:not(.connection-dot) { max-width: 132px; }
-  .game-demo { margin-right: 13px; }
   .room-caption { margin-left: 13px; }
   .room-label { padding-inline: 7px; gap: 5px; }
   .room-picker-trigger { gap: 5px; }
@@ -459,7 +448,6 @@
   .game-home { --world-top: 84px; --world-bottom: 104px; }
   .game-bottom { bottom: 16px; }
   .room-caption { max-width: max(140px, calc(100% - 400px)); flex-wrap: wrap; }
-  .game-demo { top: 98px; right: calc(3 * var(--control-compact-height) + 46px); }
   .world-camera-controls { top: auto; bottom: 58px; right: 16px; transform: none; flex-direction: row; }
   .world-camera-controls > i { width: 1px; height: 24px; margin: 0 3px; }
   .room-panel { top: 88px; bottom: 104px; left: auto; right: 16px; width: var(--panel-width); height: auto; }

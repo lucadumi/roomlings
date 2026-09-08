@@ -45,13 +45,13 @@ Household name changes refresh saved browser shortcuts. Account refreshes update
 
 `/` is always the public home page; `/welcome` is an alias. Neither reads account access or creates a session. Sign-in opens `/rooms/kitchen`; successful sign-in or household creation enters the room directly. The room's wordmark returns home.
 
-`/sample/kitchen` or `/sample/bathroom` opens a private sample home without signing in. Both rooms reuse its sample access key, separate from personal and Coldshare sessions; sample edits never change your real household. A definitively expired sample can restart with an explicit notice, while outages retain the existing sample for retry.
+Room access belongs to a real household. Public previews never create households or anonymous sessions; sign in to create or join a home, or restore an existing real browser identity.
 
-Sign in to create a household or link an existing roommate identity. Old `/kitchen`, invitation and `/#recover` links remain supported, including `coldshare.*` storage. Expired browser-only access can return through a valid signed-in account without deleting old shortcuts. Genuinely expired or revoked accounts require a new email code, then reopen saved data rather than replacing it with a demo.
+Sign in to create a household or link an existing roommate identity. Old `/kitchen`, invitation and `/#recover` links remain supported, including `coldshare.*` storage. Expired browser-only access can return through a valid signed-in account without deleting old shortcuts. Genuinely expired or revoked accounts require a new email code, then reopen the original saved data.
 
 The short kitchen tour supports native scrolling, keyboard navigation, reduced motion and an illustrated fallback. The hero is a conceptual home illustration, not an exact floor plan.
 
-The landing page's **Explore the rooms** section offers kitchen and bathroom previews. Choose a room with the preview cards or arrow keys, then use its sample link. Kitchen chapters retain their guided tour; the bathroom preview opens the same private sample household in that room. Previewing reads no household access and does not create a sample until you open it. Existing chapter links remain supported, and `/#tour-bathroom` opens the bathroom preview directly.
+The landing page's **Explore the rooms** section offers kitchen and bathroom previews. Choose a room with the preview cards or arrow keys, then use **Open kitchen** or **Open bathroom** to sign in or enter your household. Kitchen chapters retain their guided tour. Previewing reads no household access and creates no data. Existing chapter links remain supported, and `/#tour-bathroom` opens the bathroom preview directly.
 
 ## Development notes
 

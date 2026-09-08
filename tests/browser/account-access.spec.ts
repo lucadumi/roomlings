@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Page, Route } from '@playwright/test'
 import { balances, localDate } from '../../shared/domain.ts'
 import type { SavedKitchen } from '../../src/api.ts'
-import { roomPath, samplePath } from '../../src/roomNavigation.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 import { savedKitchen } from './fixtures.ts'
 import { accountState, browserAccountRequest, expect, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
@@ -60,8 +60,6 @@ test('retains expired Coldshare shortcuts and recovers the same roommate and led
   const { original, code } = await revokedKitchen(accounts)
   await remember(page, [savedKitchen(original)], { prefix: 'coldshare', token: original.token })
   await page.setViewportSize({ width: 390, height: 844 })
-  const demos: string[] = []
-  page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/demo') demos.push(request.url()) })
   await page.goto(roomPath())
   const dialog = page.getByRole('dialog')
   const recover = dialog.getByRole('button', { name: 'Recover access to The retained household', exact: true })
@@ -91,7 +89,6 @@ test('retains expired Coldshare shortcuts and recovers the same roommate and led
   expect(shortcuts[0].token).not.toBe(original.token)
   expect(shortcuts[0].expired).toBeUndefined()
   expect((await accountState(page)).account).toBeNull()
-  expect(demos).toEqual([])
   await page.reload()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
 })
@@ -176,58 +173,28 @@ test('offers recovery after a rejected kitchen switch without discarding the cur
   expect(saved.some((kitchen) => kitchen.token === current.token)).toBe(true)
 })
 
-for (const source of ['selected', 'shortcut'] as const) {
-  test(`separates a confirmed older sample from personal access when it is ${source}`, async ({ page, accounts }) => {
-    const sample = await accounts.store.create('An older sample', 'You', 'EUR', 45000, true)
-    const personal = await accounts.store.create('The Sunday House', 'Ada', 'EUR', 45000)
-    const token = source === 'selected' ? sample.token : personal.token
-    const mode = source === 'selected' ? 'browser' : 'account'
-    await remember(page, [savedKitchen(sample), savedKitchen(personal)], { token, mode })
-    await page.goto(roomPath())
-    if (source === 'shortcut') {
-      await page.getByRole('dialog').getByRole('button', { name: 'Open saved An older sample', exact: true }).click()
-      await expect(page).toHaveURL(new RegExp(`${samplePath()}$`))
-      await expect(page.locator('.game-house')).toContainText(sample.household.name)
-      await page.goto(roomPath())
-    }
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('button', { name: 'Open saved An older sample', exact: true })).toHaveCount(0)
-    await expect(dialog.getByRole('button', { name: 'Open saved The Sunday House', exact: true })).toBeVisible()
-    expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(sample.token)
-    expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(token)
-    expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe(mode)
-    expect(await accounts.store.get(sample.household.id)).toEqual(sample.household)
-    await dialog.getByRole('button', { name: 'Open saved The Sunday House', exact: true }).click()
-    await expect(page.locator('.game-house')).toContainText(personal.household.name)
-    await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Ada')
-  })
-}
-
-test('opening an old sample leaves a signed-in household and its access preference unchanged', async ({ page, accounts }) => {
-  const sample = await accounts.store.create('An old saved sample', 'You', 'EUR', 45000, true)
-  await remember(page, [savedKitchen(sample)])
-  await signIn(page, accounts)
-  const created = await browserAccountRequest(page, '/account/households', {
-    name: 'The personal account home', memberName: 'Ada', currency: 'EUR', budget: 45000,
-  })
-  expect(created.status).toBe(201)
+test('retains retired example shortcuts without offering them as household access', async ({ page, accounts }) => {
+  const personal = await accounts.store.create('The available household', 'Ada', 'EUR', 45000)
+  const retired = {
+    token: 'retired-example-access-token-1234567890',
+    householdId: randomUUID(),
+    memberId: randomUUID(),
+    name: 'The retired example',
+    memberName: 'You',
+    demo: true,
+  }
+  await page.addInitScript(({ retired, personal }) => {
+    localStorage.setItem('roomlings.session', personal.token)
+    localStorage.setItem('roomlings.kitchens', JSON.stringify([retired, personal]))
+    localStorage.setItem('roomlings.access-mode', 'browser')
+  }, { retired, personal: savedKitchen(personal) })
   await page.goto(roomPath())
-  await expect(page.locator('.game-house')).toContainText('The personal account home')
-  const before = await accountState(page)
+  await expect(page.locator('.game-house')).toContainText(personal.household.name)
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
-  await page.locator('.saved-kitchens').getByRole('button', { name: /An old saved sample/ }).click()
-  await expect(page).toHaveURL(new RegExp(`${samplePath()}$`))
-  await expect(page.locator('.game-house')).toContainText(sample.household.name)
-  const after = await accountState(page)
-  expect(after.account).toEqual(before.account)
-  expect(after.memberships).toEqual(before.memberships)
-  expect(after.session).toEqual(before.session)
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBeNull()
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(sample.token)
-  await page.goto(roomPath())
-  await expect(page.locator('.game-house')).toContainText('The personal account home')
-  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByText(retired.name, { exact: true })).toHaveCount(0)
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))
+  expect(stored).toHaveLength(2)
+  expect(stored).toContainEqual(retired)
 })
 
 test('keeps account sign-in and original history when a saved link needs recovery', async ({ page, accounts }) => {
@@ -254,21 +221,6 @@ test('keeps account sign-in and original history when a saved link needs recover
   expect(linked.session?.household.expenses).toEqual(original.household.expenses)
   expect(linked.session?.household.members).toEqual(original.household.members)
   expect(await accounts.store.authenticate(original.token)).toBeNull()
-})
-
-test('stops offering an old sample for account linking after the server identifies it', async ({ page, accounts }) => {
-  const sample = await accounts.store.create('An old practice kitchen', 'You', 'EUR', 45000, true)
-  await remember(page, [savedKitchen(sample)])
-  await signIn(page, accounts)
-  const dialog = page.getByRole('dialog')
-  await dialog.getByRole('button', { name: 'Link existing kitchen access', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Link You in An old practice kitchen', exact: true }).click()
-  await dialog.getByRole('button', { name: 'Link this identity', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toContainText('Practice kitchens cannot be linked')
-  await expect(dialog.getByRole('button', { name: 'Link You in An old practice kitchen', exact: true })).toHaveCount(0)
-  expect((await accountState(page)).memberships).toEqual([])
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]')[0].demo)).toBe(true)
-  expect(await accounts.store.get(sample.household.id)).toEqual(sample.household)
 })
 
 for (const outcome of ['succeeds', 'fails'] as const) {

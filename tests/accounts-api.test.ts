@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../server/app.ts'
 import { Store } from '../server/store.ts'
+import { SQLiteDatabase } from '../server/database.ts'
 import { ApiError } from '../server/errors.ts'
 import { retryAccountDeletions } from '../server/accounts-api.ts'
 import type { AccountProvider } from '../server/provider.ts'
@@ -46,7 +47,8 @@ afterEach(async () => {
 
 async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
   let time = Date.now()
-  const store = new Store(':memory:', { now: () => time })
+  const database = new SQLiteDatabase(':memory:')
+  const store = new Store(database, { now: () => time })
   const provider = new TestProvider()
   const server = createApp(store, { provider: configured ? provider : undefined, appOrigin, allowLocalDevelopment: true }).listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -108,7 +110,7 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
       },
     }
   }
-  return { store, provider, call, browser, advance(ms: number) { time += ms } }
+  return { store, database, provider, call, browser, advance(ms: number) { time += ms } }
 }
 
 async function secondLegacy(store: Store, first: Session, name = 'Ben') {
@@ -121,7 +123,7 @@ async function secondLegacy(store: Store, first: Session, name = 'Ben') {
 }
 
 describe('verified account HTTP lifecycle', () => {
-  it('keeps unconfigured/private legacy creation and demo access working while public auth fails clearly', async () => {
+  it('keeps unconfigured browser-only creation working while public auth fails clearly', async () => {
     const f = await fixture(false)
     const state = await f.call('/account')
     assert.deepEqual(accountStateSchema.parse(state.data), { configured: false, account: null, memberships: [], devices: [], csrfToken: null, session: null })
@@ -130,7 +132,7 @@ describe('verified account HTTP lifecycle', () => {
     const legacy = await f.call('/households', { name: 'Private kitchen', memberName: 'Ada', currency: 'EUR', budget: 10000 })
     assert.equal(legacy.status, 201)
     assert.equal((await f.call('/household', undefined, { token: legacy.data.token })).status, 200)
-    assert.equal((await f.call('/demo', {})).status, 201)
+    assert.equal((await f.call('/demo', {})).status, 404)
   })
 
   it('normalizes verified emails, uses opaque HttpOnly cookies, and never overwrites a returning profile', async () => {
@@ -311,11 +313,11 @@ describe('verified account HTTP lifecycle', () => {
     assert.ok((await stranger.state()).account)
   })
 
-  it('requires account creation/joining publicly, keeps demos public, and isolates explicit household headers', async () => {
+  it('requires account creation and joining publicly, removes demos, and isolates explicit household headers', async () => {
     const f = await fixture()
     assert.equal((await f.call('/households', { name: 'Public', memberName: 'Ada', currency: 'EUR', budget: 30000 })).status, 401)
     assert.equal((await f.call('/join', { inviteCode: 'old-invite', name: 'Ada' })).status, 401)
-    assert.equal((await f.call('/demo', {})).status, 201)
+    assert.equal((await f.call('/demo', {})).status, 404)
     const browser = f.browser()
     await browser.signIn('ada@example.com')
     const first = (await browser.create('First')).session!
@@ -617,10 +619,20 @@ describe('account invitations and membership lifecycle', () => {
     assert.equal((await ben.request('/account/link', { token: first.token })).status, 409)
     const third = (await secondLegacy(f.store, first, 'Charlie'))
     assert.equal((await ada.request('/account/link', { token: third.token })).status, 409)
-    const demo = (await f.store.create('Practice', 'You', 'EUR', 30000, true))
-    const sample = await ada.request('/account/link', { token: demo.token })
-    assert.equal(sample.status, 400)
-    assert.equal(sample.data.code, 'SAMPLE_KITCHEN')
+    const retired = await f.store.create('Retired example', 'You', 'EUR', 30000)
+    const retiredSession = await f.store.authenticate(retired.token)
+    assert.ok(retiredSession)
+    const retiredRecovery = await f.store.rotateRecovery(retiredSession, { version: 0, revokeOthers: false })
+    assert.ok(retiredRecovery && retiredRecovery !== 'conflict')
+    const retiredState = JSON.stringify({ ...retired.household, demo: true })
+    await f.database.prepare('UPDATE households SET state = ? WHERE id = ?').run(retiredState, retired.household.id)
+    const retiredBrowser = await ada.request('/account/link', { token: retired.token })
+    assert.equal(retiredBrowser.status, 401)
+    assert.equal(retiredBrowser.data.code, 'BROWSER_ACCESS_EXPIRED')
+    const retiredCode = await ada.request('/account/link', { recoveryCode: retiredRecovery.code })
+    assert.equal(retiredCode.status, 401)
+    assert.equal(retiredCode.data.code, 'INVALID_RECOVERY_CODE')
+    assert.equal((await f.database.prepare('SELECT state FROM households WHERE id = ?').get(retired.household.id))?.state, retiredState)
     const invalidBrowser = await ada.request('/account/link', { token: 'invalid-proof-123456789' })
     assert.equal(invalidBrowser.status, 401)
     assert.equal(invalidBrowser.data.code, 'BROWSER_ACCESS_EXPIRED')

@@ -4,12 +4,15 @@ import type { BrowserContext, Page } from '@playwright/test'
 import { expect, test as base } from '@playwright/test'
 import { accountStateSchema } from '../../shared/accounts.ts'
 import type { AccountState } from '../../shared/accounts.ts'
+import type { Session } from '../../shared/domain.ts'
 import type { Store } from '../../server/store.ts'
 import { createApp } from '../../server/app.ts'
 import { ApiError } from '../../server/errors.ts'
 import type { AccountProvider } from '../../server/provider.ts'
 import { retryAccountDeletions } from '../../server/accounts-api.ts'
 import { databaseFixture } from '../database-fixture.ts'
+import { createPopulatedHousehold } from '../household-fixture.ts'
+import { savedKitchen } from './fixtures.ts'
 
 export { expect }
 
@@ -50,8 +53,14 @@ export class TestMailbox {
 
 export type AccountHarness = { origin: string; store: Store; provider: TestMailbox; retryDeletions: () => Promise<void> }
 
-export const test = base.extend<{ accounts: AccountHarness }>({
-  accounts: async ({ baseURL }, use) => {
+export const test = base.extend<{
+  accounts: AccountHarness
+  emptyHousehold: Session
+  populatedHousehold: Session
+  providerEnabled: boolean
+}>({
+  providerEnabled: [true, { option: true }],
+  accounts: async ({ baseURL, providerEnabled }, use) => {
     if (!baseURL) throw new Error('Account browser flows need a configured base URL.')
     const database = await databaseFixture()
     const store = database.store
@@ -65,7 +74,9 @@ export const test = base.extend<{ accounts: AccountHarness }>({
       deleteUser: (id) => mailbox.remove(id),
     }
     const server = createApp(store, {
-      provider, appOrigin: new URL(baseURL).origin, allowLocalDevelopment: true,
+      ...(providerEnabled ? { provider } : {}),
+      appOrigin: new URL(baseURL).origin,
+      allowLocalDevelopment: true,
     }).listen(0, '127.0.0.1')
     try {
       await once(server, 'listening')
@@ -81,12 +92,38 @@ export const test = base.extend<{ accounts: AccountHarness }>({
       await database.close()
     }
   },
+  request: async ({ accounts, playwright }, use) => {
+    const request = await playwright.request.newContext({ baseURL: accounts.origin })
+    try {
+      await use(request)
+    } finally {
+      await request.dispose()
+    }
+  },
   page: async ({ page, accounts }, use) => {
     await routeAccountApi(page, accounts)
     await use(page)
     if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
   },
+  emptyHousehold: async ({ page, accounts }, use) => {
+    const session = await accounts.store.create('The browser household', 'You', 'EUR', 45000)
+    await rememberBrowserHousehold(page, session)
+    await use(session)
+  },
+  populatedHousehold: async ({ page, accounts }, use) => {
+    const session = await createPopulatedHousehold(accounts.store)
+    await rememberBrowserHousehold(page, session)
+    await use(session)
+  },
 })
+
+export async function rememberBrowserHousehold(page: Page, session: Session): Promise<void> {
+  await page.addInitScript((kitchen) => {
+    localStorage.setItem('roomlings.session', kitchen.token)
+    localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
+    localStorage.setItem('roomlings.access-mode', 'browser')
+  }, savedKitchen(session))
+}
 
 export async function closeAccountContext(context: BrowserContext): Promise<void> {
   for (const page of context.pages()) {

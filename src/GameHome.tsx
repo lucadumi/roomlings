@@ -1,6 +1,6 @@
 import { Component, Suspense, useLayoutEffect, useRef } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { ArrowRight, CircleHelp, Coins, Grid2X2, Home, ListChecks, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
+import { CircleHelp, Coins, Grid2X2, Home, ListChecks, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
 import { money } from '../shared/domain.ts'
 import type { Category, Household } from '../shared/domain.ts'
 import { Avatar } from './components.tsx'
@@ -36,7 +36,6 @@ type Props = {
   panelOpen: boolean
   activeTool: KitchenAction | 'chores' | null
   onAction: (action: KitchenAction) => void
-  onCreate: () => void
   onInvite: () => void
   onSettings: () => void
   onRoomStyle: () => void
@@ -58,7 +57,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export function GameHome({
   roomId, onRooms, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
-  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onCreate, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
+  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
 }: Props) {
   const World = roomViews[roomId]
   const home = useRef<HTMLElement>(null)
@@ -113,7 +112,6 @@ export function GameHome({
       </button>
       <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{activeMembers.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
     </div>
-    {household.demo && <div className="game-demo"><span>Sample home</span><button className="control-surface" onClick={onCreate} aria-haspopup="dialog">Make it yours <ArrowRight size={13} /></button></div>}
     <div className="house-tools"><button className="icon-button control-surface" onClick={onRoomStyle} aria-label="Room style" title="Room style" aria-haspopup="dialog"><Palette size={19} /></button><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>
     <div className="game-bottom" ref={dock}>
       <button className="game-balance control-surface" onClick={() => onAction('settle')} aria-label="Your household balance" aria-pressed={activeTool === 'settle'}><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>

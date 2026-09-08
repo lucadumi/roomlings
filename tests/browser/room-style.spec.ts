@@ -1,9 +1,10 @@
-import { expect, test } from '@playwright/test'
+import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { householdSchema } from '../../shared/domain.ts'
 import { sessionSchema } from '../../src/api.ts'
-import { createHousehold, pauseRequest, sampleSession, savedKitchen } from './fixtures.ts'
+import { createHousehold, pauseRequest, savedKitchen } from './fixtures.ts'
 
+test.use({ providerEnabled: false })
 test.use({ reducedMotion: 'reduce' })
 
 async function openPicker(page: Page) {
@@ -40,8 +41,8 @@ async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
   }, [before.toString('base64'), after.toString('base64')])
 }
 
-test('presets require confirmation and sync to another roommate without WebGL', async ({ page, browser, request, baseURL }) => {
-  const owner = await createHousehold(request, 'A room of our own', 'Rowan')
+test('presets require confirmation and sync to another roommate without WebGL', async ({ page, accounts, browser, request, baseURL }) => {
+  const owner = await createHousehold(accounts.store, 'A room of our own', 'Rowan')
   const joined = await request.post('/api/join', { data: { inviteCode: owner.household.inviteCode, name: 'Alex' } })
   await expect(joined).toBeOK()
   const roommate = sessionSchema.parse(await joined.json())
@@ -59,6 +60,7 @@ test('presets require confirmation and sync to another roommate without WebGL', 
   try {
     await second.addInitScript((token) => localStorage.setItem('roomlings.session', token), roommate.token)
     const other = await second.newPage()
+    await routeAccountApi(other, accounts)
     await other.goto('/kitchen')
     await expect(other.locator('.game-house')).toContainText('A room of our own')
     await page.goto('/kitchen')
@@ -96,7 +98,7 @@ test('presets require confirmation and sync to another roommate without WebGL', 
   }
 })
 
-test('a delayed failed preset save keeps the room, draft and dismissal state honest', async ({ page }) => {
+test('a delayed failed preset save keeps the room, draft and dismissal state honest', async ({ page, emptyHousehold: _household }) => {
   await page.goto('/kitchen')
   const picker = await openPicker(page)
   await picker.getByRole('radio', { name: 'Clay', exact: true }).check()
@@ -125,8 +127,8 @@ test('a delayed failed preset save keeps the room, draft and dismissal state hon
   await expect(page.getByRole('button', { name: 'Room style', exact: true })).toBeFocused()
 })
 
-test('a stale save retains the selection while showing the updated shared room', async ({ page, request }) => {
-  const original = await sampleSession(request)
+test('a stale save retains the selection while showing the updated shared room', async ({ page, accounts, request }) => {
+  const original = await createHousehold(accounts.store, 'The concurrently styled home', 'You')
   await page.addInitScript((token) => localStorage.setItem('roomlings.session', token), original.token)
   await page.goto('/kitchen')
   const picker = await openPicker(page)
@@ -139,7 +141,7 @@ test('a stale save retains the selection while showing the updated shared room',
     data: { roomStyle: 'linen', version: original.household.version },
   })
   await expect(changed).toBeOK()
-  await route.continue()
+  await route.fallback()
   await expect(picker.getByRole('alert')).toBeVisible()
   await expect(picker.getByRole('status')).toContainText('Current shared look: Linen.')
   await expect(picker.getByRole('status')).toContainText('Review your selection before applying.')
@@ -151,9 +153,9 @@ test('a stale save retains the selection while showing the updated shared room',
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-room-style', 'sage')
 })
 
-test('switching saved kitchens loads each household preset without replacing its identity', async ({ page, request }) => {
-  const sage = await createHousehold(request, 'The sage kitchen', 'Rowan')
-  const linen = await createHousehold(request, 'The linen kitchen', 'Alex')
+test('switching saved kitchens loads each household preset without replacing its identity', async ({ page, accounts, request }) => {
+  const sage = await createHousehold(accounts.store, 'The sage kitchen', 'Rowan')
+  const linen = await createHousehold(accounts.store, 'The linen kitchen', 'Alex')
   for (const [session, roomStyle] of [[sage, 'sage'], [linen, 'linen']] as const) {
     const response = await request.patch('/api/household/room-style', {
       headers: { Authorization: `Bearer ${session.token}` },
@@ -179,7 +181,7 @@ test('switching saved kitchens loads each household preset without replacing its
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(sage.token)
 })
 
-test('saved finishes repaint the same scene and restore Original without resetting the room', { tag: '@room' }, async ({ page }, testInfo) => {
+test('saved finishes repaint the same scene and restore Original without resetting the room', { tag: '@room' }, async ({ page, emptyHousehold: _household }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.clock.setFixedTime(new Date())
   await page.goto('/kitchen')
@@ -235,11 +237,11 @@ test('saved finishes repaint the same scene and restore Original without resetti
   }
 })
 
-test('room controls and the sample invitation stay separate on a narrow tablet', async ({ page }) => {
+test('room controls stay separate on a narrow tablet', async ({ page, emptyHousehold: _household }) => {
   await page.setViewportSize({ width: 600, height: 900 })
   await page.goto('/kitchen')
   await expect(page.getByRole('button', { name: 'Room style', exact: true })).toBeVisible()
-  const bounds = await page.locator('.house-tools, .game-demo, .room-caption').evaluateAll((elements) =>
+  const bounds = await page.locator('.house-tools, .room-caption, .game-identity, .game-resources').evaluateAll((elements) =>
     elements.map((element) => {
       const { x, y, width, height } = element.getBoundingClientRect()
       return { name: element.className, x, y, width, height }
@@ -254,12 +256,10 @@ test('room controls and the sample invitation stay separate on a narrow tablet',
   await openPicker(page)
   await expect(page.getByRole('radio', { name: 'Original', exact: true })).toBeFocused()
   await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: 'Make it yours', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: 'Make room for your people.', exact: true })).toBeVisible()
 })
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }, { width: 320, height: 568 }]) {
-  test(`room presets remain keyboard-accessible and contained at ${viewport.width}px`, async ({ page }) => {
+  test(`room presets remain keyboard-accessible and contained at ${viewport.width}px`, async ({ page, emptyHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto('/kitchen')
     const tools = page.locator('.house-tools')

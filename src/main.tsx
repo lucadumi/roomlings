@@ -24,7 +24,7 @@ function Entry() {
   const entry = resolveEntry(url.pathname, url.hash)
   return <Suspense fallback={<SceneLoading label="Opening Roomlings..." />}>
     {entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
-      ? <Welcome accessNotice={<p className="form-error" role="alert">That room is not available. Open your home or try a sample to continue.</p>} />
+      ? <Welcome accessNotice={<p className="form-error" role="alert">That room is not available. Sign in to open your home.</p>} />
       : <App roomId={entry.roomId} />}
   </Suspense>
 }

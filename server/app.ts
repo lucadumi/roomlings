@@ -149,7 +149,6 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   }
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
-  app.post('/api/demo', async (_req, res) => res.status(201).json((await store.create('The Sunday House', 'You', 'EUR', 45000, true))))
   app.post('/api/households', async (req, res) => {
     if (accounts.configured) {
       await accounts.authenticated(req, res)
@@ -166,7 +165,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     const input = joinSchema.parse(req.body)
     const session = await store.transaction(async () => {
       const household = await store.byInvite(input.inviteCode)
-      if (!household || household.demo) throw new ApiError(404, 'That invitation was not found. Ask your roommate for a fresh link.')
+      if (!household) throw new ApiError(404, 'That invitation was not found. Ask your roommate for a fresh link.')
       if (await store.accounts.isManaged(household.id)) throw new ApiError(403, 'This kitchen uses account invitations. Ask its owner for a new account invitation.')
       if (household.members.filter((member) => !member.inactive).length >= activeMemberLimit) {
         throw new ApiError(409, 'This kitchen already has 12 active roommates.')
