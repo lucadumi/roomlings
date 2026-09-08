@@ -55,6 +55,8 @@ The landing page's **Explore the rooms** section uses one shared template for th
 
 Both rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They use the same overview scale and camera angle throughout their scroll tours. A 2D loading indicator stays visible until the renderer is ready; an illustrated fallback keeps the controls available if 3D cannot load. Reduced motion keeps the room stationary while its descriptions remain navigable. The closing invitation retains one direct Start sharing CTA.
 
+The compact footer links to the home guide, room exploration and questions. Its logo returns to the start of the page without changing household access. About, Privacy, Terms and Contact are listed as planned pages, not active links.
+
 ## Development notes
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
