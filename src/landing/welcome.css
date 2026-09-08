@@ -42,7 +42,7 @@
 .welcome h2 { font-size: clamp(27px, 2.65vw, 36px); line-height: 1.16; letter-spacing: -1px; font-weight: 500; }
 .welcome-section-heading h2 { margin: 0; }
 .welcome-journal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: clamp(30px, 5vw, 72px); }
-.welcome-feature { display: grid; grid-template-columns: 38px minmax(0, 1fr); column-gap: 16px; min-width: 0; align-content: start; padding: 22px 0; border-top: 1px solid var(--welcome-rule); }
+.welcome-feature { display: grid; grid-template-columns: 38px minmax(0, 1fr); column-gap: 16px; min-width: 0; align-content: start; padding: 22px 0; }
 .welcome-feature-01 { grid-column: 1 / -1; grid-template-columns: 38px minmax(0, 1fr) minmax(0, .8fr); align-items: center; column-gap: 24px; padding-block: 24px; }
 .welcome-feature-number { grid-column: 1; grid-row: 1; align-self: start; font-family: var(--font-heading); font-style: italic; font-size: 30px; line-height: 1.05; color: #9aa889; }
 .welcome-feature-copy { grid-column: 2; grid-row: 1; min-width: 0; max-width: 430px; }
