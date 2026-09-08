@@ -112,10 +112,10 @@
 .welcome-faq details[open] summary svg { transform: rotate(45deg); }
 .welcome-faq details p { margin: 0; padding: 0 30px 22px 0; font-size: 14px; line-height: 1.85; color: #617055; }
 .welcome-faq details p a { text-decoration: underline; text-underline-offset: 3px; }
-.welcome-invitation { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px 40px; padding: clamp(26px, 3.2vw, 40px); background: #e9edde; border: 1px solid #d7e0cb; border-top: 3px solid #718363; border-radius: 0 0 5px 5px; box-shadow: 0 6px 0 -3px #dbe0cd; }
-.welcome-invitation::after { content: ''; position: absolute; top: -3px; right: -1px; width: 27px; height: 27px; background: linear-gradient(45deg, #c6d0b6 49%, var(--paper) 50%); pointer-events: none; }
+.welcome-invitation { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px 40px; padding: clamp(26px, 3.2vw, 40px); background: #f1dfaa; border: 1px solid #d9bd71; border-top: 3px solid #a68130; border-radius: 0 0 5px 5px; box-shadow: 0 6px 0 -3px #d9bd7166; }
+.welcome-invitation::after { content: ''; position: absolute; top: -3px; right: -1px; width: 27px; height: 27px; background: linear-gradient(45deg, #d9bd71 49%, var(--paper) 50%); pointer-events: none; }
 .welcome-invitation h2 { margin: 0 0 12px; }
-.welcome-invitation p { margin: 0; max-width: 48ch; font-size: 14px; line-height: 1.8; color: #5f6e50; }
+.welcome-invitation p { margin: 0; max-width: 48ch; font-size: 14px; line-height: 1.8; color: var(--ink); }
 .welcome-invitation > a { flex-shrink: 0; }
 .welcome-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px; margin-top: 65px; padding-block: 30px; border-top: 1px solid var(--welcome-rule); }
 .welcome-footer .brand { min-height: 44px; font-size: 25px; }
