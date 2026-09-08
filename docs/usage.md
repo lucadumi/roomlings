@@ -51,6 +51,8 @@ Sign in to create a household or link an existing roommate identity. Old `/kitch
 
 The short kitchen tour supports native scrolling, keyboard navigation, reduced motion and an illustrated fallback. The hero is a conceptual home illustration, not an exact floor plan.
 
+The landing page's **Explore the rooms** section offers kitchen and bathroom previews. Choose a room with the preview cards or arrow keys, then use its sample link. Kitchen chapters retain their guided tour; the bathroom preview opens the same private sample household in that room. Previewing reads no household access and does not create a sample until you open it. Existing chapter links remain supported, and `/#tour-bathroom` opens the bathroom preview directly.
+
 ## Development notes
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.

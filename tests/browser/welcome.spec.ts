@@ -106,7 +106,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   await expect(page.getByRole('heading', { level: 1 })).toBeInViewport()
   await expect(page.locator('.welcome-canvas')).toHaveCount(0)
   await openTour(page)
-  await expect(page.getByRole('heading', { name: 'Explore the kitchen', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Explore the rooms', exact: true })).toBeVisible()
   const titles = ['A room you can use.', 'From list to receipt.', 'Bills that repeat.', 'A pot for groceries.', 'Know who owes what.']
   const dimensions = await page.locator('.welcome-tour-track').evaluate((element) => {
     const card = element.querySelector('.welcome-tour-pin')
@@ -142,7 +142,7 @@ test('reduced motion removes the scroll runway and holds a stationary room while
   const idle = await drawing()
   expect(idle.draws).toBeGreaterThan(0)
   await chooseChapter(page, 3)
-  await expect(page.getByRole('heading', { name: 'Monthly budget', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'A pot for groceries.', exact: true })).toBeVisible()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   expect(await drawing()).toEqual(idle)
   await page.getByRole('button', { name: 'Reduced motion', exact: true }).click()
@@ -223,7 +223,7 @@ test('WebGL startup failure keeps the illustration, object navigation and actual
   await expect(page.locator('.welcome-scene-status')).toContainText('3D is unavailable')
   await expect(page.locator('.welcome-static')).toBeVisible()
   await chooseChapter(page, 2)
-  await expect(page.getByRole('heading', { name: 'Bills and receipts', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bills that repeat.', exact: true })).toBeVisible()
   await page.locator('.welcome-tour').getByRole('link', { name: 'Try the sample', exact: true }).click()
   await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
@@ -242,7 +242,7 @@ test('context loss restores the illustration without breaking the shorter tour',
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'unavailable')
   await chooseChapter(page, 1)
   await expect(page.locator('.welcome-static')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Groceries', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'From list to receipt.', exact: true })).toBeVisible()
 })
 
 test('the landing remains readable across phones, tablets, short landscapes and reserved scrollbar space', { tag: '@room' }, async ({ page }) => {

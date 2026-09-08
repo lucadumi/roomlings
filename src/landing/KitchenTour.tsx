@@ -6,7 +6,10 @@ import type { TourLayout } from './tour.ts'
 import { TourFallback } from './TourFallback.tsx'
 import { LoadingIcon } from '../Branding.tsx'
 import type { TourStatus } from './TourScene.tsx'
-import { samplePath } from '../roomNavigation.ts'
+import { defaultRoom, samplePath } from '../roomNavigation.ts'
+import { roomIds } from '../../shared/rooms.ts'
+import type { RoomId } from '../../shared/rooms.ts'
+import { RoomChoices, RoomPreview } from './RoomPreview.tsx'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
 const chapters = [
@@ -37,6 +40,37 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   const [active, setActive] = useState(0)
   const [status, setStatus] = useState<TourStatus>('loading')
   const [mounted, setMounted] = useState(false)
+  const [room, setRoom] = useState<RoomId>(() => roomIds.find((id) => location.hash === `#tour-${id}`) ?? defaultRoom)
+
+  const positionChapter = (index: number, behavior: ScrollBehavior) => {
+    const element = track.current
+    const card = pin.current
+    if (!element || !card) throw new Error('The kitchen tour is not mounted.')
+    if (element.dataset.flow === 'true') {
+      progress.current = index / (tourChapters.length - 1)
+      setActive(index)
+    } else {
+      const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
+      const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
+      window.scrollTo({ top: start + travel * index / (tourChapters.length - 1), behavior })
+    }
+  }
+
+  useEffect(() => {
+    const restoreRoom = () => {
+      const requested = roomIds.find((id) => location.hash === `#tour-${id}`)
+      if (requested) setRoom(requested)
+      else if (!location.hash || location.hash === '#tour' || tourChapters.some(({ id }) => location.hash === `#${id}`)) {
+        setRoom(defaultRoom)
+        if (!location.hash || location.hash === '#tour') {
+          progress.current = 0
+          setActive(0)
+        }
+      }
+    }
+    window.addEventListener('hashchange', restoreRoom)
+    return () => window.removeEventListener('hashchange', restoreRoom)
+  }, [])
 
   useEffect(() => {
     const element = stage.current
@@ -52,6 +86,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   }, [])
 
   useEffect(() => {
+    if (room !== 'kitchen') return
     const element = track.current
     const card = pin.current
     const viewport = stage.current
@@ -85,10 +120,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
     const requestUpdate = () => { if (!frame) frame = requestAnimationFrame(update) }
     const onHash = () => {
       const index = tourChapters.findIndex(({ id }) => location.hash === `#${id}`)
-      if (index >= 0 && element.dataset.flow === 'true') {
-        progress.current = index / (tourChapters.length - 1)
-        setActive(index)
-      }
+      if (index >= 0) positionChapter(index, 'instant')
       requestUpdate()
     }
     const observer = new ResizeObserver(requestUpdate)
@@ -106,37 +138,59 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
       window.removeEventListener('resize', requestUpdate)
       window.removeEventListener('hashchange', onHash)
     }
-  }, [reducedMotion])
+  }, [reducedMotion, room])
 
   const selectChapter = (index: number) => {
-    const element = track.current
-    const card = pin.current
-    if (!element || !card) throw new Error('The kitchen tour is not mounted.')
     const previous: unknown = history.state
     history.pushState(previous !== null && typeof previous === 'object' ? { ...previous, roomlingsTourScroll: undefined } : null, '', `#${tourChapters[index].id}`)
-    if (element.dataset.flow === 'true') {
-      progress.current = index / (tourChapters.length - 1)
-      setActive(index)
-    } else {
-      const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
-      const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
-      window.scrollTo({ top: start + travel * index / (tourChapters.length - 1), behavior: reducedMotion ? 'instant' : 'smooth' })
-    }
+    positionChapter(index, reducedMotion ? 'instant' : 'smooth')
   }
 
-  return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title" data-scene={status} data-chapter={tourChapters[active].id}>
+  const selectRoom = (next: RoomId) => {
+    if (next === room) return
+    const previous: unknown = history.state
+    history.pushState(previous !== null && typeof previous === 'object' ? { ...previous, roomlingsTourScroll: undefined } : null,
+      '', next === defaultRoom ? '#tour' : `#tour-${next}`)
+    progress.current = 0
+    setActive(0)
+    setRoom(next)
+  }
+
+  const motionControl = <button type="button" className="welcome-motion" onClick={onToggleMotion} aria-label="Reduced motion" aria-pressed={reducedMotion}>
+    {reducedMotion ? <Play size={16} /> : <Pause size={16} />}<span>Reduced motion</span>
+  </button>
+
+  return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title"
+    data-room={room} data-scene={room === 'kitchen' ? status : 'preview'} data-chapter={room === 'kitchen' ? tourChapters[active].id : undefined}>
+    {roomIds.map((id) => <span className="welcome-room-anchor" id={`tour-${id}`} key={id} aria-hidden="true" />)}
     <div className="welcome-section-heading">
-      <h2 id="tour-title">Explore the kitchen</h2>
+      <h2 id="tour-title">Explore the rooms</h2>
       <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
     </div>
-    <div className="welcome-tour-track" ref={track}>
+    <RoomChoices value={room} onChange={selectRoom} />
+    {room === 'bathroom' && <div className="welcome-bathroom-preview">
+      <div className="welcome-tour-card">
+        <RoomPreview roomId={room} />
+        <div className="welcome-tour-description">
+          <div className="welcome-tour-details">
+            <div className="welcome-tour-copy" data-active="true">
+              <h3>A bathroom everyone shares.</h3>
+              <p>Open chores from the sink, mirror, bath or toilet. Rotate the work and add low supplies to the same shopping list your kitchen uses.</p>
+            </div>
+          </div>
+          <a className="welcome-text-link" href={samplePath(room)}>Try the sample <ArrowRight size={16} /></a>
+        </div>
+      </div>
+      <div className="welcome-tour-controls">{motionControl}</div>
+    </div>}
+    <div className="welcome-tour-track" ref={track} hidden={room !== 'kitchen'}>
       {tourChapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-travel) * ${index / (tourChapters.length - 1)})` }} />)}
       <div className="welcome-tour-pin" ref={pin}>
         <div className="welcome-tour-card">
           <div className="welcome-stage" ref={stage} aria-hidden="true">
             <div className="welcome-static"><TourFallback /></div>
             {mounted && <TourBoundary onFailure={() => setStatus('unavailable')}>
-              <Suspense fallback={null}><TourScene progress={progress} layout={layout} wake={wake} reducedMotion={reducedMotion || paused} onStatus={setStatus} /></Suspense>
+              <Suspense fallback={null}><TourScene progress={progress} layout={layout} wake={wake} reducedMotion={reducedMotion || paused || room !== 'kitchen'} onStatus={setStatus} /></Suspense>
             </TourBoundary>}
           </div>
           <div className="welcome-tour-description">
@@ -156,9 +210,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
               return <button type="button" key={id} aria-label={label} aria-pressed={active === index} aria-controls="tour-details" onClick={() => selectChapter(index)}><Icon size={17} /><span>{short}</span></button>
             })}
           </nav>
-          <button type="button" className="welcome-motion" onClick={onToggleMotion} aria-label="Reduced motion" aria-pressed={reducedMotion}>
-            {reducedMotion ? <Play size={16} /> : <Pause size={16} />}<span>Reduced motion</span>
-          </button>
+          {motionControl}
         </div>
         <div className="welcome-scene-status" role="status">
           {mounted && status === 'loading' && <span className="loading-status"><LoadingIcon reducedMotion={reducedMotion || paused} />Loading the kitchen preview...</span>}

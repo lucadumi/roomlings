@@ -23,6 +23,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
   const systemReduced = useSyncExternalStore(subscribeToMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches, () => false)
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
+  const createPath = `${roomPath()}#account=create`
 
   useEffect(() => {
     const previousTitle = document.title
@@ -65,12 +66,12 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       </a>
       <nav className="welcome-navigation" aria-label="On this page">
         <a href="#how-it-works">Your home</a>
-        <a href="#tour">Kitchen tour</a>
+        <a href="#tour">Explore rooms</a>
         <a href="#questions">Questions</a>
       </nav>
       <div className="welcome-header-actions">
         <a className="welcome-sign-in" id="home-sign-in" href={roomPath()}>Sign in <ArrowRight size={15} /></a>
-        <a className="button primary welcome-enter" href={`${roomPath()}#account=create`}>Get started</a>
+        <a className="button primary welcome-enter" href={createPath}>Get started</a>
       </div>
     </header>
     {accessNotice && <div className="welcome-access-notice welcome-container">{accessNotice}</div>}
@@ -78,16 +79,18 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       <section className="welcome-hero welcome-container" aria-labelledby="welcome-title">
         <div className="welcome-hero-copy">
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
-          <p>Step into your kitchen and bathroom. Tap the objects to share chores, plan shopping and keep household costs fair.</p>
+          <p>Preview your kitchen and bathroom, then step inside to share chores, shopping and household costs.</p>
           <div className="welcome-actions">
-            <a className="button primary welcome-enter" id="home-start" href={`${roomPath()}#account=create`}>Get started <ArrowRight size={18} /></a>
+            <a className="button primary welcome-enter" id="home-start" href={createPath}>Get started <ArrowRight size={18} /></a>
             <a className="welcome-text-link" href={samplePath()}>Try the sample <ArrowUpRight size={16} /></a>
           </div>
           <p className="welcome-small"><Check size={14} />Try a private sample. Your real household stays untouched.</p>
         </div>
-        <figure className="welcome-vignette" role="img" aria-label="Illustration of a shared home">
-          <HomeIllustration />
-        </figure>
+        <div className="welcome-home-frame">
+          <figure className="welcome-vignette" role="img" aria-label="Illustration of a shared home">
+            <HomeIllustration />
+          </figure>
+        </div>
       </section>
 
       <section className="welcome-features welcome-container" id="how-it-works" aria-labelledby="features-title">
@@ -117,7 +120,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
 
       <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
         <div><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
-        <a className="button primary welcome-enter" href={`${roomPath()}#account=create`}>Get started <ArrowRight size={18} /></a>
+        <a className="button primary welcome-enter" href={createPath}>Get started <ArrowRight size={18} /></a>
       </section>
     </main>
     <footer className="welcome-footer welcome-container">
