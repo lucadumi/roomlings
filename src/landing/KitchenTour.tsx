@@ -62,7 +62,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
       setActive(index)
       if (!reducedMotion) wake.current?.()
     } else {
-      const start = window.scrollY + title.getBoundingClientRect().top
+      const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
       const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
       window.scrollTo({ top: start + travel * index / (chapters.length - 1), behavior })
     }
@@ -112,12 +112,10 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
       const cardHeight = card.getBoundingClientRect().height
       const height = `${cardHeight}px`
       if (element.style.getPropertyValue('--welcome-tour-height') !== height) element.style.setProperty('--welcome-tour-height', height)
-      const offset = `${title.getBoundingClientRect().top - element.getBoundingClientRect().top}px`
-      if (element.style.getPropertyValue('--welcome-tour-start-offset') !== offset) element.style.setProperty('--welcome-tour-start-offset', offset)
       const flowing = reducedMotion || cardHeight + 48 > window.innerHeight
       element.dataset.flow = String(flowing)
       if (!flowing) {
-        const start = window.scrollY + title.getBoundingClientRect().top
+        const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
         const travel = element.getBoundingClientRect().height - cardHeight
         if (travel > 0) progress.current = scrollProgress(window.scrollY, [start, start + travel])
       }
@@ -179,14 +177,15 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title"
     data-room={room} data-scene={status} data-chapter={chapters[active].id}>
     {roomIds.map((id) => <span className="welcome-room-anchor" id={`tour-${id}`} key={id} aria-hidden="true" />)}
-    <div className="welcome-section-heading">
-      <h2 id="tour-title" ref={heading}>Explore the rooms</h2>
-      <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
-    </div>
-    <RoomChoices value={room} onChange={selectRoom} />
     <div className="welcome-tour-track" ref={track}>
-      {chapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-start-offset, 0px) + var(--welcome-tour-travel) * ${index / (chapters.length - 1)})` }} />)}
-      <div className="welcome-tour-pin" ref={pin}>
+      {chapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-travel) * ${index / (chapters.length - 1)})` }} />)}
+      <div className="welcome-tour-sticky" ref={pin}>
+        <div className="welcome-section-heading">
+          <h2 id="tour-title" ref={heading}>Explore the rooms</h2>
+          <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
+        </div>
+        <RoomChoices value={room} onChange={selectRoom} />
+        <div className="welcome-tour-pin">
         <div className="welcome-tour-card">
           <div className="welcome-stage-shell">
             <div className="welcome-stage" ref={stage} aria-hidden="true">
@@ -222,6 +221,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         {status === 'unavailable' && <div className="welcome-scene-status" role="status">
           3D is unavailable. Use the controls to explore each part of the room.
         </div>}
+        </div>
       </div>
     </div>
   </section>

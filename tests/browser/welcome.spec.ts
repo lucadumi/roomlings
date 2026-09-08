@@ -125,7 +125,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   await expect(page.getByRole('heading', { name: 'Explore the rooms', exact: true })).toBeVisible()
   const titles = roomTourChapters.kitchen.map((chapter) => chapter.title)
   const dimensions = await page.locator('.welcome-tour-track').evaluate((element) => {
-    const card = element.querySelector('.welcome-tour-pin')
+    const card = element.querySelector('.welcome-tour-sticky')
     if (!card) throw new Error('The tour card is missing.')
     return { travel: element.getBoundingClientRect().height - card.getBoundingClientRect().height, screen: innerHeight }
   })
@@ -288,7 +288,7 @@ test('longer copy and orientation changes use measured scene areas without clipp
   await page.goto('/welcome')
   await openTour(page)
   await page.locator('.welcome-tour-copy p').first().evaluate((element) => {
-    const card = element.closest('.welcome-tour-pin')
+    const card = element.closest('.welcome-tour-sticky')
     if (!card) throw new Error('The tour card is missing.')
     // Force measured overflow rather than relying on platform-specific font metrics.
     for (let count = 0; count < 20 && card.getBoundingClientRect().height <= innerHeight; count++) {

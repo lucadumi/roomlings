@@ -73,8 +73,10 @@
 .welcome-tour { position: relative; padding-top: 5px; }
 .welcome-tour-track { position: relative; --welcome-tour-travel: 56svh; height: calc(var(--welcome-tour-height, 490px) + var(--welcome-tour-travel)); }
 .welcome-tour-track[hidden] { display: none; }
-.welcome-tour-stop { position: absolute; width: 1px; height: 1px; pointer-events: none; scroll-margin-top: 0; }
-.welcome-tour-pin { position: sticky; top: 24px; border: 1px solid #d8ddcb; border-radius: 7px; background: #f0f1e7; }
+.welcome-tour-stop { position: absolute; width: 1px; height: 1px; pointer-events: none; }
+.welcome-tour-sticky { position: sticky; top: 24px; z-index: 1; background: var(--paper); background-image: var(--paper-texture); background-size: var(--paper-texture-size); }
+.welcome-tour-sticky > .welcome-section-heading { align-items: flex-start; }
+.welcome-tour-pin { position: relative; border: 1px solid #d8ddcb; border-radius: 7px; background: #f0f1e7; }
 .welcome-tour-card { display: grid; grid-template-columns: 1.17fr 1fr; min-width: 0; }
 .welcome-stage { position: relative; min-width: 0; height: clamp(280px, 36vw, 430px); border-radius: 6px 0 0 0; background: #e6eadb; overflow: hidden; pointer-events: none; }
 .welcome-canvas, .welcome-static { position: absolute; inset: 0; }
@@ -101,7 +103,7 @@
 .welcome-scene-status { padding: 0 22px; color: #5a6650; font-size: 12px; line-height: 1.7; }
 .welcome-scene-status:not(:empty) { padding-block: 0 14px; }
 .welcome-tour-track[data-flow="true"] { height: auto; --welcome-tour-travel: 0px; }
-.welcome-tour-track[data-flow="true"] .welcome-tour-pin { position: relative; top: 0; }
+.welcome-tour-track[data-flow="true"] .welcome-tour-sticky { position: relative; top: 0; }
 .welcome-tour-track[data-flow="true"] .welcome-tour-hint { visibility: hidden; }
 .welcome-questions { display: grid; grid-template-columns: 1fr 1.3fr; gap: clamp(30px, 6vw, 90px); padding-block: 64px; }
 .welcome-questions h2 { margin: 0; }

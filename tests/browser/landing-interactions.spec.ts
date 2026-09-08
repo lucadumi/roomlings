@@ -167,7 +167,7 @@ test('both room overviews use the same template, angle and world scale', { tag: 
 })
 
 for (const room of ['kitchen', 'bathroom'] as const) {
-  test(`${room} follows the shared native scroll animation in both directions`, { tag: '@room' }, async ({ page }) => {
+  test(`${room} pins its title through the shared scroll animation and releases afterward`, { tag: '@room' }, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(room === 'kitchen' ? '/#tour' : '/#tour-bathroom')
@@ -177,33 +177,28 @@ for (const room of ['kitchen', 'bathroom'] as const) {
     await expect(track).toHaveAttribute('data-flow', 'false')
     const chapters = roomTourChapters[room]
     const renderer = page.locator(room === 'kitchen' ? '.welcome-canvas' : '.bathroom-preview-canvas')
-    const earlyProgress = await track.evaluate((element) => {
-      const card = element.querySelector('.welcome-tour-pin')
-      const title = element.closest('section')?.querySelector('#tour-title')
-      if (!card || !title) throw new Error('The exploration heading is missing.')
-      const titleTop = scrollY + title.getBoundingClientRect().top
-      const gap = element.getBoundingClientRect().top - title.getBoundingClientRect().top
-      const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
-      const distance = Math.min(gap / 2, travel / 4)
-      window.scrollTo({ top: titleTop + distance, behavior: 'instant' })
-      return distance / travel
-    })
-    expect(earlyProgress).toBeGreaterThan(0)
-    await expect.poll(async () => Number(await renderer.getAttribute('data-tour-position'))).toBeCloseTo(earlyProgress, 2)
-    expect((await track.locator('.welcome-tour-pin').boundingBox())!.y).toBeGreaterThan(24)
     for (const index of [1, chapters.length - 1, 0]) {
       const fraction = index / (chapters.length - 1)
       await track.evaluate((element, fraction) => {
-        const card = element.querySelector('.welcome-tour-pin')
+        const card = element.querySelector('.welcome-tour-sticky')
         const heading = element.closest('section')?.querySelector('#tour-title')
         if (!card || !heading) throw new Error('The shared exploration card is missing.')
-        const start = scrollY + heading.getBoundingClientRect().top
+        const start = scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
         const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
         window.scrollTo({ top: start + travel * fraction, behavior: 'instant' })
       }, fraction)
       await expect(tour).toHaveAttribute('data-chapter', chapters[index].id)
       await expect.poll(async () => Number(await renderer.getAttribute('data-tour-position'))).toBeCloseTo(fraction, 2)
+      expect(Math.abs((await tour.locator('#tour-title').boundingBox())!.y - 24)).toBeLessThanOrEqual(1)
     }
+    await track.evaluate((element) => {
+      const pinned = element.querySelector('.welcome-tour-sticky')
+      if (!pinned) throw new Error('The pinned exploration is missing.')
+      const start = scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(pinned).top)
+      const travel = element.getBoundingClientRect().height - pinned.getBoundingClientRect().height
+      window.scrollTo({ top: start + travel + 96, behavior: 'instant' })
+    })
+    await expect.poll(async () => (await tour.locator('#tour-title').boundingBox())!.y).toBeLessThan(-40)
   })
 }
 
