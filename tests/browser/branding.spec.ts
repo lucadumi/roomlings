@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import type { Locator, Page } from '@playwright/test'
+import type { Locator, Page, Route } from '@playwright/test'
 import type { Session } from '../../shared/domain.ts'
 import { test as accountTest } from './account-fixtures.ts'
 import { createHousehold, openGroceryForm, pauseRequest, sampleSession, savedKitchen } from './fixtures.ts'
@@ -10,6 +10,54 @@ async function restoreKitchen(page: Page, session: Session) {
     localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
   }, savedKitchen(session))
 }
+
+type HeldResponse = { status: number; json: unknown }
+type HeldAction = HeldResponse | 'continue' | 'abort'
+const heldRequests = new WeakMap<Page, Set<() => Promise<void>>>()
+
+// Strict Mode can issue another initial GET before the first one finishes.
+async function holdApiRequests(page: Page, url: string) {
+  let notify!: () => void
+  let resume!: (action: HeldAction) => void
+  const pending = new Promise<void>((resolve) => { notify = resolve })
+  const gate = new Promise<HeldAction>((resolve) => { resume = resolve })
+  const active = new Set<Promise<void>>()
+  const handler = (route: Route) => {
+    notify()
+    const handled = (async () => {
+      const action = await gate
+      if (action === 'abort') await route.abort()
+      else if (action === 'continue') await route.fallback()
+      else await route.fulfill(action)
+    })()
+    active.add(handled)
+    return handled.finally(() => active.delete(handled))
+  }
+  await page.route(url, handler)
+  let finished = false
+  const cleanup = heldRequests.get(page) ?? new Set<() => Promise<void>>()
+  heldRequests.set(page, cleanup)
+  const finish = async (action: HeldAction) => {
+    if (finished) return
+    finished = true
+    resume(action)
+    try {
+      while (active.size) await Promise.all(active)
+    } finally {
+      // Disabling interception first would automatically release pending requests.
+      await page.unroute(url, handler)
+      cleanup.delete(abort)
+    }
+  }
+  const abort = () => finish('abort')
+  cleanup.add(abort)
+  return { pending, release: (response?: HeldResponse) => finish(response ?? 'continue') }
+}
+
+test.afterEach(async ({ page }) => {
+  for (const abort of heldRequests.get(page) ?? []) await abort()
+  heldRequests.delete(page)
+})
 
 async function expectLoadedImage(image: Locator) {
   await expect(image).toBeVisible()
@@ -361,25 +409,24 @@ test('the pending kitchen tour obeys its own reduced-motion toggle without chang
 })
 
 accountTest('an initial account check announces loading before exposing the sign-in form', async ({ page }) => {
-  const pending = await pauseRequest(page, '**/api/account')
+  const pending = await holdApiRequests(page, '**/api/account')
   await page.goto('/#account', { waitUntil: 'commit' })
-  const route = await pending.pending
+  await pending.pending
   const dialog = page.getByRole('dialog')
   const status = dialog.getByRole('status').filter({ has: page.locator('img.roomlings-loader') })
   await expect(status).toHaveClass(/\bloading-status\b/)
   await expect(status).toContainText(/account/i)
   await expectLoader(status.locator('img.roomlings-loader'))
   await expect(dialog.getByLabel('Email address', { exact: true })).toHaveCount(0)
-  await route.fallback()
+  await pending.release()
   await expect(status).toHaveCount(0)
   await expect(dialog.getByLabel('Email address', { exact: true })).toBeVisible()
-  await page.unroute('**/api/account')
 })
 
 accountTest('account and primary-button loaders follow real requests, preserve retries and animate only their thresholds', async ({ page }) => {
-  const initial = await pauseRequest(page, '**/api/account')
+  const initial = await holdApiRequests(page, '**/api/account')
   await page.goto('/rooms/kitchen', { waitUntil: 'commit' })
-  const initialRoute = await initial.pending
+  await initial.pending
   const checking = page.getByRole('status').filter({ hasText: 'Checking saved access' })
   await expectLoader(checking.locator('img.roomlings-loader'))
   await expect(page.getByRole('progressbar')).toHaveCount(0)
@@ -387,17 +434,15 @@ accountTest('account and primary-button loaders follow real requests, preserve r
   const normalMarkup = await readSvg(page, await imageSource(checking.locator('img.roomlings-loader')))
   const faviconSource = await page.locator('link[rel~="icon"]').evaluate((element: HTMLLinkElement) => element.href)
   expect(await svgGeometry(page, normalMarkup)).toEqual(await svgGeometry(page, await readSvg(page, faviconSource)))
-  await initialRoute.fulfill({ status: 503, json: { error: 'Account access is temporarily unavailable.' } })
+  await initial.release({ status: 503, json: { error: 'Account access is temporarily unavailable.' } })
   await expect(checking).toHaveCount(0)
   await expect(page.getByRole('alert')).toHaveText('Account access is temporarily unavailable.')
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
-  await page.unroute('**/api/account')
-  const retry = await pauseRequest(page, '**/api/account')
+  const retry = await holdApiRequests(page, '**/api/account')
   await page.getByRole('button', { name: 'Try again', exact: true }).click()
-  const retryRoute = await retry.pending
+  await retry.pending
   await expectLoader(checking.locator('img.roomlings-loader'))
-  await page.unroute('**/api/account')
-  await retryRoute.fallback()
+  await retry.release()
   await expect(checking).toHaveCount(0)
   await expect(page.getByRole('alert')).toHaveCount(0)
   const dialog = page.getByRole('dialog')
@@ -405,9 +450,9 @@ accountTest('account and primary-button loaders follow real requests, preserve r
   // A resolved request must not wait for a decorative animation cycle or a cosmetic timer.
   await page.clock.install()
   await page.clock.pauseAt(new Date(Date.now() + 60_000))
-  const sending = await pauseRequest(page, '**/api/account/code')
+  const sending = await holdApiRequests(page, '**/api/account/code')
   await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
-  const sendRoute = await sending.pending
+  await sending.pending
   const busy = dialog.getByRole('button').filter({ has: page.locator('img.roomlings-loader') })
   await expect(busy).toBeDisabled()
   await expect(busy).not.toHaveAccessibleName(/Roomlings/i)
@@ -415,22 +460,20 @@ accountTest('account and primary-button loaders follow real requests, preserve r
   const lightMarkup = await readSvg(page, await imageSource(busy.locator('img.roomlings-loader')))
   expect(await svgGeometry(page, lightMarkup)).toEqual(await svgGeometry(page, normalMarkup))
   expect(lightMarkup).not.toBe(normalMarkup)
-  await sendRoute.fulfill({ status: 503, json: { error: 'Email delivery is temporarily unavailable.' } })
+  await sending.release({ status: 503, json: { error: 'Email delivery is temporarily unavailable.' } })
   await expect(dialog.getByRole('alert')).toHaveText('Email delivery is temporarily unavailable.')
   await expect(dialog.locator('img.roomlings-loader')).toHaveCount(0)
   await expect(dialog.getByLabel('Email address', { exact: true })).toHaveValue('branding@example.com')
   await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: 'Send sign-in code', exact: true })).toBeEnabled()
-  await page.unroute('**/api/account/code')
-  const resend = await pauseRequest(page, '**/api/account/code')
+  const resend = await holdApiRequests(page, '**/api/account/code')
   await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
-  const resendRoute = await resend.pending
+  await resend.pending
   await expectLoader(busy.locator('img.roomlings-loader'))
-  await resendRoute.fallback()
+  await resend.release()
   await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('alert')).toHaveCount(0)
   await expect(dialog.locator('img.roomlings-loader, .spin')).toHaveCount(0)
-  await page.unroute('**/api/account/code')
   await expectSvgMotion(page, normalMarkup, 'normal')
   await expectSvgMotion(page, lightMarkup, 'light')
 })
@@ -439,37 +482,35 @@ test('browser-access loading and refresh icons recover from failure without pret
   await restoreKitchen(page, await createHousehold(request, 'The branding access home', 'Robin'))
   await page.goto('/kitchen')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
-  const initial = await pauseRequest(page, '**/api/access')
+  const initial = await holdApiRequests(page, '**/api/access')
   await page.getByRole('button', { name: 'Recovery and devices', exact: true }).click()
-  const initialRoute = await initial.pending
+  await initial.pending
   const dialog = page.getByRole('dialog', { name: 'Your browser access.', exact: true })
   const loading = dialog.getByRole('status').filter({ has: page.locator('img.roomlings-loader') })
   await expect(loading).toHaveClass(/\bloading-status\b/)
   await expect(loading).toContainText(/access/i)
   await expectLoader(loading.locator('img.roomlings-loader'))
-  await initialRoute.continue()
+  await initial.release()
   await expect(loading).toHaveCount(0)
   await expect(dialog.getByLabel('Name this browser', { exact: true })).toHaveValue('Saved browser')
-  await page.unroute('**/api/access')
 
   const refresh = dialog.getByRole('button', { name: 'Refresh browser sessions', exact: true })
   await expect(refresh.locator('svg')).toBeVisible()
   await expect(refresh.locator('img.roomlings-loader')).toHaveCount(0)
   const idleName = await refresh.getAttribute('aria-label')
-  const pending = await pauseRequest(page, '**/api/access')
+  const pending = await holdApiRequests(page, '**/api/access')
   await refresh.click()
-  const refreshRoute = await pending.pending
+  await pending.pending
   await expect(refresh).toBeDisabled()
   await expect(refresh).toHaveAccessibleName(idleName!)
   await expectLoader(refresh.locator('img.roomlings-loader'))
   await expect(refresh.locator('svg')).toHaveCount(0)
-  await refreshRoute.fulfill({ status: 503, json: { error: 'Browser access is temporarily unavailable.' } })
+  await pending.release({ status: 503, json: { error: 'Browser access is temporarily unavailable.' } })
   await expect(dialog.getByRole('alert')).toHaveText('Browser access is temporarily unavailable.')
   await expect(dialog.locator('img.roomlings-loader')).toHaveCount(0)
   await expect(refresh).toBeEnabled()
   await expect(refresh.locator('svg')).toBeVisible()
   await expect(dialog.getByLabel('Name this browser', { exact: true })).toHaveValue('Saved browser')
-  await page.unroute('**/api/access')
   const refreshed = page.waitForResponse('**/api/access')
   await refresh.click()
   expect((await refreshed).ok()).toBe(true)
