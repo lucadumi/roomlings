@@ -27,7 +27,7 @@ test('a failed startup reports the error and retries the saved kitchen', async (
     localStorage.setItem('roomlings.kitchens', JSON.stringify([kitchen]))
   }, savedKitchen(original))
   const startup = await pauseRequest(page, '**/api/household')
-  await page.goto('/')
+  await page.goto('/kitchen')
   await (await startup.pending).fulfill({
     status: 503, json: { error: 'The kitchen is temporarily unavailable.' },
   })

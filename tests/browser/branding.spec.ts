@@ -103,7 +103,10 @@ async function expectSvgMotion(page: Page, markup: string, mode: 'normal' | 'lig
   const isolated = await browser.newPage({ reducedMotion: 'no-preference' })
   try {
     await isolated.goto(`data:image/svg+xml,${encodeURIComponent(markup)}`)
-    await expect(isolated.locator('svg')).toHaveAttribute('viewBox', '0 0 128 128')
+    expect(await isolated.locator('svg').evaluate((element: SVGSVGElement) => {
+      const box = element.viewBox.baseVal
+      return [box.x, box.y, box.width, box.height]
+    })).toEqual([0, 0, 128, 128])
     await expect(isolated.locator('image, foreignObject, canvas, animate, animateTransform, animateMotion')).toHaveCount(0)
     if (mode === 'static') {
       expect(await isolated.evaluate(() => document.getAnimations().length)).toBe(0)
@@ -180,9 +183,9 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
     localStorage.setItem('coldshare.kitchens', JSON.stringify([kitchen]))
   }, { token: original.token, kitchen })
 
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page).toHaveTitle('Roomlings | A home to share')
-  await expect(page.locator('.game-hud .brand').getByRole('img', { name: 'Roomlings', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([kitchen])
@@ -206,8 +209,8 @@ test('Roomlings sessions take precedence over retained legacy browser storage', 
     localStorage.setItem('roomlings.kitchens', JSON.stringify([currentKitchen]))
   }, { oldKitchen: savedKitchen(legacy), currentKitchen })
 
-  await page.goto('/')
-  await expect(page.locator('.game-hud .brand').getByRole('img', { name: 'Roomlings', exact: true })).toBeVisible()
+  await page.goto('/kitchen')
+  await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(current.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([currentKitchen])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(legacy.token)
@@ -284,9 +287,12 @@ test('the favicon uses the flat mark and both landing wordmarks are real outline
 test('the in-app brand stays compact, accessible and unclipped after orientation changes', async ({ page, request }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await restoreKitchen(page, await sampleSession(request))
-  await page.goto('/')
+  await page.goto('/kitchen')
   const brand = page.locator('.game-hud .brand')
-  await expect(brand.getByRole('img', { name: 'Roomlings', exact: true })).toHaveCount(1)
+  await expect(brand).toHaveRole('link')
+  await expect(brand).toHaveAccessibleName('Roomlings home')
+  await expect(brand).toHaveAttribute('href', '/')
+  await expect(brand.getByRole('img')).toHaveCount(0)
   await expect(brand.locator('span.roomlings-brand')).toHaveAttribute('data-variant', 'compact')
   await expect(brand.locator('.roomlings-brand')).toHaveCSS('animation-name', 'none')
   await expect(brand.locator('picture, canvas, svg, .spin')).toHaveCount(0)
@@ -298,7 +304,7 @@ test('the in-app brand stays compact, accessible and unclipped after orientation
     await expectLoadedImage(brand.locator('img.roomlings-brand-icon'))
     await expectLoadedImage(brand.locator('img.roomlings-wordmark'))
     await expectBrandFits(page)
-    await expect(brand.getByRole('img', { name: 'Roomlings', exact: true })).toBeVisible()
+    await expect(brand).toBeVisible()
   }
 })
 
@@ -372,7 +378,7 @@ accountTest('an initial account check announces loading before exposing the sign
 
 accountTest('account and primary-button loaders follow real requests, preserve retries and animate only their thresholds', async ({ page }) => {
   const initial = await pauseRequest(page, '**/api/account')
-  await page.goto('/', { waitUntil: 'commit' })
+  await page.goto('/rooms/kitchen', { waitUntil: 'commit' })
   const initialRoute = await initial.pending
   const checking = page.getByRole('status').filter({ hasText: 'Checking saved access' })
   await expectLoader(checking.locator('img.roomlings-loader'))
@@ -390,12 +396,10 @@ accountTest('account and primary-button loaders follow real requests, preserve r
   await page.getByRole('button', { name: 'Try again', exact: true }).click()
   const retryRoute = await retry.pending
   await expectLoader(checking.locator('img.roomlings-loader'))
+  await page.unroute('**/api/account')
   await retryRoute.fallback()
   await expect(checking).toHaveCount(0)
   await expect(page.getByRole('alert')).toHaveCount(0)
-  await page.unroute('**/api/account')
-
-  await page.getByRole('link', { name: 'Sign in', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email address', { exact: true }).fill('branding@example.com')
   // A resolved request must not wait for a decorative animation cycle or a cosmetic timer.
@@ -433,7 +437,7 @@ accountTest('account and primary-button loaders follow real requests, preserve r
 
 test('browser-access loading and refresh icons recover from failure without pretending a refresh succeeded', async ({ page, request }) => {
   await restoreKitchen(page, await createHousehold(request, 'The branding access home', 'Robin'))
-  await page.goto('/')
+  await page.goto('/kitchen')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
   const initial = await pauseRequest(page, '**/api/access')
   await page.getByRole('button', { name: 'Recovery and devices', exact: true }).click()
@@ -448,7 +452,7 @@ test('browser-access loading and refresh icons recover from failure without pret
   await expect(dialog.getByLabel('Name this browser', { exact: true })).toHaveValue('Saved browser')
   await page.unroute('**/api/access')
 
-  const refresh = dialog.getByRole('button', { name: /^Refresh (?:browser )?access$/ })
+  const refresh = dialog.getByRole('button', { name: 'Refresh browser sessions', exact: true })
   await expect(refresh.locator('svg')).toBeVisible()
   await expect(refresh.locator('img.roomlings-loader')).toHaveCount(0)
   const idleName = await refresh.getAttribute('aria-label')
@@ -476,7 +480,7 @@ test('browser-access loading and refresh icons recover from failure without pret
 
 test('a pending grocery save uses the 2D loader and keeps the draft and retry on failure', async ({ page, request }) => {
   await restoreKitchen(page, await createHousehold(request, 'The branding grocery home', 'Robin'))
-  await page.goto('/')
+  await page.goto('/kitchen')
   await openGroceryForm(page)
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('What did you pick up?', { exact: true }).fill('Keep these branding-test groceries')

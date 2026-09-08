@@ -17,14 +17,18 @@ Bills use the creator's time zone. Edits preserve earlier months and paid occurr
 
 ## Entry and access
 
-New visitors see the landing at `/`. `/welcome` always shows the public page without API calls or changes to browser storage. `/kitchen` opens existing access or a private sample.
+`/` is always the public home page; `/welcome` is an alias. Neither reads account access or creates a session. Sign-in opens `/rooms/kitchen`; successful sign-in or household creation enters the room directly. The room's wordmark returns home.
 
-Sign in to create a household or link an existing roommate identity. Use `/#recover` for browser-only recovery. Legacy `coldshare.*` storage remains supported. Expired browser-only access can return through a valid signed-in account, without deleting its old shortcuts; server outages do not silently switch households.
+`/sample/kitchen` opens a private sample without signing in. Its access key is separate from personal and Coldshare sessions; sample edits never change your real household. A definitively expired sample can restart with an explicit notice, while outages retain the existing sample for retry.
+
+Sign in to create a household or link an existing roommate identity. Old `/kitchen`, invitation and `/#recover` links remain supported, including `coldshare.*` storage. Expired browser-only access can return through a valid signed-in account without deleting old shortcuts. Genuinely expired or revoked accounts require a new email code, then reopen saved data rather than replacing it with a demo.
 
 The short tour supports native scrolling, keyboard navigation, reduced motion and an illustrated fallback. Its home illustration is conceptual; the kitchen is the currently interactive room.
 
 ## Development notes
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
+
+Room IDs and routes are registered in `src/roomNavigation.ts`; every ID must have a renderer in `src/roomViews.ts`. Add implemented rooms there instead of adding placeholder links or new authentication flows. Rooms share the existing household ledger and account access.
 
 Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork and local fonts.

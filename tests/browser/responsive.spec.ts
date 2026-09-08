@@ -225,7 +225,7 @@ test.describe('responsive current app', () => {
       await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
       await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
       await expectReachable(page.getByRole('button', { name: 'Close panel', exact: true }))
-      const panelGeometry = await page.locator('.game-app').evaluate((app) => {
+      await expect.poll(() => page.locator('.game-app').evaluate((app) => {
         const panel = app.querySelector('.room-panel')!.getBoundingClientRect()
         const dock = app.querySelector('.game-dock')!.getBoundingClientRect()
         const label = app.querySelector('.world-view-label')!.getBoundingClientRect()
@@ -238,10 +238,7 @@ test.describe('responsive current app', () => {
           labelOverlaps: ['.game-identity', '.game-resources', '.world-camera-controls', '.room-panel']
             .filter((selector) => overlaps(label, app.querySelector(selector)!.getBoundingClientRect())),
         }
-      })
-      expect(panelGeometry.panelCoversDock).toBe(false)
-      expect(panelGeometry.panelCoversRoom).toBe(false)
-      expect(panelGeometry.labelOverlaps).toEqual([])
+      })).toEqual({ panelCoversDock: false, panelCoversRoom: false, labelOverlaps: [] })
     })
   }
 

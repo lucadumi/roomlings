@@ -6,6 +6,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   --paper: #f8f7f2;
+  --paper-texture: radial-gradient(#71846b26 1.5px, transparent 1.8px);
+  --paper-texture-size: 32px 32px;
   --ink: #343c32;
   --muted: #69725e;
   --line: #e5e6dc;
@@ -29,7 +31,7 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; }
+body { margin: 0; min-width: 320px; background-color: var(--paper); background-image: var(--paper-texture); background-size: var(--paper-texture-size); }
 button, input, select, textarea { font: inherit; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; color: inherit; }

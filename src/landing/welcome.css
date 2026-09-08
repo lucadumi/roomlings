@@ -1,8 +1,8 @@
 .welcome {
   color: var(--ink);
   background: var(--paper);
-  background-image: radial-gradient(#71846b0a .6px, transparent .8px);
-  background-size: 6px 6px;
+  background-image: var(--paper-texture);
+  background-size: var(--paper-texture-size);
   --welcome-green: #3e563e;
   --welcome-edge: clamp(20px, 4.5vw, 72px);
   --welcome-rule: #dbdfd1;

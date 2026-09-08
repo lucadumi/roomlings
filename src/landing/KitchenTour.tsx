@@ -6,6 +6,7 @@ import type { TourLayout } from './tour.ts'
 import { TourFallback } from './TourFallback.tsx'
 import { LoadingIcon } from '../Branding.tsx'
 import type { TourStatus } from './TourScene.tsx'
+import { samplePath } from '../roomNavigation.ts'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
 const chapters = [
@@ -144,7 +145,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
                 <h3>{title}</h3><p>{copy}</p>
               </div>)}
             </div>
-            <a className="welcome-text-link" href="/kitchen">Explore the kitchen <ArrowRight size={16} /></a>
+            <a className="welcome-text-link" href={samplePath()}>Try the sample <ArrowRight size={16} /></a>
             <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll or choose an object.</p>
           </div>
         </div>

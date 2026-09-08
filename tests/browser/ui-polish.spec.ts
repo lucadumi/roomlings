@@ -237,3 +237,20 @@ test.describe('UI polish', () => {
     }
   })
 })
+test('the landing and room share the dot texture while forms keep plain surfaces', { tag: '@room' }, async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.welcome')).toBeVisible()
+  const texture = await page.locator('.welcome').evaluate((element) => getComputedStyle(element).backgroundImage)
+  expect(texture).toContain('radial-gradient')
+  await expect(page.locator('body')).toHaveCSS('background-image', texture)
+  await page.locator('.welcome-hero').getByRole('link', { name: 'Try the sample', exact: true }).click()
+  await expect(page.locator('.game-house')).toBeVisible()
+  const room = await page.locator('.game-home').evaluate((element) => ({
+    texture: getComputedStyle(element, '::before').backgroundImage,
+    mask: getComputedStyle(element, '::before').maskImage,
+  }))
+  expect(room).toEqual({ texture, mask: 'none' })
+  await page.getByRole('button', { name: 'House rules', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCSS('background-image', 'none')
+  await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('background-image', 'none')
+})

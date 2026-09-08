@@ -52,8 +52,8 @@ test('the public welcome page explains the product without opening or changing a
   await expect(page.locator('.welcome-home-illustration')).toBeVisible()
   await expect(page.getByText('A place for everyone.', { exact: true })).toHaveCount(0)
   await expect(page.locator('.welcome-house-note, .welcome-feature-grid')).toHaveCount(0)
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveAttribute('href', '/#account=create')
-  await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/#account')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveAttribute('href', '/rooms/kitchen#account=create')
+  await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/rooms/kitchen')
   await page.getByText('Does Roomlings send money?', { exact: true }).click()
   await expect(page.locator('.welcome-faq details').first()).toHaveAttribute('open', '')
   await expect(page.locator('.welcome-faq details').first()).toContainText('Roomlings never moves money')
@@ -69,10 +69,13 @@ test('the three steps stay compact and the landing avoids redundant promotional 
     await page.goto('/welcome')
     await expect(page.locator('.welcome-feature')).toHaveCount(3)
     await page.evaluate(() => document.fonts.ready)
-    const metrics = await page.locator('.welcome').evaluate((element) => ({
-      words: element.innerText.split(/\s+/).length,
-      steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
-    }))
+    const metrics = await page.locator('.welcome').evaluate((element) => {
+      if (!(element instanceof HTMLElement)) throw new Error('The landing element is missing.')
+      return {
+        words: element.innerText.split(/\s+/).length,
+        steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
+      }
+    })
     expect(metrics.words).toBeLessThanOrEqual(230)
     expect(metrics.steps).toBeLessThanOrEqual(maximum)
     await expect(page.locator('.welcome-edition, .welcome-eyebrow, .welcome-interlude, .welcome-margin-mark, .welcome-signature')).toHaveCount(0)
@@ -152,10 +155,12 @@ test('opening the kitchen from the landing preserves current and Coldshare sessi
   }, savedKitchen(session))
   await page.goto('/welcome')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBeNull()
-  await page.locator('.welcome-hero').getByRole('link', { name: 'Explore the kitchen', exact: true }).click()
+  await page.goto('/kitchen')
   await expect(page.locator('.game-house')).toContainText(session.household.name)
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(session.token)
   await page.goto('/')
+  await expect(page.locator('.welcome')).toBeVisible()
+  await page.goto('/kitchen')
   await expect(page.locator('.game-house')).toContainText(session.household.name)
   await expect(page.locator('.welcome')).toHaveCount(0)
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(session.token)
@@ -198,7 +203,7 @@ test('WebGL startup failure keeps the illustration, object navigation and actual
   await expect(page.locator('.welcome-static')).toBeVisible()
   await chooseChapter(page, 2)
   await expect(page.getByRole('heading', { name: 'Bills and receipts', exact: true })).toBeVisible()
-  await page.locator('.welcome-tour').getByRole('link', { name: 'Explore the kitchen', exact: true }).click()
+  await page.locator('.welcome-tour').getByRole('link', { name: 'Try the sample', exact: true }).click()
   await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'The receipt book.', exact: true })).toBeVisible()

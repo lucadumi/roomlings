@@ -33,4 +33,5 @@
 }
 @media (max-width: 365px) {
   .bill-card { padding: 13px; }
+  .bills-panel .new-monthly-bill { order: -1; }
 }
