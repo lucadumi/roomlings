@@ -3,6 +3,8 @@ import type { APIRequestContext, Page, Route } from '@playwright/test'
 import { sessionSchema } from '../../src/api.ts'
 import type { SavedKitchen } from '../../src/api.ts'
 import type { Session } from '../../shared/domain.ts'
+import { roomCatalog } from '../../shared/rooms.ts'
+import type { RoomId } from '../../shared/rooms.ts'
 
 export async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
@@ -75,4 +77,11 @@ export async function openGroceryForm(page: Page) {
   await openShoppingBag(page)
   await page.getByRole('button', { name: 'Record without a list', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'What is in the bag?', exact: true })).toBeVisible()
+}
+
+export async function selectRoom(page: Page, roomId: RoomId) {
+  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
+  await picker.getByRole('button', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
+  await expect(picker).toHaveCount(0)
 }

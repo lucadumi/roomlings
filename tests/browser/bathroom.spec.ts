@@ -4,7 +4,7 @@ import { Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import { bathroomFraming, buildBathroomModel } from '../../src/bathroomModel.ts'
 import { baseCameraOffset, cameraProjection } from '../../src/camera.ts'
 import { samplePath } from '../../src/roomNavigation.ts'
-import { trackDrawing } from './fixtures.ts'
+import { selectRoom, trackDrawing } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -100,11 +100,11 @@ test('bathroom rendering settles, recolors existing geometry and releases the sc
   await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
   await expect(world).toHaveAttribute('data-evening', 'true')
   await expect(world).toHaveAttribute('data-rendering', 'paused')
-  await page.getByRole('combobox', { name: 'Room', exact: true }).selectOption('kitchen')
+  await selectRoom(page, 'kitchen')
   await expect(world).toHaveCount(0)
   await expect(page.locator('canvas[data-original-bathroom]')).toHaveCount(0)
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-room-style', 'clay')
-  await page.getByRole('combobox', { name: 'Room', exact: true }).selectOption('bathroom')
+  await selectRoom(page, 'bathroom')
   await expect(world).toHaveAttribute('data-room-style', 'clay')
   await expect(world.locator('canvas')).toHaveCount(1)
 })
@@ -156,7 +156,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expect(page.locator('.bathroom-world canvas')).toBeVisible()
     await frameRoom(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await expect(page.getByRole('combobox', { name: 'Room', exact: true })).toBeInViewport({ ratio: 1 })
+    await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('button', { name: 'Chores', exact: true })).toBeInViewport({ ratio: 1 })
     await page.getByRole('button', { name: 'Chores', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Household chores.', exact: true })).toBeVisible()
@@ -170,7 +170,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     })
     expect(layout).toBe(0)
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-    await page.getByRole('combobox', { name: 'Room', exact: true }).selectOption('kitchen')
+    await selectRoom(page, 'kitchen')
     await expect(page.locator('.bathroom-world')).toHaveCount(0)
     await expect(page.locator('.kitchen-world .world-canvas canvas')).toBeVisible()
   })

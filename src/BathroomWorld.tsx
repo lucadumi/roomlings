@@ -19,8 +19,9 @@ type BathroomControls = {
   focus: BathroomFocus
   zoom: number
   evening: boolean
+  wholeRoom: boolean
   wake: () => void
-  focusOn: (target: BathroomTarget) => void
+  focusOn: (target: BathroomFocus) => void
   reset: () => void
 }
 
@@ -34,6 +35,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
   const [focused, setFocused] = useState<BathroomFocus>(() => bathroomFocusForRequest(focusRequest.target))
   const [zoom, setZoom] = useState(1)
   const [evening, setEvening] = useState(false)
+  const [fittingRoom, setFittingRoom] = useState(false)
   const [showLabels, setShowLabels] = useState(true)
   const [hovered, setHovered] = useState<BathroomTarget | null>(null)
   const [unavailable, setUnavailable] = useState(false)
@@ -133,20 +135,24 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       frame = requestAnimationFrame(animate)
     }
     const currentControls: BathroomControls = {
-      focus: bathroomFocusForRequest(state.current.focusRequest.target), zoom: 1, evening: false, wake,
+      focus: bathroomFocusForRequest(state.current.focusRequest.target), zoom: 1, evening: false, wholeRoom: false, wake,
       focusOn(target) {
         currentControls.focus = target
         currentControls.zoom = 1
+        currentControls.wholeRoom = false
         setFocused(target)
+        setFittingRoom(false)
         setZoom(1)
         wake()
       },
       reset() {
         currentControls.focus = 'room'
         currentControls.zoom = 1
+        currentControls.wholeRoom = true
         targetRotation = 0
         targetPitch = 0
         setFocused('room')
+        setFittingRoom(true)
         setZoom(1)
         wake()
       },
@@ -200,8 +206,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       if (latest.focusRequest.id !== lastFocusId) {
         lastFocusId = latest.focusRequest.id
         const target = bathroomFocusForRequest(latest.focusRequest.target)
-        if (target === 'room') currentControls.reset()
-        else currentControls.focusOn(target)
+        currentControls.focusOn(target)
       }
       if (needsResize) {
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -215,7 +220,9 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       room.updateMatrixWorld(true)
       pitch = snap ? targetPitch : dampTo(pitch, targetPitch, 9, delta)
       const bounds = currentControls.focus === 'room' ? model.bounds : model.actorBounds.get(currentControls.focus)!
-      const framing = bathroomFraming(area.width, area.height, bounds, room.rotation.y, pitch)
+      const framing = bathroomFraming(area.width, area.height, bounds, room.rotation.y, pitch, {
+        closeRoom: currentControls.focus === 'room' && !currentControls.wholeRoom,
+      })
       desiredCenter.set(...framing.center)
       if (snap) cameraCenter.copy(desiredCenter)
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
@@ -415,7 +422,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
 
   return (
     <div className="kitchen-world bathroom-world" data-room-style={roomStyle} data-evening={evening} data-focus={focused}
-      data-framing={focused === 'room' ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
+      data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
       <div className="bathroom-scene-area" ref={stage} aria-hidden="true" />
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable}
         aria-label="Interactive low-poly shared bathroom. Select the sink, mirror, toilet, bath or floor for chores, the cleaning caddy for room chores, or the shelf to restock supplies. Drag to turn, scroll or pinch to zoom." />
@@ -438,7 +445,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
           <span>{Math.round(zoom * 100)}%</span>
           <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.65} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
           <i />
-          <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Frame the whole room" title="Whole room" aria-pressed={focused === 'room'}><Maximize size={18} /></button>
+          <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Frame the whole room" title="Whole room" aria-pressed={fittingRoom}><Maximize size={18} /></button>
           <button type="button" className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels} title="Object labels">{showLabels ? <Eye size={18} /> : <EyeOff size={18} />}</button>
           <button type="button" className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Bathroom lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button>
         </div>

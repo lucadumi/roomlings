@@ -1,5 +1,7 @@
 :root {
-  font-family: 'DM Sans Variable', sans-serif;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-heading: Georgia, 'Times New Roman', serif;
+  font-family: var(--font-body);
   color: #343c32;
   background: #f8f7f2;
   font-synthesis: none;
@@ -32,7 +34,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background-color: var(--paper); background-image: var(--paper-texture); background-size: var(--paper-texture-size); }
-button, input, select, textarea { font: inherit; }
+button, input, select, textarea { font: inherit; font-family: var(--font-body); }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; color: inherit; }
 button { border: 0; }
@@ -45,9 +47,8 @@ button:active:not(:disabled) { transform: translateY(1px); }
 button svg { flex-shrink: 0; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { font-weight: 500; }
-h1, h2, .brand, .sidebar-note p, .fridge-headline, .spend-amount, .handwritten-note, .grocery-summary > div > strong {
-  font-family: 'Fraunces Variable', Georgia, serif;
-  font-variation-settings: 'SOFT' 15, 'WONK' 1;
+h1, h2, h3, .brand, .sidebar-note p, .fridge-headline, .spend-amount, .handwritten-note, .grocery-summary > div > strong {
+  font-family: var(--font-heading);
 }
 em { font-weight: inherit; }
 .app-shell { display: flex; min-height: 100vh; }
@@ -161,7 +162,7 @@ h1 em { color: #71805c; }
 .card-topline .eyebrow { font-size: 8px; letter-spacing: 1.2px; }
 .card-topline > .icon-button { padding: 0; }
 .spend-amount { font-size: 39px; color: #4d5842; letter-spacing: -1.5px; font-weight: 430; margin: 12px 0 17px; display: flex; align-items: baseline; gap: 12px; }
-.spend-amount > span { font-family: 'DM Sans Variable', sans-serif; font-size: 10px; letter-spacing: 0; color: #9a9a86; font-weight: 400; }
+.spend-amount > span { font-family: var(--font-body); font-size: 10px; letter-spacing: 0; color: #9a9a86; font-weight: 400; }
 .budget-track { height: 7px; background: #e9eadf; border-radius: 3px; overflow: hidden; }
 .budget-track > div { height: 100%; background: #859570; border-radius: 3px; transition: width 600ms; background-image: repeating-linear-gradient(110deg, transparent 0, transparent 5px, #ffffff20 5px, #ffffff20 6px); }
 .budget-track > div.over-budget { background-color: var(--red); }
@@ -194,7 +195,7 @@ h1 em { color: #71805c; }
 .section-heading .eyebrow { font-size: 7px; letter-spacing: 1.2px; margin-bottom: 7px; }
 h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46; margin-bottom: 0; }
 .section-heading h2 { display: flex; align-items: center; gap: 10px; }
-.count-pill { font-family: 'DM Sans Variable', sans-serif; font-size: 9px; font-weight: 500; background: #edf0e2; color: #89987a; border: 1px solid #e1e6d5; padding: 3px 6px; border-radius: 5px; letter-spacing: 0; }
+.count-pill { font-family: var(--font-body); font-size: 9px; font-weight: 500; background: #edf0e2; color: #89987a; border: 1px solid #e1e6d5; padding: 3px 6px; border-radius: 5px; letter-spacing: 0; }
 .section-heading > .text-button { margin-top: 12px; }
 .ledger-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 22px; padding-bottom: 14px; }
 .category-tabs { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
@@ -296,7 +297,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 .saved-kitchens small { font-size: 9px; color: var(--muted); }
 .kitchen-settings hr { height: 1px; background: #dfe3d0; border: 0; margin: 27px 0 23px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 46px 15px; }
-.empty-state h3 { font-family: 'Fraunces Variable', Georgia, serif; color: #859475; font-size: 23px; letter-spacing: -0.5px; margin: 20px 0 8px; }
+.empty-state h3 { font-family: var(--font-heading); color: #859475; font-size: 23px; letter-spacing: -0.5px; margin: 20px 0 8px; }
 .empty-state p { font-size: 11px; color: #9da68f; line-height: 1.6; margin: 0 0 17px; }
 .empty-bag { position: relative; color: #a2ae8d; transform: rotate(-9deg); }
 .empty-bag > svg:last-child { position: absolute; right: -12px; top: -2px; transform: rotate(25deg); }
@@ -341,7 +342,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 .form-error { font-size: 11px; line-height: 1.7; color: #b5553b; padding: 11px 13px; background: #f7e9df; border: 1px solid #eed9ca; border-radius: var(--control-radius); margin: 0 0 17px; overflow-wrap: anywhere; }
 .payment-summary { padding: 22px; background: #eef2e5; border: 1px solid #dfe7d2; border-radius: 9px; text-align: center; color: #82946d; margin-bottom: 25px; }
 .payment-summary > span { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center; font-size: 12px; }
-.payment-summary strong { font-family: 'Fraunces Variable', Georgia, serif; display: block; font-weight: 450; font-size: 42px; letter-spacing: -1px; color: #667f4b; margin-top: 17px; }
+.payment-summary strong { font-family: var(--font-heading); display: block; font-weight: 450; font-size: 42px; letter-spacing: -1px; color: #667f4b; margin-top: 17px; }
 .invite-content .field input { font-size: inherit; }
 .invite-content > .field-hint { margin-top: 16px; }
 .invite-rotate { margin-top: 28px; border-top: 1px solid #e1e7d4; padding-top: 17px; }
@@ -538,7 +539,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
   .nav-item.active { background: #e9eddf; }
   .nav-count { top: 3px; right: calc(50% - 21px); font-size: 7px; }
   .topbar { height: 60px; padding: 0 19px; }
-  .breadcrumb > strong { font-family: 'Fraunces Variable', Georgia, serif; color: #647257; font-size: 17px; letter-spacing: -0.4px; }
+  .breadcrumb > strong { font-family: var(--font-heading); color: #647257; font-size: 17px; letter-spacing: -0.4px; }
   .topbar-right { gap: 8px; }
   .sync-status { font-size: 0; gap: 0; }
   .sync-status > span { width: 6px; height: 6px; }

@@ -5,7 +5,7 @@ import type { Household, Session } from '../../shared/domain.ts'
 import { roomPath, samplePath } from '../../src/roomNavigation.ts'
 import { expect, routeAccountApi, closeAccountContext, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
-import { savedKitchen } from './fixtures.ts'
+import { savedKitchen, selectRoom } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -78,7 +78,7 @@ test('chores span rooms, rotate once, and undo without touching financial histor
   await page.getByRole('combobox', { name: 'Chore room', exact: true }).selectOption('all')
   await expect(page.locator('.chore-list .chore-card')).toHaveCount(3)
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Room', exact: true }).selectOption('bathroom')
+  await selectRoom(page, 'bathroom')
   await expect(page).toHaveURL(new RegExp(`${roomPath('bathroom')}$`))
   await expect(page.locator('.game-house')).toContainText('The chore household')
   await openChores(page)
@@ -104,7 +104,7 @@ test('chores span rooms, rotate once, and undo without touching financial histor
   await page.getByRole('navigation', { name: 'Chore sections', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
   await expect(kitchenChore).toContainText('Your turn')
   await page.reload()
-  await expect(page.getByRole('combobox', { name: 'Room', exact: true })).toHaveValue('bathroom')
+  await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Bathroom')
   await openChores(page)
   await page.getByRole('combobox', { name: 'Chore room', exact: true }).selectOption('all')
   await expect(page.locator('.chore-list .chore-card')).toHaveCount(3)
@@ -219,7 +219,7 @@ test('restocking uses one shared shopping list and retains lost-response recover
   await page.getByRole('button', { name: 'Open shopping list', exact: true }).click()
   await expect(page.getByRole('article', { name: 'Hand soap', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Room', exact: true }).selectOption('kitchen')
+  await selectRoom(page, 'kitchen')
   await openChores(page)
   await page.getByRole('button', { name: 'Restock room supplies', exact: true }).click()
   await page.getByRole('button', { name: 'Restock Dish soap', exact: true }).click()
@@ -273,7 +273,7 @@ test('sample room switching retains sample edits without changing personal acces
   await addChore(page, 'A sample-only task', 'bathroom', 'sink')
   const token = await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-  await page.getByRole('combobox', { name: 'Room', exact: true }).selectOption('kitchen')
+  await selectRoom(page, 'kitchen')
   await expect(page).toHaveURL(new RegExp(`${samplePath()}$`))
   await page.goBack()
   await expect(page).toHaveURL(new RegExp(`${samplePath('bathroom')}$`))
@@ -321,10 +321,10 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await dialog.getByRole('button', { name: 'Add to shopping list', exact: true }).click()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-    const chooser = page.getByRole('combobox', { name: 'Room', exact: true })
+    const chooser = page.getByRole('button', { name: 'Rooms', exact: true })
     await chooser.focus()
     await expect(chooser).toBeInViewport({ ratio: 1 })
-    await chooser.selectOption('kitchen')
+    await selectRoom(page, 'kitchen')
     await expect(page).toHaveURL(new RegExp(`${roomPath()}$`))
   })
 }

@@ -1,9 +1,6 @@
 .bathroom-scene-area {
   position: absolute;
-  top: min(12%, 56px);
-  right: min(14%, 76px);
-  bottom: min(16%, 62px);
-  left: 12px;
+  inset: 0;
   pointer-events: none;
 }
 

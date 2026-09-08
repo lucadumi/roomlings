@@ -4,7 +4,7 @@ import {
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { RoomStyle } from '../shared/domain.ts'
-import { baseCameraOffset } from './camera.ts'
+import { baseCameraOffset, cameraFraming } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
 import type { ContactShadow } from './lighting.ts'
 import { roomPresets } from './roomStyles.ts'
@@ -178,7 +178,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   box(mirror, [0.98, 0.09, 0.2], [0, 0.98, 0.075], styleMaterials.cabinet, 0.025)
   box(mirror, [0.8, 0.035, 0.14], [0, 0.922, 0.095], lampMaterial, 0.015)
 
-  const toilet = actor('toilet', [2.8, 0, -0.95], [0, 2.14, 0.06])
+  const toilet = actor('toilet', [2.2, 0, -2.12], [0, 2.14, 0.06])
   const foot = cylinder(toilet, 0.4, 0.14, [0, 0.09, 0.18], porcelain, 0.34, 12)
   foot.scale.z = 1.3
   cylinder(toilet, 0.34, 0.54, [0, 0.4, 0.16], porcelain, 0.25, 12)
@@ -196,7 +196,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const paperRoll = cylinder(toilet, 0.15, 0.25, [0.88, 1.34, -0.52], linen, 0.15, 10)
   paperRoll.rotation.z = Math.PI / 2
   box(toilet, [0.24, 0.22, 0.025], [0.88, 1.18, -0.365], linen)
-  contacts.push({ position: [2.8, 0.014, -0.78], size: [1.55, 1.9] })
+  contacts.push({ position: [2.2, 0.014, -1.95], size: [1.55, 1.9] })
 
   const supplies = actor('supplies', [3.92, 0, -2.4], [0, 3.46, 0.03])
   for (const x of [-0.51, 0.51]) for (const z of [-0.36, 0.36]) {
@@ -244,7 +244,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   return { materials, styleMaterials, actors, anchors, bounds, actorBounds, contacts, lampMaterial }
 }
 
-export function bathroomFraming(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0): {
+export function bathroomFraming(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0, options: { closeRoom?: boolean } = {}): {
   center: Position; halfHeight: number
 } {
   if (![width, height].every((value) => Number.isFinite(value) && value > 0)
@@ -253,6 +253,11 @@ export function bathroomFraming(width: number, height: number, bounds: Box3, rot
     throw new Error('Bathroom framing needs positive scene dimensions and finite bounds.')
   }
   const axis = new Vector3(0, 1, 0)
+  if (options.closeRoom) {
+    const view = cameraFraming(width, height, 'room', false)
+    const center = new Vector3(...view.center).applyAxisAngle(axis, rotation)
+    return { center: [center.x, center.y, center.z], halfHeight: view.halfHeight }
+  }
   const center = bounds.getCenter(new Vector3())
   const backward = new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).normalize()
   const right = new Vector3().crossVectors(axis, backward).normalize()

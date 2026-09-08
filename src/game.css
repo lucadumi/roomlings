@@ -85,10 +85,10 @@
 .room-label { background: #fffaf0e8; border: 1px solid #dddfcc; box-shadow: 0 2px 0 #b8c0a225; border-radius: 9px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; color: #6c8155; }
 .room-label strong { color: #4e653c; font-size: 12px; font-weight: 550; }
 .room-label > span { font-size: 10px; color: #737e63; border-left: 1px solid #dde3cf; padding-left: 9px; margin-left: 2px; }
-.room-label.room-switcher { min-width: 0; max-width: 100%; min-height: 44px; padding-block: 0; gap: 5px; }
-.room-switcher select { min-width: 0; min-height: 44px; max-width: 145px; appearance: none; border: 0; border-radius: 5px; padding: 8px 2px; background: transparent; color: #4e653c; font-size: .8125rem; font-weight: 550; cursor: pointer; }
-.room-switcher select:disabled { cursor: not-allowed; opacity: .65; }
-.room-switcher > svg { flex-shrink: 0; pointer-events: none; }
+.room-picker-trigger { min-width: 0; max-width: 100%; min-height: 44px; gap: 7px; }
+.room-picker-trigger small { color: #738063; font-size: .6875rem; border-left: 1px solid #d6ddca; padding-left: 7px; }
+.room-picker-trigger:hover:not(:disabled) { background: var(--control-hover); }
+.room-picker-trigger > svg { flex-shrink: 0; }
 .party-members { display: flex; align-items: center; gap: 6px; }
 .party-members > button:first-child { display: flex; align-items: center; min-height: var(--control-compact-height); padding: 0 0 0 5px; background: none; border-radius: var(--control-radius); }
 .party-members .avatar { width: 27px; height: 27px; margin-left: -5px; font-size: 9px; border-color: #f8f5e8; }
@@ -426,7 +426,8 @@
   .game-demo { margin-right: 13px; }
   .room-caption { margin-left: 13px; }
   .room-label { padding-inline: 7px; gap: 5px; }
-  .room-switcher select { max-width: 112px; font-size: .75rem; }
+  .room-picker-trigger { gap: 5px; }
+  .room-picker-trigger small { padding-left: 5px; }
   .room-panel-header, .room-panel-scroll { padding-inline: 15px; }
   .room-panel-header h2 { font-size: 1.5rem; }
   .game-app .modal { padding-inline: 19px; }

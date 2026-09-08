@@ -42,6 +42,7 @@ import { rememberSample, restoreSample } from './sampleAccess.ts'
 import { ChoreForm, ChoresPanel } from './Chores.tsx'
 import type { ChoreFilter, ChoreView } from './Chores.tsx'
 import { RestockPanel } from './Restock.tsx'
+import { RoomPicker } from './RoomPicker.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const entryRoute = resolveEntry(location.pathname, location.hash)
@@ -49,7 +50,7 @@ const sampleEntry = entryRoute.kind === 'sample'
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies'
-type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'help'
+type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help'
   | { account: AccountIntent }
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
   | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } }
@@ -570,7 +571,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         <p><Check size={19} /><span><strong>Choose a fixture.</strong> The sink, mirror, bath, toilet and floor open chores for that area.</span></p>
         <p><Users size={19} /><span><strong>Share the work.</strong> Assign a person or rotation. Completing a chore records who did it and advances the next turn.</span></p>
         <p><Plus size={19} /><span><strong>Restock supplies.</strong> The supply shelf adds items to the existing shopping list. It does not record a purchase.</span></p>
-      </div><p className="field-hint">Use the room-name menu to change rooms. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.</p>
+      </div><p className="field-hint">Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.</p>
     </Modal>
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
       <div className="game-guide">
@@ -596,6 +597,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       <RecoveryForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/recover', body) }} />
     </Modal>
     if (!household || !session) return null
+    if (dialog === 'rooms') return <RoomPicker currentRoom={currentRoom} onClose={close}
+      onSelect={(roomId) => { switchRoom(roomId); setDialog(null) }} />
     if (typeof dialog === 'object' && 'createChore' in dialog) return <Modal title="Add a household chore." subtitle="Choose a room, schedule and who takes turns." onClose={close} busy={busy}>
       <ChoreForm household={household} memberId={session.memberId} initialRoom={dialog.createChore.roomId} initialArea={dialog.createChore.area} busy={busy} error={footerError}
         onSubmit={(body) => { void action('/chores', body, 'Chore added to your household.') }} />
@@ -794,9 +797,9 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
-      expenseCount={expenses.length} receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
+      receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
       stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
-      busy={busy} onRoomChange={switchRoom} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
+      busy={busy} onRooms={() => openDialog('rooms')} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
       panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
       onAction={interact} onCreate={() => openDialog('create')} onInvite={() => openDialog('invite')}
       onSettings={() => openDialog('settings')} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')}

@@ -5,7 +5,7 @@ import { Box3, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Raycaster,
 import type { BufferGeometry, Object3D } from 'three'
 import { bathroomFocusForRequest, bathroomFraming, bathroomTargets, buildBathroomModel } from '../src/bathroomModel.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
-import { baseCameraOffset, cameraProjection } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection } from '../src/camera.ts'
 import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
 
 function bathroom(t: TestContext) {
@@ -124,7 +124,7 @@ test('each bathroom object remains physically reachable from the open corner aft
   batchStaticMeshes(room, new Set())
   room.updateMatrixWorld(true)
   const points = {
-    sink: [0.15, 1.9, -2.22], mirror: [0.15, 3.06, -2.98], toilet: [2.8, 1.1, -0.75],
+    sink: [0.15, 1.9, -2.22], mirror: [0.15, 3.06, -2.98], toilet: [2.2, 1.1, -1.92],
     bath: [-2.85, 1.16, -1.3], floor: [-1.35, 0.07, 1.42], chores: [0.93, 0.3, 1.15], supplies: [3.92, 2.78, -2.4],
   }
   for (const target of bathroomTargets) {
@@ -210,4 +210,26 @@ test('bathroom framing rejects invalid bounds and scene sizes', () => {
   assert.throws(() => bathroomFraming(320, 400, new Box3()), /finite bounds/)
   assert.throws(() => bathroomFraming(320, 400, bounds, NaN), /finite bounds/)
   assert.throws(() => bathroomFraming(320, 400, bounds, 0, Infinity), /finite bounds/)
+})
+
+test('the toilet sits against the rear wall with clearance from the vanity and shelf', (t) => {
+  const { model } = bathroom(t)
+  const toilet = new Box3().setFromObject(model.actors.get('toilet')!)
+  const sink = new Box3().setFromObject(model.actors.get('sink')!)
+  const shelf = new Box3().setFromObject(model.actors.get('supplies')!)
+  assert.ok(toilet.min.z > -3.09 && toilet.min.z < -2.94)
+  assert.ok(toilet.max.z < -1)
+  assert.ok(toilet.min.x > sink.max.x)
+  assert.ok(toilet.max.x < shelf.min.x)
+})
+
+test('the default bathroom view uses the kitchen zoom scale while whole-room framing stays available', (t) => {
+  const { model } = bathroom(t)
+  for (const [width, height] of [[390, 550], [320, 360], [768, 800], [1440, 778]]) {
+    const kitchen = cameraFraming(width, height, 'room', false)
+    const bathroom = bathroomFraming(width, height, model.bounds, 0, 0, { closeRoom: true })
+    assert.deepEqual(bathroom, kitchen)
+    assert.ok(bathroomFraming(width, height, model.bounds).halfHeight > 0)
+  }
+  assert.ok(bathroomFraming(390, 550, model.bounds).halfHeight > bathroomFraming(390, 550, model.bounds, 0, 0, { closeRoom: true }).halfHeight)
 })

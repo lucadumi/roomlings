@@ -2,7 +2,7 @@
 
 ## Shared rooms and tools
 
-Use the room-name menu to switch between the kitchen and bathroom without changing your household or session. The toolbar remains available in both rooms, including when 3D cannot load.
+Open **Rooms** and choose a kitchen or bathroom preview card without changing your household or session. Both rooms start at the same close-up scale; **Whole room** zooms out to show the full space. The toolbar remains available in both rooms, including when 3D cannot load.
 
 | Object | Purpose |
 | --- | --- |
@@ -43,6 +43,6 @@ The short kitchen tour supports native scrolling, keyboard navigation, reduced m
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
 
-Room IDs, chore areas and restocking suggestions are registered in `shared/rooms.ts`; `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts`. Add implemented rooms there instead of adding placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
+Room IDs, chore areas and restocking suggestions are registered in `shared/rooms.ts`; `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms there instead of adding placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
-Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork and local fonts.
+Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork, Georgia headings and system sans-serif body text. The outlined logo lettering is independent of interface fonts.

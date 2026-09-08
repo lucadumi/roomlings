@@ -1,19 +1,19 @@
 import { Component, Suspense, useLayoutEffect, useRef } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { ArrowRight, Bath, ChevronDown, CircleHelp, Coins, CookingPot, Home, ListChecks, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
+import { ArrowRight, CircleHelp, Coins, Grid2X2, Home, ListChecks, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
 import { money } from '../shared/domain.ts'
 import type { Category, Household } from '../shared/domain.ts'
 import { Avatar } from './components.tsx'
 import { Brand, SceneLoading } from './Branding.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
-import { roomCatalog, roomIds } from '../shared/rooms.ts'
+import { roomCatalog } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { roomViews } from './roomViews.ts'
 
 type Props = {
   roomId: RoomId
-  onRoomChange: (roomId: string) => void
+  onRooms: () => void
   busy: boolean
   dueChores: Partial<Record<ChoreArea, number>>
   dueChoreCount: number
@@ -26,7 +26,6 @@ type Props = {
   remaining: number
   yourBalance: number
   transferCount: number
-  expenseCount: number
   receiptCount: number
   monthControls: ReactNode
   monthLabel: string
@@ -58,7 +57,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 }
 
 export function GameHome({
-  roomId, onRoomChange, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, expenseCount, receiptCount,
+  roomId, onRooms, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onCreate, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
 }: Props) {
   const World = roomViews[roomId]
@@ -109,12 +108,9 @@ export function GameHome({
       </Suspense>
     </SceneBoundary>
     <div className="room-caption">
-      <label className="room-label room-switcher">{roomId === 'bathroom' ? <Bath size={15} /> : <CookingPot size={15} />}
-        <select aria-label="Room" value={roomId} disabled={busy || inert} onChange={(event) => onRoomChange(event.target.value)}>
-          {roomIds.map((id) => <option key={id} value={id}>{roomCatalog[id].label}</option>)}
-        </select><ChevronDown size={13} aria-hidden="true" />
-        {roomId === 'kitchen' && <span>{expenseCount} grocery {expenseCount === 1 ? 'run' : 'runs'}</span>}
-      </label>
+      <button className="room-label room-picker-trigger" aria-label="Rooms" aria-haspopup="dialog" disabled={busy || inert} onClick={onRooms}>
+        <Grid2X2 size={15} /><strong>Rooms</strong><small>{roomCatalog[roomId].name}</small>
+      </button>
       <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{activeMembers.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
     </div>
     {household.demo && <div className="game-demo"><span>Sample home</span><button className="control-surface" onClick={onCreate} aria-haspopup="dialog">Make it yours <ArrowRight size={13} /></button></div>}
