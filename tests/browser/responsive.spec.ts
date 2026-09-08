@@ -132,11 +132,15 @@ test.describe('responsive current app', () => {
       await settledLayout(page)
       const issues = await page.locator('.game-home').evaluate((home) => {
         const selectors = ['.game-hud', '.room-caption', '.game-identity', '.game-resources', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']
-        const boxes = selectors.map((selector) => ({ selector, box: home.querySelector(selector)!.getBoundingClientRect() }))
-        return boxes.flatMap(({ selector, box }, index) => [
+        const boxes = selectors.map((selector) => {
+          const element = home.querySelector(selector)!
+          return { selector, element, box: element.getBoundingClientRect() }
+        })
+        return boxes.flatMap(({ selector, element, box }, index) => [
           ...(box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1 ? [`${selector} is outside the viewport`] : []),
-          ...boxes.slice(index + 1).filter(({ box: other }) =>
-            Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
+          ...boxes.slice(index + 1).filter(({ element: otherElement, box: other }) =>
+            !element.contains(otherElement) && !otherElement.contains(element)
+            && Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
             && Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top) > 1,
           ).map((other) => `${selector} overlaps ${other.selector}`),
         ])

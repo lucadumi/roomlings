@@ -244,7 +244,7 @@ test('the landing and room share the dot texture while forms keep plain surfaces
   expect(texture).toContain('radial-gradient')
   await expect(page.locator('body')).toHaveCSS('background-image', texture)
   await page.locator('.welcome-hero').getByRole('link', { name: 'Explore rooms', exact: true }).click()
-  await page.locator('#tour').getByRole('link', { name: 'Open kitchen', exact: true }).click()
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click()
   await expect(page.locator('.game-house')).toBeVisible()
   const room = await page.locator('.game-home').evaluate((element) => ({
     texture: getComputedStyle(element, '::before').backgroundImage,

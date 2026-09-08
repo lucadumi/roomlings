@@ -1,33 +1,22 @@
-import { Component, lazy, Suspense, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { ArrowDown, ArrowRight, CheckCheck, Home, Pause, Play, ReceiptText, ShoppingBasket, Wallet } from 'lucide-react'
-import { scrollProgress, tourChapters } from './tour.ts'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDown, Pause, Play } from 'lucide-react'
+import { scrollProgress } from './tour.ts'
 import type { TourLayout } from './tour.ts'
 import { TourFallback } from './TourFallback.tsx'
-import { LoadingIcon } from '../Branding.tsx'
 import type { TourStatus } from './TourScene.tsx'
-import { defaultRoom, roomPath } from '../roomNavigation.ts'
-import { roomIds } from '../../shared/rooms.ts'
+import { defaultRoom } from '../roomNavigation.ts'
+import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import { RoomChoices, RoomPreview } from './RoomPreview.tsx'
+import { ExploreLoading, PreviewBoundary } from './PreviewStatus.tsx'
+import { roomTourChapters } from './roomTourChapters.ts'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
-const chapters = [
-  { icon: Home, title: 'A room you can use.', copy: 'Open chores from the cleaning caddy and supplies from the shelf. The toolbar keeps everything available, and Rooms opens your bathroom.' },
-  { icon: ShoppingBasket, title: 'From list to receipt.', copy: 'Add items, claim what you will buy and tick it into your basket. Saving the paid receipt archives the run in Past runs and updates the shared balances.' },
-  { icon: ReceiptText, title: 'Bills that repeat.', copy: 'Set up rent, utilities or subscriptions. Change defaults or pause future months without rewriting past payments, then record each paid month in the same ledger.' },
-  { icon: Wallet, title: 'A pot for groceries.', copy: 'Set a monthly grocery budget and see what is left for the month you are viewing. Bills and repayments do not spend this pot.' },
-  { icon: CheckCheck, title: 'Know who owes what.', copy: 'All paid costs feed the same roommate balances, across rooms and months. Record repayments after paying, undo mistakes and export the complete ledger.' },
-]
+const BathroomTourScene = lazy(() => import('./BathroomTourScene.tsx'))
 
-class TourBoundary extends Component<{ children: ReactNode; onFailure: () => void }, { failed: boolean }> {
-  state = { failed: false }
-  static getDerivedStateFromError() { return { failed: true } }
-  componentDidCatch(error: Error) {
-    console.error('The welcome kitchen could not be displayed:', error)
-    this.props.onFailure()
-  }
-  render() { return this.state.failed ? null : this.props.children }
+function roomFromHash(hash: string): RoomId | undefined {
+  return roomIds.find((id) => hash === `#tour-${id}` || roomTourChapters[id].some((chapter) => hash === `#${chapter.id}`))
+    ?? (!hash || hash === '#tour' ? defaultRoom : undefined)
 }
 
 export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reducedMotion: boolean; paused: boolean; onToggleMotion: () => void }) {
@@ -40,62 +29,83 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   const [active, setActive] = useState(0)
   const [status, setStatus] = useState<TourStatus>('loading')
   const [mounted, setMounted] = useState(false)
-  const [room, setRoom] = useState<RoomId>(() => roomIds.find((id) => location.hash === `#tour-${id}`) ?? defaultRoom)
+  const [room, setRoom] = useState<RoomId>(() => roomFromHash(location.hash) ?? defaultRoom)
+  const currentRoom = useRef(room)
+  const generation = useRef(0)
+  const chapters = roomTourChapters[room]
+  const sceneGeneration = generation.current
+
+  const changeRoom = useCallback((next: RoomId) => {
+    if (next === currentRoom.current) return
+    currentRoom.current = next
+    generation.current++
+    progress.current = 0
+    layout.current = null
+    wake.current = null
+    setActive(0)
+    setStatus('loading')
+    setMounted(false)
+    setRoom(next)
+  }, [])
+  const reportStatus = (next: TourStatus) => {
+    if (generation.current === sceneGeneration) setStatus(next)
+  }
 
   const positionChapter = (index: number, behavior: ScrollBehavior) => {
     const element = track.current
     const card = pin.current
     if (!element || !card) throw new Error('The kitchen tour is not mounted.')
     if (element.dataset.flow === 'true') {
-      progress.current = index / (tourChapters.length - 1)
+      progress.current = index / (chapters.length - 1)
       setActive(index)
+      if (!reducedMotion) wake.current?.()
     } else {
       const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
       const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
-      window.scrollTo({ top: start + travel * index / (tourChapters.length - 1), behavior })
+      window.scrollTo({ top: start + travel * index / (chapters.length - 1), behavior })
     }
   }
 
   useEffect(() => {
     const restoreRoom = () => {
-      const requested = roomIds.find((id) => location.hash === `#tour-${id}`)
-      if (requested) setRoom(requested)
-      else if (!location.hash || location.hash === '#tour' || tourChapters.some(({ id }) => location.hash === `#${id}`)) {
-        setRoom(defaultRoom)
-        if (!location.hash || location.hash === '#tour') {
-          progress.current = 0
-          setActive(0)
-        }
+      const requested = roomFromHash(location.hash)
+      if (requested) changeRoom(requested)
+      if (!location.hash || location.hash === '#tour') {
+        progress.current = 0
+        setActive(0)
+        if (!reducedMotion) wake.current?.()
       }
     }
     window.addEventListener('hashchange', restoreRoom)
     return () => window.removeEventListener('hashchange', restoreRoom)
-  }, [])
+  }, [changeRoom, reducedMotion])
 
   useEffect(() => {
     const element = stage.current
     if (!element) return
+    const observedGeneration = generation.current
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
+      if (generation.current === observedGeneration && entries.some((entry) => entry.isIntersecting)) {
         setMounted(true)
         observer.disconnect()
       }
     }, { rootMargin: '280px' })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [room])
 
   useEffect(() => {
-    if (room !== 'kitchen') return
     const element = track.current
     const card = pin.current
     const viewport = stage.current
     if (!element || !card || !viewport) return
     let frame = 0
     let previousLayout = ''
+    const observedGeneration = generation.current
     const update = () => {
       frame = 0
-      if (!viewport.clientWidth || !viewport.clientHeight) return
+      if (generation.current !== observedGeneration || !viewport.clientWidth || !viewport.clientHeight) return
+      const previousProgress = progress.current
       const cardHeight = card.getBoundingClientRect().height
       const height = `${cardHeight}px`
       if (element.style.getPropertyValue('--welcome-tour-height') !== height) element.style.setProperty('--welcome-tour-height', height)
@@ -107,6 +117,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         const travel = element.getBoundingClientRect().height - cardHeight
         if (travel > 0) progress.current = scrollProgress(window.scrollY, [start, start + travel])
       }
+      if (progress.current !== previousProgress && !reducedMotion) wake.current?.()
       const area = { x: 0, y: 0, width: viewport.clientWidth, height: viewport.clientHeight }
       const measured = { width: area.width, height: area.height, start: area, end: area, top: 0, bottom: area.height }
       const key = JSON.stringify(measured)
@@ -115,11 +126,11 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         layout.current = measured
         wake.current?.()
       }
-      setActive(Math.round(progress.current * (tourChapters.length - 1)))
+      setActive(Math.round(progress.current * (chapters.length - 1)))
     }
     const requestUpdate = () => { if (!frame) frame = requestAnimationFrame(update) }
     const onHash = () => {
-      const index = tourChapters.findIndex(({ id }) => location.hash === `#${id}`)
+      const index = chapters.findIndex(({ id }) => location.hash === `#${id}`)
       if (index >= 0) positionChapter(index, 'instant')
       requestUpdate()
     }
@@ -141,8 +152,9 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   }, [reducedMotion, room])
 
   const selectChapter = (index: number) => {
+    if (!chapters[index]) throw new Error('That room exploration chapter is not available.')
     const previous: unknown = history.state
-    history.pushState(previous !== null && typeof previous === 'object' ? { ...previous, roomlingsTourScroll: undefined } : null, '', `#${tourChapters[index].id}`)
+    history.pushState(previous !== null && typeof previous === 'object' ? { ...previous, roomlingsTourScroll: undefined } : null, '', `#${chapters[index].id}`)
     positionChapter(index, reducedMotion ? 'instant' : 'smooth')
   }
 
@@ -151,9 +163,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
     const previous: unknown = history.state
     history.pushState(previous !== null && typeof previous === 'object' ? { ...previous, roomlingsTourScroll: undefined } : null,
       '', next === defaultRoom ? '#tour' : `#tour-${next}`)
-    progress.current = 0
-    setActive(0)
-    setRoom(next)
+    changeRoom(next)
   }
 
   const motionControl = <button type="button" className="welcome-motion" onClick={onToggleMotion} aria-label="Reduced motion" aria-pressed={reducedMotion}>
@@ -161,37 +171,30 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   </button>
 
   return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title"
-    data-room={room} data-scene={room === 'kitchen' ? status : 'preview'} data-chapter={room === 'kitchen' ? tourChapters[active].id : undefined}>
+    data-room={room} data-scene={status} data-chapter={chapters[active].id}>
     {roomIds.map((id) => <span className="welcome-room-anchor" id={`tour-${id}`} key={id} aria-hidden="true" />)}
     <div className="welcome-section-heading">
       <h2 id="tour-title">Explore the rooms</h2>
       <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
     </div>
     <RoomChoices value={room} onChange={selectRoom} />
-    {room === 'bathroom' && <div className="welcome-bathroom-preview">
-      <div className="welcome-tour-card">
-        <RoomPreview roomId={room} />
-        <div className="welcome-tour-description">
-          <div className="welcome-tour-details">
-            <div className="welcome-tour-copy" data-active="true">
-              <h3>A bathroom everyone shares.</h3>
-              <p>Open chores from the sink, mirror, bath or toilet. Rotate the work and add low supplies to the same shopping list your kitchen uses.</p>
-            </div>
-          </div>
-          <a className="welcome-text-link" href={roomPath(room)}>Open bathroom <ArrowRight size={16} /></a>
-        </div>
-      </div>
-      <div className="welcome-tour-controls">{motionControl}</div>
-    </div>}
-    <div className="welcome-tour-track" ref={track} hidden={room !== 'kitchen'}>
-      {tourChapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-travel) * ${index / (tourChapters.length - 1)})` }} />)}
+    <div className="welcome-tour-track" ref={track}>
+      {chapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-travel) * ${index / (chapters.length - 1)})` }} />)}
       <div className="welcome-tour-pin" ref={pin}>
         <div className="welcome-tour-card">
-          <div className="welcome-stage" ref={stage} aria-hidden="true">
-            <div className="welcome-static"><TourFallback /></div>
-            {mounted && <TourBoundary onFailure={() => setStatus('unavailable')}>
-              <Suspense fallback={null}><TourScene progress={progress} layout={layout} wake={wake} reducedMotion={reducedMotion || paused || room !== 'kitchen'} onStatus={setStatus} /></Suspense>
-            </TourBoundary>}
+          <div className="welcome-stage-shell">
+            <div className="welcome-stage" ref={stage} aria-hidden="true">
+              <div className="welcome-static">{room === 'kitchen' ? <TourFallback /> : <RoomPreview roomId="bathroom" />}</div>
+              {mounted && <PreviewBoundary key={room} onFailure={() => reportStatus('unavailable')}>
+                <Suspense fallback={null}>{room === 'kitchen'
+                  ? <TourScene progress={progress} layout={layout} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
+                    onSelectChapter={!paused ? selectChapter : undefined} />
+                  : <BathroomTourScene progress={progress} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
+                    onSelectChapter={!paused ? selectChapter : undefined} />
+                }</Suspense>
+              </PreviewBoundary>}
+            </div>
+            {mounted && status === 'loading' && <ExploreLoading label={`Loading the ${room}...`} reducedMotion={reducedMotion || paused} />}
           </div>
           <div className="welcome-tour-description">
             <div className="welcome-tour-details" id="tour-details">
@@ -199,23 +202,20 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
                 <h3>{title}</h3><p>{copy}</p>
               </div>)}
             </div>
-            <a className="welcome-text-link" href={roomPath()}>Open kitchen <ArrowRight size={16} /></a>
-            <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll or choose an object.</p>
+            <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll, tap an object or use the controls.</p>
           </div>
         </div>
         <div className="welcome-tour-controls">
-          <nav className="welcome-chapters" aria-label="Kitchen tour">
-            {tourChapters.map(({ id, label, short }, index) => {
-              const Icon = chapters[index].icon
+          <nav className="welcome-chapters" aria-label={`${roomCatalog[room].name} tour`}>
+            {chapters.map(({ id, label, short, icon: Icon }, index) => {
               return <button type="button" key={id} aria-label={label} aria-pressed={active === index} aria-controls="tour-details" onClick={() => selectChapter(index)}><Icon size={17} /><span>{short}</span></button>
             })}
           </nav>
           {motionControl}
         </div>
-        <div className="welcome-scene-status" role="status">
-          {mounted && status === 'loading' && <span className="loading-status"><LoadingIcon reducedMotion={reducedMotion || paused} />Loading the kitchen preview...</span>}
-          {status === 'unavailable' && '3D is unavailable. Explore the illustration, or sign in to use the household tools.'}
-        </div>
+        {status === 'unavailable' && <div className="welcome-scene-status" role="status">
+          3D is unavailable. Use the controls to explore each part of the room.
+        </div>}
       </div>
     </div>
   </section>

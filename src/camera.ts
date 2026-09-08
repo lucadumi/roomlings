@@ -88,3 +88,29 @@ export function cameraProjection(width: number, height: number, area: FramingAre
   const y = vertical * ((area.y + area.height / 2) * 2 / height - 1) / zoom
   return { left: -horizontal + x, right: horizontal + x, top: vertical + y, bottom: -vertical + y }
 }
+
+export function fitRoomBounds(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0): {
+  center: [number, number, number]; halfHeight: number
+} {
+  if (![width, height].every((value) => Number.isFinite(value) && value > 0)
+    || ![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
+    throw new Error('Room framing needs positive scene dimensions and finite bounds.')
+  }
+  const center = bounds.getCenter(new Vector3())
+  const axis = new Vector3(0, 1, 0)
+  const backward = new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).normalize()
+  const right = new Vector3().crossVectors(axis, backward).normalize()
+  const up = new Vector3().crossVectors(backward, right).normalize()
+  let horizontal = 0
+  let vertical = 0
+  for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+    const corner = new Vector3(x, y, z).sub(center).applyAxisAngle(axis, rotation)
+    horizontal = Math.max(horizontal, Math.abs(corner.dot(right)))
+    vertical = Math.max(vertical, Math.abs(corner.dot(up)))
+  }
+  center.applyAxisAngle(axis, rotation)
+  return {
+    center: [center.x, center.y, center.z],
+    halfHeight: Math.max(1.25, vertical + 0.18, (horizontal + 0.18) * height / width) * 1.08,
+  }
+}

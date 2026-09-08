@@ -392,7 +392,7 @@ test('the pending kitchen tour obeys its own reduced-motion toggle without chang
   await page.goto('/welcome', { waitUntil: 'commit' })
   await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
   const route = await pending.pending
-  const status = page.locator('.welcome-scene-status[role="status"]')
+  const status = page.locator('.welcome-explore-loading[role="status"]')
   const loader = status.locator('img.roomlings-loader')
   await expectLoader(loader)
   const loadingText = await status.innerText()

@@ -51,7 +51,9 @@ Sign in to create a household or link an existing roommate identity. Old `/kitch
 
 The short kitchen tour supports native scrolling, keyboard navigation, reduced motion and an illustrated fallback. The hero is a conceptual home illustration, not an exact floor plan.
 
-The landing page's **Explore the rooms** section offers kitchen and bathroom previews. Choose a room with the preview cards or arrow keys, then use **Open kitchen** or **Open bathroom** to sign in or enter your household. Kitchen chapters retain their guided tour. Previewing reads no household access and creates no data. Existing chapter links remain supported, and `/#tour-bathroom` opens the bathroom preview directly.
+The landing page's **Explore the rooms** section uses one shared template for the kitchen and bathroom. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. Use the page's Sign in or Get started actions when you want to enter a real household. Existing kitchen chapter links remain supported, and `/#tour-bathroom` opens the bathroom exploration directly.
+
+Both rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They use the same overview scale and camera angle throughout their scroll tours. A 2D loading indicator stays visible until the renderer is ready; an illustrated fallback keeps the controls available if 3D cannot load. Reduced motion keeps the room stationary while its descriptions remain navigable. The closing invitation retains one direct Start sharing CTA.
 
 ## Development notes
 

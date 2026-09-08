@@ -81,7 +81,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
           <p>Preview your kitchen and bathroom, then step inside to share chores, shopping and household costs.</p>
           <div className="welcome-actions">
-            <a className="button primary welcome-enter" id="home-start" href={createPath}>Get started <ArrowRight size={18} /></a>
+            <a className="button primary welcome-enter" id="home-start" href={createPath}>Create our household <ArrowRight size={18} /></a>
             <a className="welcome-text-link" href="#tour">Explore rooms <ArrowUpRight size={16} /></a>
           </div>
           <p className="welcome-small"><Check size={14} />Sign in to create or join your household.</p>
@@ -120,7 +120,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
 
       <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
         <div><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
-        <a className="button primary welcome-enter" href={createPath}>Get started <ArrowRight size={18} /></a>
+        <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
       </section>
     </main>
     <footer className="welcome-footer welcome-container">

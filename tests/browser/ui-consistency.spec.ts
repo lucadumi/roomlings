@@ -11,7 +11,7 @@ async function expectCenteredLabel(label: Locator) {
     const measure = () => {
       const bounds = element.getBoundingClientRect()
       offset = Math.max(offset, Math.abs(bounds.x + bounds.width / 2 - innerWidth / 2))
-      const neighbors = document.querySelectorAll('.room-panel, .room-caption, .house-tools, .game-identity, .game-resources, .world-camera-controls')
+      const neighbors = document.querySelectorAll('.room-panel, .room-caption, .house-tools > button, .game-identity, .game-resources, .world-camera-controls')
       for (const neighbor of neighbors) {
         const box = neighbor.getBoundingClientRect()
         overlap = Math.max(overlap, Math.max(0, Math.min(bounds.right, box.right) - Math.max(bounds.left, box.left))

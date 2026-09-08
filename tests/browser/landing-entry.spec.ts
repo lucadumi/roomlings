@@ -40,7 +40,7 @@ test('the home page does not read account access, create a household or open a s
 test('the landing carries a new account through sign-in, kitchen creation, return and sign-out', async ({ page, accounts }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
-  const start = page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })
+  const start = page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })
   await start.click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email address', { exact: true }).fill('landing@example.com')
@@ -159,7 +159,7 @@ test('a signed-in account without a kitchen remains reachable after browser-only
   await expect(page.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
 })
 
-test('a landing room link reopens the signed-in home without changing its access preference', async ({ page, accounts }) => {
+test('sign-in reopens the saved home after public exploration without changing access preference', async ({ page, accounts }) => {
   const before = await signedInVisitor(page, accounts)
   await page.goto(roomPath())
   await expect(page.locator('.game-house')).toContainText('The signed-in home')
@@ -169,8 +169,9 @@ test('a landing room link reopens the signed-in home without changing its access
   await page.locator('.welcome-hero').getByRole('link', { name: 'Explore rooms', exact: true }).click()
   const tour = page.locator('#tour')
   await tour.getByRole('radio', { name: 'Bathroom', exact: true }).check()
-  await tour.getByRole('link', { name: 'Open bathroom', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp(`${roomPath('bathroom')}$`))
+  await expect(tour.getByRole('link', { name: /^Open (kitchen|bathroom)$/ })).toHaveCount(0)
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click()
+  await expect(page).toHaveURL(new RegExp(`${roomPath()}$`))
   await expect(page.locator('.game-house')).toContainText('The signed-in home')
   expect(await page.evaluate((keys) => keys.map((key) => localStorage.getItem(key)), personalKeys)).toEqual(snapshot)
   expect((await accountState(page)).session?.household).toEqual(before.session?.household)

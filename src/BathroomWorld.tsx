@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { Bath, ClipboardList, Eye, EyeOff, Maximize, Minus, Moon, Move, PackagePlus, Plus, Sun } from 'lucide-react'
 import {
   ACESFilmicToneMapping, Group, MathUtils, Mesh, MeshBasicMaterial, OrthographicCamera,
   PCFShadowMap, PlaneGeometry, PointLight, Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer,
 } from 'three'
 import type { BufferGeometry } from 'three'
-import { bathroomFocusForRequest, bathroomFraming, bathroomLabels, bathroomTargets, buildBathroomModel } from './bathroomModel.ts'
+import { bathroomFocusForRequest, bathroomFraming, bathroomLabels, bathroomTargets, bathroomTourFraming, buildBathroomModel } from './bathroomModel.ts'
 import type { BathroomFocus, BathroomTarget } from './bathroomModel.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraProjection } from './camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection } from './camera.ts'
+import type { SceneFocus } from './camera.ts'
 import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
 import { applyRoomStyle } from './roomStyles.ts'
@@ -25,17 +27,28 @@ type BathroomControls = {
   reset: () => void
 }
 
-export default function BathroomWorld({ roomStyle, paused, panelOpen, focusRequest, onOpenChores, onRestock, dueChores }: RoomWorldProps) {
+type BathroomWorldProps = Pick<RoomWorldProps, 'roomStyle' | 'paused' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'> & {
+  focusRequest: { target: SceneFocus | BathroomFocus; id: number }
+  preview?: boolean
+  motionReduced?: boolean
+  onStatus?: (status: 'ready' | 'unavailable') => void
+  tour?: { progress: RefObject<number>; wake: RefObject<(() => void) | null>; stops: readonly BathroomFocus[] }
+}
+
+export default function BathroomWorld({
+  roomStyle, paused, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
+  preview = false, motionReduced, onStatus, tour,
+}: BathroomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<BathroomTarget, HTMLButtonElement>())
   const controls = useRef<BathroomControls | null>(null)
-  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock })
-  state.current = { roomStyle, focusRequest, onOpenChores, onRestock }
+  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, motionReduced, onStatus, tour })
+  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, motionReduced, onStatus, tour }
   const [focused, setFocused] = useState<BathroomFocus>(() => bathroomFocusForRequest(focusRequest.target))
   const [zoom, setZoom] = useState(1)
   const [evening, setEvening] = useState(false)
-  const [fittingRoom, setFittingRoom] = useState(false)
+  const [fittingRoom, setFittingRoom] = useState(preview)
   const [showLabels, setShowLabels] = useState(true)
   const [hovered, setHovered] = useState<BathroomTarget | null>(null)
   const [unavailable, setUnavailable] = useState(false)
@@ -43,6 +56,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
   const [renderingPaused, setRenderingPaused] = useState(false)
 
   const activate = (target: BathroomTarget) => {
+    if (preview && state.current.paused) return
     controls.current?.focusOn(target)
     if (target === 'supplies') state.current.onRestock()
     else state.current.onOpenChores(target === 'chores' ? null : target)
@@ -52,6 +66,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     const element = host.current
     const stageElement = stage.current
     if (!element || !stageElement) return
+    const container = element
     let renderer: WebGLRenderer
     try {
       renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
@@ -59,6 +74,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       console.warn('The 3D bathroom could not start:', error instanceof Error ? error.message : error)
       setUnavailable(true)
       setRenderingPaused(true)
+      state.current.onStatus?.('unavailable')
       return
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -126,6 +142,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     let previousY = 0
     let pinchDistance = 0
     let pinchZoom = 1
+    let displayedProgress = state.current.tour?.progress.current ?? 0
 
     const wake = () => {
       dirty = true
@@ -135,13 +152,13 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       frame = requestAnimationFrame(animate)
     }
     const currentControls: BathroomControls = {
-      focus: bathroomFocusForRequest(state.current.focusRequest.target), zoom: 1, evening: false, wholeRoom: false, wake,
+      focus: bathroomFocusForRequest(state.current.focusRequest.target), zoom: 1, evening: false, wholeRoom: preview, wake,
       focusOn(target) {
         currentControls.focus = target
         currentControls.zoom = 1
-        currentControls.wholeRoom = false
+        currentControls.wholeRoom = preview && target === 'room'
         setFocused(target)
-        setFittingRoom(false)
+        setFittingRoom(currentControls.wholeRoom)
         setZoom(1)
         wake()
       },
@@ -158,6 +175,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       },
     }
     controls.current = currentControls
+    if (tour) tour.wake.current = wake
     const measure = () => {
       const canvasBounds = element.getBoundingClientRect()
       const stageBounds = stageElement.getBoundingClientRect()
@@ -178,6 +196,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     const stopDrawing = () => {
       cancelAnimationFrame(frame)
       frame = 0
+      if (preview) { pointers.clear(); moved = true }
       setRenderingPaused(true)
     }
     const visibility = new IntersectionObserver(([entry]) => {
@@ -213,16 +232,29 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
         renderer.setSize(viewport.width, viewport.height)
         needsResize = false
       }
-      const snap = !initialized || reducedMotion.matches
+      const reduced = latest.motionReduced ?? reducedMotion.matches
+      const snap = !initialized || reduced
+      if (latest.tour) {
+        displayedProgress = snap ? latest.tour.progress.current : dampTo(displayedProgress, latest.tour.progress.current, 9, delta, 0.0001)
+        container.dataset.tourPosition = reduced ? 'static' : displayedProgress.toFixed(3)
+      }
       const rotation = snap ? targetRotation : dampTo(room.rotation.y, targetRotation, 9, delta)
       shadowsDirty ||= rotation !== room.rotation.y
       room.rotation.y = rotation
       room.updateMatrixWorld(true)
       pitch = snap ? targetPitch : dampTo(pitch, targetPitch, 9, delta)
-      const bounds = currentControls.focus === 'room' ? model.bounds : model.actorBounds.get(currentControls.focus)!
-      const framing = bathroomFraming(area.width, area.height, bounds, room.rotation.y, pitch, {
-        closeRoom: currentControls.focus === 'room' && !currentControls.wholeRoom,
-      })
+      const framedFocus = preview && (latest.motionReduced ?? reducedMotion.matches) ? 'room' : currentControls.focus
+      const bounds = framedFocus === 'room' ? model.bounds : model.actorBounds.get(framedFocus)!
+      const framing = preview && latest.tour
+        ? reduced ? cameraFraming(area.width, area.height, 'room', true)
+          : bathroomTourFraming(area.width, area.height, displayedProgress, model.bounds, model.actorBounds, latest.tour.stops)
+        : bathroomFraming(area.width, area.height, bounds, room.rotation.y, pitch, {
+          closeRoom: !preview && currentControls.focus === 'room' && !currentControls.wholeRoom,
+        })
+      if (preview) {
+        container.dataset.cameraAngle = baseCameraOffset.join(',')
+        container.dataset.cameraScale = framing.halfHeight.toFixed(6)
+      }
       desiredCenter.set(...framing.center)
       if (snap) cameraCenter.copy(desiredCenter)
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
@@ -249,6 +281,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       renderer.shadowMap.needsUpdate = shadowsDirty
       renderer.render(scene, camera)
       shadowsDirty = false
+      if (!initialized) latest.onStatus?.('ready')
       initialized = true
       for (const [target, anchor] of model.anchors) {
         const button = labels.current.get(target)
@@ -267,6 +300,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       }
       const moving = room.rotation.y !== targetRotation || pitch !== targetPitch
         || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== currentControls.zoom
+        || !!latest.tour && !reduced && displayedProgress !== latest.tour.progress.current
       setCameraMoving(moving)
       drawing = false
       if (moving || lightMix !== desiredLight || dirty) frame = requestAnimationFrame(animate)
@@ -275,7 +309,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
 
     const hitTarget = (event: PointerEvent): BathroomTarget | null => {
       const rect = canvas.getBoundingClientRect()
-      if (!initialized || !rect.width || !rect.height) return null
+      if (!initialized || contextLost || document.hidden || !visible || (preview && state.current.paused) || !rect.width || !rect.height) return null
       pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
       raycaster.setFromCamera(pointer, camera)
       const hit = raycaster.intersectObject(room, true).find(({ object }) => {
@@ -296,7 +330,10 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       wake()
     }
     const down = (event: PointerEvent) => {
-      if (event.button !== 0 || contextLost) return
+      if (event.button !== 0 || contextLost || (preview && state.current.paused)) {
+        if (preview && pointers.size) moved = true
+        return
+      }
       pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
       if (pointers.size === 1) {
         startX = previousX = event.clientX
@@ -308,11 +345,15 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
         pinchZoom = currentControls.zoom
         moved = true
       }
-      canvas.setPointerCapture(event.pointerId)
+      if (!preview) canvas.setPointerCapture(event.pointerId)
     }
     const move = (event: PointerEvent) => {
       if (pointers.has(event.pointerId)) {
         pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
+        if (preview) {
+          moved ||= pointers.size > 1 || Math.hypot(event.clientX - startX, event.clientY - startY) > 4
+          return
+        }
         if (pointers.size > 1) {
           const [a, b] = [...pointers.values()]
           if (pinchDistance > 0) updateZoom(pinchZoom * a.distanceTo(b) / pinchDistance)
@@ -327,7 +368,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       } else if (!pointers.size) {
         const target = hitTarget(event)
         setHovered(target)
-        element.style.cursor = target ? 'pointer' : 'grab'
+        element.style.cursor = target ? 'pointer' : preview ? 'default' : 'grab'
       }
     }
     const finishPointer = (event: PointerEvent, cancelled: boolean) => {
@@ -351,7 +392,17 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     }
     const up = (event: PointerEvent) => finishPointer(event, false)
     const cancel = (event: PointerEvent) => finishPointer(event, true)
-    const leave = () => { setHovered(null); element.style.cursor = 'grab' }
+    const leave = () => {
+      if (preview) { pointers.clear(); moved = true }
+      setHovered(null)
+      element.style.cursor = preview ? 'default' : 'grab'
+    }
+    const otherPointer = (event: PointerEvent) => {
+      if (pointers.size && !pointers.has(event.pointerId)) moved = true
+    }
+    const releaseOutside = (event: PointerEvent) => {
+      if (pointers.has(event.pointerId)) finishPointer(event, true)
+    }
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.height : 1
@@ -364,6 +415,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       controls.current = null
       pointers.clear()
       setUnavailable(true)
+      state.current.onStatus?.('unavailable')
     }
     canvas.addEventListener('pointerdown', down)
     canvas.addEventListener('pointermove', move)
@@ -371,7 +423,11 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     canvas.addEventListener('pointercancel', cancel)
     canvas.addEventListener('lostpointercapture', cancel)
     canvas.addEventListener('pointerleave', leave)
-    canvas.addEventListener('wheel', wheel, { passive: false })
+    if (preview) {
+      window.addEventListener('pointerdown', otherPointer)
+      window.addEventListener('pointerup', releaseOutside)
+      window.addEventListener('pointercancel', releaseOutside)
+    } else canvas.addEventListener('wheel', wheel, { passive: false })
     canvas.addEventListener('webglcontextlost', onContextLost)
     window.addEventListener('resize', resize)
     window.visualViewport?.addEventListener('resize', resize)
@@ -394,6 +450,11 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       canvas.removeEventListener('lostpointercapture', cancel)
       canvas.removeEventListener('pointerleave', leave)
       canvas.removeEventListener('wheel', wheel)
+      if (preview) {
+        window.removeEventListener('pointerdown', otherPointer)
+        window.removeEventListener('pointerup', releaseOutside)
+        window.removeEventListener('pointercancel', releaseOutside)
+      }
       canvas.removeEventListener('webglcontextlost', onContextLost)
       const geometries = new Set<BufferGeometry>()
       scene.traverse((object) => { if (object instanceof Mesh) geometries.add(object.geometry) })
@@ -407,10 +468,11 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       renderer.forceContextLoss()
       canvas.remove()
       controls.current = null
+      if (tour?.wake.current === wake) tour.wake.current = null
     }
   }, [])
 
-  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels])
+  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced])
 
   const changeZoom = (direction: number) => {
     const current = controls.current
@@ -426,6 +488,13 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     setEvening(current.evening)
     current.wake()
   }
+
+  if (preview) return <div className="bathroom-preview-world" data-focus={focused}
+    data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-unavailable={unavailable}>
+    <div className="bathroom-scene-area" ref={stage} aria-hidden="true" />
+    <div className="bathroom-preview-canvas" ref={host} role="img" hidden={unavailable}
+      aria-label="Interactive bathroom preview. Select a fixture to explore its household chores or supplies." />
+  </div>
 
   return (
     <div className="kitchen-world bathroom-world" data-room-style={roomStyle} data-evening={evening} data-focus={focused}

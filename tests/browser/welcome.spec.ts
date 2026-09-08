@@ -2,6 +2,7 @@ import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { createHousehold, savedKitchen, trackDrawing } from './fixtures.ts'
 import { tourChapters } from '../../src/landing/tour.ts'
+import { roomTourChapters } from '../../src/landing/roomTourChapters.ts'
 
 async function openTour(page: Page) {
   await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
@@ -61,7 +62,7 @@ test('the public welcome page explains the product without opening or changing a
   await expect(page.locator('.welcome-home-illustration')).toBeVisible()
   await expect(page.getByText('A place for everyone.', { exact: true })).toHaveCount(0)
   await expect(page.locator('.welcome-house-note, .welcome-feature-grid')).toHaveCount(0)
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveAttribute('href', '/rooms/kitchen#account=create')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })).toHaveAttribute('href', '/rooms/kitchen#account=create')
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/rooms/kitchen')
   await page.getByText('Does Roomlings send money?', { exact: true }).click()
   await expect(page.locator('.welcome-faq details').first()).toHaveAttribute('open', '')
@@ -107,7 +108,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   await expect(page.locator('.welcome-canvas')).toHaveCount(0)
   await openTour(page)
   await expect(page.getByRole('heading', { name: 'Explore the rooms', exact: true })).toBeVisible()
-  const titles = ['A room you can use.', 'From list to receipt.', 'Bills that repeat.', 'A pot for groceries.', 'Know who owes what.']
+  const titles = roomTourChapters.kitchen.map((chapter) => chapter.title)
   const dimensions = await page.locator('.welcome-tour-track').evaluate((element) => {
     const card = element.querySelector('.welcome-tour-pin')
     if (!card) throw new Error('The tour card is missing.')
@@ -142,7 +143,7 @@ test('reduced motion removes the scroll runway and holds a stationary room while
   const idle = await drawing()
   expect(idle.draws).toBeGreaterThan(0)
   await chooseChapter(page, 3)
-  await expect(page.getByRole('heading', { name: 'A pot for groceries.', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'The grocery budget.', exact: true })).toBeVisible()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   expect(await drawing()).toEqual(idle)
   await page.getByRole('button', { name: 'Reduced motion', exact: true }).click()
@@ -223,8 +224,8 @@ test('WebGL startup failure keeps the illustration, object navigation and real-r
   await expect(page.locator('.welcome-scene-status')).toContainText('3D is unavailable')
   await expect(page.locator('.welcome-static')).toBeVisible()
   await chooseChapter(page, 2)
-  await expect(page.getByRole('heading', { name: 'Bills that repeat.', exact: true })).toBeVisible()
-  await page.locator('.welcome-tour').getByRole('link', { name: 'Open kitchen', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Bills and receipts.', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click()
   await expect(page).toHaveURL(/\/rooms\/kitchen$/)
   await expect(page.getByRole('dialog')).toHaveAccessibleName('Your place, on every device.')
   await expect(page.locator('.game-house')).toHaveCount(0)
@@ -242,7 +243,7 @@ test('context loss restores the illustration without breaking the shorter tour',
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'unavailable')
   await chooseChapter(page, 1)
   await expect(page.locator('.welcome-static')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'From list to receipt.', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Shopping and groceries.', exact: true })).toBeVisible()
 })
 
 test('the landing remains readable across phones, tablets, short landscapes and reserved scrollbar space', { tag: '@room' }, async ({ page }) => {
@@ -261,7 +262,7 @@ test('the landing remains readable across phones, tablets, short landscapes and 
     // Avoid testing a fractionally rounded edge left by the browser's minimum auto-scroll.
     await selected.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
     await expect(selected).toBeInViewport({ ratio: 1 })
-    const entry = page.locator('#get-started').getByRole('link', { name: 'Get started', exact: true })
+    const entry = page.locator('#get-started').getByRole('link', { name: 'Start sharing', exact: true })
     await entry.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
     await expect(entry).toBeInViewport({ ratio: 1 })
   }
@@ -308,8 +309,8 @@ test('skip navigation, FAQ disclosures and tour controls work with a keyboard', 
   await page.keyboard.press('Enter')
   await expect(page.locator('#welcome-content')).toBeFocused()
   await page.keyboard.press('Tab')
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toBeFocused()
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveCSS('outline-style', 'solid')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })).toBeFocused()
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })).toHaveCSS('outline-style', 'solid')
   await openTour(page)
   const budget = page.getByRole('button', { name: 'Monthly budget', exact: true })
   await budget.focus()

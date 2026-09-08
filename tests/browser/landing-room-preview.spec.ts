@@ -25,21 +25,22 @@ test('the hero keeps only the home illustration and links to the room tour', asy
   await page.keyboard.press('ArrowRight')
   await expect(explore.getByRole('radio', { name: 'Bathroom', exact: true })).toBeChecked()
   await expect(page).toHaveURL(/#tour-bathroom$/)
-  await expect(explore.locator('.welcome-tour-track')).toBeHidden()
-  await expect(explore.getByRole('link', { name: 'Open bathroom', exact: true })).toHaveAttribute('href', '/rooms/bathroom')
+  await expect(explore.locator('.welcome-tour-track')).toBeVisible()
+  await expect(explore.getByRole('navigation', { name: 'Bathroom tour', exact: true })).toBeVisible()
+  await expect(explore.getByRole('link', { name: /^Open (kitchen|bathroom)$/ })).toHaveCount(0)
   await expect(tourLink).toHaveAttribute('href', '#tour')
-  for (const link of await page.getByRole('link', { name: 'Get started', exact: true }).all()) {
+  for (const link of await page.locator('a.welcome-enter').all()) {
     await expect(link).toHaveAttribute('href', '/rooms/kitchen#account=create')
   }
   await page.goBack()
   await expect(explore.getByRole('radio', { name: 'Kitchen', exact: true })).toBeChecked()
   await expect(explore.locator('.welcome-tour-track')).toBeVisible()
-  await expect(explore.getByRole('link', { name: 'Open kitchen', exact: true })).toHaveAttribute('href', '/rooms/kitchen')
+  await expect(explore.getByRole('navigation', { name: 'Kitchen tour', exact: true })).toBeVisible()
   expect(requests).toEqual([])
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
 })
 
-test('both Explore room links open the same saved personal household', async ({ page, accounts }) => {
+test('exploring either room leaves saved personal access unchanged', async ({ page, accounts }) => {
   const personal = await accounts.store.create('The personal household', 'Ada', 'EUR', 45000)
   await page.addInitScript((kitchen) => {
     if (!localStorage.getItem('roomlings.session')) {
@@ -51,16 +52,9 @@ test('both Explore room links open the same saved personal household', async ({ 
   await page.goto('/#tour-bathroom')
   const explore = page.locator('#tour')
   await expect(explore.getByRole('radio', { name: 'Bathroom', exact: true })).toBeChecked()
-  await explore.getByRole('link', { name: 'Open bathroom', exact: true }).click()
-  await expect(page).toHaveURL(/\/rooms\/bathroom$/)
-  await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Bathroom')
-  await expect(page.locator('.game-house')).toContainText(personal.household.name)
-  await page.getByRole('link', { name: 'Roomlings home', exact: true }).click()
-  await expect(page.locator('#tour')).toBeVisible()
   await explore.getByRole('radio', { name: 'Kitchen', exact: true }).check()
-  await explore.getByRole('link', { name: 'Open kitchen', exact: true }).click()
-  await expect(page).toHaveURL(/\/rooms\/kitchen$/)
-  await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Kitchen')
+  await expect(explore.getByRole('link', { name: /^Open (kitchen|bathroom)$/ })).toHaveCount(0)
+  await expect(page.locator('.game-house')).toHaveCount(0)
   const access = await page.evaluate(() => ({
     personal: localStorage.getItem('roomlings.session'),
     kitchens: localStorage.getItem('roomlings.kitchens'),
@@ -71,7 +65,7 @@ test('both Explore room links open the same saved personal household', async ({ 
   expect(access.mode).toBe('browser')
 })
 
-test('room choices, previews and room links remain contained through resizing', async ({ page }) => {
+test('room choices and shared exploration controls remain contained through resizing', async ({ page }) => {
   await page.goto('/#tour-bathroom')
   const explore = page.locator('#tour')
   for (const viewport of [
@@ -86,15 +80,15 @@ test('room choices, previews and room links remain contained through resizing', 
       expect(bounds?.width).toBeGreaterThanOrEqual(44)
       expect(bounds?.height).toBeGreaterThanOrEqual(44)
     }
-    const roomLink = explore.getByRole('link', { name: 'Open bathroom', exact: true })
-    await roomLink.scrollIntoViewIfNeeded()
-    await expect(roomLink).toBeInViewport({ ratio: 1 })
-    expect(await explore.locator('.welcome-bathroom-preview').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    const controls = explore.getByRole('navigation', { name: 'Bathroom tour', exact: true })
+    await controls.scrollIntoViewIfNeeded()
+    await expect(controls).toBeInViewport({ ratio: 1 })
+    expect(await explore.locator('.welcome-tour-pin').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   }
 })
 
-test('switching rooms pauses the kitchen renderer and browser Back restores its chapter', { tag: '@room' }, async ({ page }) => {
+test('switching rooms releases the old renderer and browser Back restores its chapter', { tag: '@room' }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const drawing = await trackDrawing(page)
   await page.goto('/#receipts')
@@ -104,8 +98,9 @@ test('switching rooms pauses the kitchen renderer and browser Back restores its 
   await expect(explore).toHaveAttribute('data-chapter', 'receipts')
   await expect(canvas).toHaveAttribute('data-rendering', 'active')
   await explore.getByRole('radio', { name: 'Bathroom', exact: true }).check()
-  await expect(explore.locator('.welcome-tour-track')).toBeHidden()
-  await expect(canvas).toHaveAttribute('data-rendering', 'paused')
+  await expect(canvas).toHaveCount(0)
+  await expect(explore).toHaveAttribute('data-scene', 'ready')
+  await expect(explore.locator('.bathroom-preview-world')).toHaveAttribute('data-rendering', 'paused')
   const paused = await drawing()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   expect(await drawing()).toEqual(paused)
