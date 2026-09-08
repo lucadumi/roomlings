@@ -20,6 +20,8 @@ Application tables live in the `roomlings` schema, not Supabase's managed `auth`
 
 Household JSON remains canonical text, preserving IDs, integer cents, versions and historical references. Both engines share storage rules. SQLite serializes its connection; Postgres transactions pin a connection and use a schema-wide advisory lock to prevent lost updates and preserve account/deletion invariants.
 
+Rows carrying the retired example marker are preserved byte for byte during migration and remain in place, but the application refuses access, recovery, invitations, account membership joins and saves for them. This prevents legacy examples from being reclassified as real kitchens when the current public household schema ignores their old marker. Older legitimate rows with the original false marker remain readable.
+
 ## Postgres schema upgrades
 
 Application schema version 2 adds only `account_recovery_settings`, `account_recovery_codes` and their indexes. The version 1 to 2 upgrade is additive: it does not rewrite existing rows, rotate sessions, change account/member IDs or recalculate the ledger. It does not generate recovery codes. Subsequent account operations store only hashes of the ten single-use codes.
@@ -74,5 +76,7 @@ Postgres tests require `TEST_DATABASE_URL`; they use disposable `roomlings_test_
 ## Deployment
 
 Build with `npm run build`, then serve the build and API with `npm start`. Configure [Supabase accounts](accounts.md), HTTPS, the correct `APP_ORIGIN`, mail delivery, abuse limits, backups and a privacy/retention policy first.
+
+Keep API writers sharing a database on compatible builds, even when no SQL schema upgrade is needed. Household mutation-retry receipts and private account-creation receipts live inside household JSON; an older server can pass the SQL schema check but discard that metadata on its next save. Coordinate deployment and restarts for every writer rather than relying on the schema version alone.
 
 Keep the development server private. Do not expose credentials in frontend environment variables, logs or source control.

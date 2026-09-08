@@ -10,6 +10,7 @@ import { createApp } from '../server/app.ts'
 import { Store } from '../server/store.ts'
 import { balances, householdSchema, roomStyleSchema, suggestedTransfers } from '../shared/domain.ts'
 import type { Household, RoomStyle, Session } from '../shared/domain.ts'
+import { createPopulatedHousehold } from './household-fixture.ts'
 
 const styles: RoomStyle[] = ['sage', 'clay', 'linen', 'original']
 const invalidStyles = [undefined, null, '', 'Sage', 'custom', '#7d9070', 1, ['sage'], { wall: '#7d9070' }]
@@ -99,20 +100,15 @@ describe('shared room style API', () => {
     return body
   }
 
-  it('defaults new, demo and legacy households to original without accepting arbitrary styles', async () => {
+  it('defaults new and legacy households to original without accepting arbitrary styles', async () => {
     const owner = await create()
-    const demoResponse = await api.call('/demo', {})
-    assert.equal(demoResponse.status, 201)
-    const demo: Session = await demoResponse.json()
-    for (const session of [owner, demo]) {
-      assert.equal(session.household.roomStyle, 'original')
-      assert.equal(session.household.version, 0)
-      assert.deepEqual(await current(session), session.household)
-      const legacy = JSON.parse(JSON.stringify({ ...session.household, roomStyle: undefined }))
-      assert.deepEqual(householdSchema.parse(legacy), session.household)
-      for (const roomStyle of invalidStyles.filter((style) => style !== undefined)) {
-        assert.equal(householdSchema.safeParse({ ...legacy, roomStyle }).success, false)
-      }
+    assert.equal(owner.household.roomStyle, 'original')
+    assert.equal(owner.household.version, 0)
+    assert.deepEqual(await current(owner), owner.household)
+    const legacy = JSON.parse(JSON.stringify({ ...owner.household, roomStyle: undefined }))
+    assert.deepEqual(householdSchema.parse(legacy), owner.household)
+    for (const roomStyle of invalidStyles.filter((style) => style !== undefined)) {
+      assert.equal(householdSchema.safeParse({ ...legacy, roomStyle }).success, false)
     }
     assert.deepEqual(roomStyleSchema.options, ['original', 'sage', 'clay', 'linen'])
     assert.equal(roomStyleSchema.safeParse(undefined).success, false)
@@ -234,7 +230,7 @@ it('loads legacy JSON without rewriting it and persists presets, ledger, shoppin
   let api: Awaited<ReturnType<typeof serve>> | undefined
   let database: DatabaseSync | undefined
   try {
-    const owner = (await store.create('Persistent room', 'Ada', 'EUR', 35000, true))
+    const owner = await createPopulatedHousehold(store)
     const original = withHistory(owner)
     await store.save(original)
     const session = (await store.authenticate(owner.token))

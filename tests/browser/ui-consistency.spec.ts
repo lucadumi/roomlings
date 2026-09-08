@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 import type { Locator } from '@playwright/test'
 import { createHousehold, openGroceryForm } from './fixtures.ts'
 
@@ -11,7 +11,7 @@ async function expectCenteredLabel(label: Locator) {
     const measure = () => {
       const bounds = element.getBoundingClientRect()
       offset = Math.max(offset, Math.abs(bounds.x + bounds.width / 2 - innerWidth / 2))
-      const neighbors = document.querySelectorAll('.room-panel, .room-caption, .game-demo, .house-tools, .game-identity, .game-resources, .world-camera-controls')
+      const neighbors = document.querySelectorAll('.room-panel, .room-caption, .house-tools > button, .game-identity, .game-resources, .world-camera-controls')
       for (const neighbor of neighbors) {
         const box = neighbor.getBoundingClientRect()
         overlap = Math.max(overlap, Math.max(0, Math.min(bounds.right, box.right) - Math.max(bounds.left, box.left))
@@ -39,7 +39,7 @@ test.describe('UI consistency', () => {
   test.use({ reducedMotion: 'reduce' })
 
   for (const viewport of [{ width: 1440, height: 960 }, { width: 1024, height: 900 }, { width: 850, height: 900 }, { width: 801, height: 900 }, { width: 390, height: 844 }]) {
-    test(`focus labels stay centered while panels change at ${viewport.width}px`, { tag: '@room' }, async ({ page }) => {
+    test(`focus labels stay centered while panels change at ${viewport.width}px`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
       const world = page.locator('.kitchen-world')
@@ -73,7 +73,7 @@ test.describe('UI consistency', () => {
   }
 
   for (const viewport of [{ width: 1440, height: 960 }, { width: 320, height: 568 }]) {
-    test(`shared headings omit boilerplate and leave room for close controls at ${viewport.width}px`, async ({ page }) => {
+    test(`shared headings omit boilerplate and leave room for close controls at ${viewport.width}px`, async ({ page, populatedHousehold: _household }) => {
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
       for (const button of ['Grocery runs', 'Monthly budget', 'Shopping bag, plan and record groceries', 'Settle up', 'The roommates']) {
@@ -101,7 +101,7 @@ test.describe('UI consistency', () => {
     })
   }
 
-  test('grocery counts and category selections agree with the visible ledger', async ({ page }) => {
+  test('grocery counts and category selections agree with the visible ledger', async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
     const rows = page.locator('.expense-row')
@@ -131,7 +131,7 @@ test.describe('UI consistency', () => {
     await expect(resultCount).toHaveText(String(total))
   })
 
-  test('access action stacks separate all control types without changing inline rows', async ({ page }) => {
+  test('access action stacks separate all control types without changing inline rows', async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     await expect(page.locator('.game-dock')).toBeVisible()
     await page.locator('.game-app').evaluate((app) => {
@@ -217,21 +217,28 @@ test.describe('UI consistency', () => {
       expect(stack.backFromForm!.top - stack.forms[1].bottom).toBeGreaterThanOrEqual(12)
       expect(stack.backFromSection!.top - stack.section!.bottom).toBeGreaterThanOrEqual(12)
       expect(stack.resendRow!.top - stack.verify!.bottom).toBeGreaterThanOrEqual(12)
-      for (const row of await fixture.locator('.button-row').all()) {
-        const buttons = row.getByRole('button')
-        const first = await buttons.first().boundingBox()
-        const second = await buttons.last().boundingBox()
-        expect(first).not.toBeNull()
-        expect(second).not.toBeNull()
-        expect(second!.x - first!.x - first!.width).toBeGreaterThanOrEqual(10)
-        expect(Math.abs(first!.y + first!.height / 2 - second!.y - second!.height / 2)).toBeLessThan(1)
-        await expect(buttons.last()).toHaveCSS('margin-top', '0px')
+      const rows = await fixture.locator('.button-row').evaluateAll((rows) => rows.map((row) => {
+        const buttons = [...row.querySelectorAll('button')]
+        const first = buttons[0]?.getBoundingClientRect()
+        const last = buttons.at(-1)
+        if (!first || !last) throw new Error('The inline row needs both fixture buttons.')
+        const second = last.getBoundingClientRect()
+        return {
+          gap: second.left - first.right,
+          alignment: Math.abs(first.top + first.height / 2 - second.top - second.height / 2),
+          marginTop: getComputedStyle(last).marginTop,
+        }
+      }))
+      for (const row of rows) {
+        expect(row.gap).toBeGreaterThanOrEqual(10)
+        expect(row.alignment).toBeLessThan(1)
+        expect(row.marginTop).toBe('0px')
       }
     }
   })
 
-  test('a single grocery run and an empty repayment history have truthful labels', async ({ page, request }) => {
-    const session = await createHousehold(request, 'UI consistency kitchen', 'Robin')
+  test('a single grocery run and an empty repayment history have truthful labels', async ({ page, accounts }) => {
+    const session = await createHousehold(accounts.store, 'UI consistency kitchen', 'Robin')
     await page.addInitScript((token) => localStorage.setItem('roomlings.session', token), session.token)
     await page.goto('/kitchen')
     await openGroceryForm(page)
@@ -249,7 +256,7 @@ test.describe('UI consistency', () => {
     await expect(page.locator('.payment-history')).toContainText('No repayments recorded yet.')
   })
 
-  test('outstanding repayments are not presented as already paid', async ({ page }) => {
+  test('outstanding repayments are not presented as already paid', async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     await page.locator('.game-dock').getByRole('button', { name: 'Settle up', exact: true }).click()
     await expect(page.locator('.repayments-panel').getByRole('heading')).toHaveText('Suggested repayments')
@@ -259,7 +266,7 @@ test.describe('UI consistency', () => {
   })
 })
 
-test('camera movement copy also describes zooming out', { tag: '@room' }, async ({ page }) => {
+test('camera movement copy also describes zooming out', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   const now = Date.now()
   await page.clock.install({ time: now - 60_000 })
   await page.setViewportSize({ width: 1440, height: 960 })

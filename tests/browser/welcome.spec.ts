@@ -1,7 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
-import { sampleSession, savedKitchen, trackDrawing } from './fixtures.ts'
+import { createHousehold, savedKitchen, trackDrawing } from './fixtures.ts'
 import { tourChapters } from '../../src/landing/tour.ts'
+import { roomTourChapters } from '../../src/landing/roomTourChapters.ts'
 
 async function openTour(page: Page) {
   await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
@@ -48,21 +49,39 @@ test('the public welcome page explains the product without opening or changing a
   await page.goto('/welcome')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Share a home.Not the hassle.')
   await expect(page.locator('.welcome-feature')).toHaveCount(3)
+  await expect(page.locator('.welcome-hero')).toContainText('kitchen and bathroom')
+  await expect(page.locator('.welcome-feature h3')).toHaveText(['Rooms & chores.', 'Shopping & bills.', 'Balances & access.'])
+  await expect(page.locator('.welcome-feature').nth(0)).toContainText('Assign chores, rotate turns')
+  await expect(page.locator('.welcome-feature').nth(1)).toContainText('paid receipts')
+  await expect(page.locator('.welcome-feature').nth(2)).toContainText('any device with your account')
+  await expect(page.getByRole('heading', { name: 'Your home, shared.', exact: true })).toBeVisible()
+  await expect(page.locator('.journal-list')).toContainText('Room supplies')
+  await expect(page.locator('.journal-list')).toContainText('Toilet paper')
+  await expect(page.locator('.journal-receipt')).toContainText('Ledger export')
   await expect(page.locator('.welcome-journal')).toBeVisible()
   await expect(page.locator('.welcome-home-illustration')).toBeVisible()
   await expect(page.getByText('A place for everyone.', { exact: true })).toHaveCount(0)
   await expect(page.locator('.welcome-house-note, .welcome-feature-grid')).toHaveCount(0)
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveAttribute('href', '/rooms/kitchen#account=create')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })).toHaveAttribute('href', '/rooms/kitchen#account=create')
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', '/rooms/kitchen')
   await page.getByText('Does Roomlings send money?', { exact: true }).click()
   await expect(page.locator('.welcome-faq details').first()).toHaveAttribute('open', '')
   await expect(page.locator('.welcome-faq details').first()).toContainText('Roomlings never moves money')
+  await page.getByText('What do the rooms share?', { exact: true }).click()
+  await expect(page.locator('.welcome-faq details').nth(1)).toContainText('one household')
+  await expect(page.locator('.welcome-faq details').nth(1)).toContainText('recurring schedules and rotating turns')
+  await page.getByText('How do roommates join and return?', { exact: true }).click()
+  await expect(page.locator('.welcome-faq details').nth(2)).toContainText('Single-use account recovery codes')
+  await expect(page.locator('.welcome-faq details').nth(2)).toContainText('separate private kitchen code')
+  await expect(page.getByRole('link', { name: 'recover browser-only access', exact: true })).toHaveAttribute('href', '/#recover')
+  await page.getByText('Can I use it without 3D?', { exact: true }).click()
+  await expect(page.locator('.welcome-faq details').nth(3)).toContainText('desktop and phone browsers')
   expect(requests).toEqual([])
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
   expect(errors).toEqual([])
 })
 
-test('the three steps stay compact and the landing avoids redundant promotional copy', async ({ page }) => {
+test('landing sections stay compact with spacing after the hero and shared-home section', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const [width, height, maximum] of [[1440, 960, 700], [390, 844, 1050]]) {
     await page.setViewportSize({ width, height })
@@ -74,10 +93,25 @@ test('the three steps stay compact and the landing avoids redundant promotional 
       return {
         words: element.innerText.split(/\s+/).length,
         steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
+        heroGap: parseFloat(getComputedStyle(element.querySelector('.welcome-hero')!).marginBottom),
+        featuresGap: parseFloat(getComputedStyle(element.querySelector('.welcome-features')!).marginBottom),
+        headingGap: getComputedStyle(element.querySelector('.welcome-features .welcome-section-heading')!).marginBottom,
+        titleToContent: element.querySelector('.welcome-feature h3')!.getBoundingClientRect().top
+          - element.querySelector('#features-title')!.getBoundingClientRect().bottom,
+        sectionMinimums: [...element.querySelectorAll('main > section')].map((section) => getComputedStyle(section).minHeight),
+        otherMargins: [...element.querySelectorAll('main > section')].slice(1).map((section) => getComputedStyle(section).marginTop),
       }
     })
     expect(metrics.words).toBeLessThanOrEqual(230)
     expect(metrics.steps).toBeLessThanOrEqual(maximum)
+    expect(metrics.sectionMinimums).toEqual(['0px', '0px', '0px', '0px', '0px'])
+    expect(metrics.heroGap).toBeGreaterThanOrEqual(24)
+    expect(metrics.heroGap).toBeLessThanOrEqual(56)
+    expect(metrics.featuresGap).toBeGreaterThanOrEqual(16)
+    expect(metrics.featuresGap).toBeLessThanOrEqual(32)
+    expect(metrics.headingGap).toBe('0px')
+    expect(metrics.titleToContent).toBeLessThanOrEqual(24)
+    expect(metrics.otherMargins).toEqual(['0px', '0px', '0px', '0px'])
     await expect(page.locator('.welcome-edition, .welcome-eyebrow, .welcome-interlude, .welcome-margin-mark, .welcome-signature')).toHaveCount(0)
   }
 })
@@ -88,8 +122,10 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   await expect(page.getByRole('heading', { level: 1 })).toBeInViewport()
   await expect(page.locator('.welcome-canvas')).toHaveCount(0)
   await openTour(page)
+  await expect(page.getByRole('heading', { name: 'Explore the rooms', exact: true })).toBeVisible()
+  const titles = roomTourChapters.kitchen.map((chapter) => chapter.title)
   const dimensions = await page.locator('.welcome-tour-track').evaluate((element) => {
-    const card = element.querySelector('.welcome-tour-pin')
+    const card = element.querySelector('.welcome-tour-sticky')
     if (!card) throw new Error('The tour card is missing.')
     return { travel: element.getBoundingClientRect().height - card.getBoundingClientRect().height, screen: innerHeight }
   })
@@ -97,6 +133,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   expect(dimensions.travel).toBeLessThanOrEqual(dimensions.screen)
   for (const index of [0, 1, 2, 3, 4, 2, 0]) {
     await chooseChapter(page, index)
+    await expect(page.locator('.welcome-tour-copy[data-active="true"] h3')).toHaveText(titles[index])
     await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-camera-moving', 'false')
     const position = Number(await page.locator('.welcome-canvas').getAttribute('data-tour-position'))
     expect(Math.abs(position - index / 4)).toBeLessThanOrEqual(1 / dimensions.travel + 0.0005)
@@ -121,7 +158,7 @@ test('reduced motion removes the scroll runway and holds a stationary room while
   const idle = await drawing()
   expect(idle.draws).toBeGreaterThan(0)
   await chooseChapter(page, 3)
-  await expect(page.getByRole('heading', { name: 'Monthly budget', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'The grocery budget.', exact: true })).toBeVisible()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   expect(await drawing()).toEqual(idle)
   await page.getByRole('button', { name: 'Reduced motion', exact: true }).click()
@@ -147,8 +184,8 @@ test('the tour stops drawing off screen instead of running behind the rest of th
   await expect.poll(async () => (await drawing()).draws).toBeGreaterThan(idle.draws)
 })
 
-test('opening the kitchen from the landing preserves current and Coldshare sessions', async ({ page, request }) => {
-  const session = await sampleSession(request)
+test('opening the kitchen from the landing preserves current and Coldshare sessions', async ({ page, accounts }) => {
+  const session = await createHousehold(accounts.store, 'The retained Coldshare home', 'You')
   await page.addInitScript((kitchen) => {
     localStorage.setItem('coldshare.session', kitchen.token)
     localStorage.setItem('coldshare.kitchens', JSON.stringify([kitchen]))
@@ -194,7 +231,7 @@ function withoutWebGL(page: Page) {
   })
 }
 
-test('WebGL startup failure keeps the illustration, object navigation and actual kitchen tools available', { tag: '@room' }, async ({ page }) => {
+test('WebGL startup failure keeps the illustration, object navigation and real-room entry available', { tag: '@room' }, async ({ page }) => {
   await withoutWebGL(page)
   await page.goto('/welcome')
   await page.locator('#tour').scrollIntoViewIfNeeded()
@@ -202,11 +239,11 @@ test('WebGL startup failure keeps the illustration, object navigation and actual
   await expect(page.locator('.welcome-scene-status')).toContainText('3D is unavailable')
   await expect(page.locator('.welcome-static')).toBeVisible()
   await chooseChapter(page, 2)
-  await expect(page.getByRole('heading', { name: 'Bills and receipts', exact: true })).toBeVisible()
-  await page.locator('.welcome-tour').getByRole('link', { name: 'Try the sample', exact: true }).click()
-  await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'The receipt book.', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Bills and receipts.', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click()
+  await expect(page).toHaveURL(/\/rooms\/kitchen$/)
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your place, on every device.')
+  await expect(page.locator('.game-house')).toHaveCount(0)
 })
 
 test('context loss restores the illustration without breaking the shorter tour', { tag: '@room' }, async ({ page }) => {
@@ -221,7 +258,7 @@ test('context loss restores the illustration without breaking the shorter tour',
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'unavailable')
   await chooseChapter(page, 1)
   await expect(page.locator('.welcome-static')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Groceries', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Shopping and groceries.', exact: true })).toBeVisible()
 })
 
 test('the landing remains readable across phones, tablets, short landscapes and reserved scrollbar space', { tag: '@room' }, async ({ page }) => {
@@ -240,7 +277,7 @@ test('the landing remains readable across phones, tablets, short landscapes and 
     // Avoid testing a fractionally rounded edge left by the browser's minimum auto-scroll.
     await selected.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
     await expect(selected).toBeInViewport({ ratio: 1 })
-    const entry = page.locator('#get-started').getByRole('link', { name: 'Get started', exact: true })
+    const entry = page.locator('#get-started').getByRole('link', { name: 'Start sharing', exact: true })
     await entry.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
     await expect(entry).toBeInViewport({ ratio: 1 })
   }
@@ -251,7 +288,7 @@ test('longer copy and orientation changes use measured scene areas without clipp
   await page.goto('/welcome')
   await openTour(page)
   await page.locator('.welcome-tour-copy p').first().evaluate((element) => {
-    const card = element.closest('.welcome-tour-pin')
+    const card = element.closest('.welcome-tour-sticky')
     if (!card) throw new Error('The tour card is missing.')
     // Force measured overflow rather than relying on platform-specific font metrics.
     for (let count = 0; count < 20 && card.getBoundingClientRect().height <= innerHeight; count++) {
@@ -287,8 +324,8 @@ test('skip navigation, FAQ disclosures and tour controls work with a keyboard', 
   await page.keyboard.press('Enter')
   await expect(page.locator('#welcome-content')).toBeFocused()
   await page.keyboard.press('Tab')
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toBeFocused()
-  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })).toHaveCSS('outline-style', 'solid')
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })).toBeFocused()
+  await expect(page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })).toHaveCSS('outline-style', 'solid')
   await openTour(page)
   const budget = page.getByRole('button', { name: 'Monthly budget', exact: true })
   await budget.focus()
@@ -300,10 +337,11 @@ test('skip navigation, FAQ disclosures and tour controls work with a keyboard', 
   await expect(page.locator('.welcome-faq details').first()).toHaveAttribute('open', '')
 })
 
-test('touch gestures scroll the page instead of being captured by the tour', { tag: '@room' }, async ({ browser, baseURL }) => {
+test('touch gestures scroll the page instead of being captured by the tour', { tag: '@room' }, async ({ accounts, browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   try {
     const page = await context.newPage()
+    await routeAccountApi(page, accounts)
     await page.goto('/welcome')
     await openTour(page)
     const before = await page.evaluate(() => scrollY)

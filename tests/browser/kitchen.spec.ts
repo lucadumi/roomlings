@@ -1,10 +1,12 @@
-import { expect, test } from '@playwright/test'
+import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
 import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { localDate } from '../../shared/domain.ts'
 import { createHousehold, openGroceryForm, savedKitchen } from './fixtures.ts'
+
+test.use({ providerEnabled: false })
 
 async function frameRoom(page: Page) {
   await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
@@ -29,7 +31,7 @@ async function clickRoomPoint(page: Page, position: [number, number, number]) {
   await page.mouse.click(box.x + (projected.x * 0.5 + 0.5) * box.width, box.y + (-projected.y * 0.5 + 0.5) * box.height)
 }
 
-test('fridge, expenses, repayment records, and reload persistence', async ({ page }) => {
+test('fridge, expenses, repayment records, and reload persistence', async ({ page, populatedHousehold: _household }) => {
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.goto('/kitchen')
@@ -69,28 +71,27 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   expect(pageErrors).toEqual([])
 })
 
-test('creating a kitchen exposes its invitation in the UI', async ({ page }) => {
-  await page.goto('/kitchen')
-  await page.getByRole('button', { name: 'Make it yours' }).click()
-  await page.getByLabel('What do you call home?').fill('The browser house')
-  await page.getByLabel('Your name', { exact: true }).fill('Charlie')
-  await page.getByRole('button', { name: 'Create our kitchen' }).click()
-  await expect(page.locator('.game-demo')).toHaveCount(0)
-  await expect(page.locator('.game-house')).toContainText('The browser house')
-  await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Charlie')
-  await page.getByRole('button', { name: 'Invite a roommate', exact: false }).first().click()
-  const invitation = await page.getByLabel('Your private kitchen invitation').inputValue()
-  expect(new URL(invitation).hash).toMatch(/^#join=.+/)
+test('normal room entry exposes access without creating a household', async ({ page }) => {
+  const mutations: string[] = []
+  page.on('request', (request) => {
+    if (request.method() !== 'GET') mutations.push(new URL(request.url()).pathname)
+  })
+  await page.goto('/rooms/kitchen')
+  await expect(page.getByRole('dialog')).toHaveAccessibleName('Your place, on every device.')
+  await expect(page.getByRole('button', { name: 'Use existing browser recovery', exact: true })).toBeVisible()
+  await expect(page.locator('.game-house')).toHaveCount(0)
+  expect(mutations).toEqual([])
 })
 
-test('a new kitchen can be joined from a separate browser session', async ({ page, browser, request, baseURL }) => {
+test('a new kitchen can be joined from a separate browser session', async ({ page, accounts, browser, baseURL }) => {
   if (!baseURL) throw new Error('The shared-kitchen scenario needs a configured base URL.')
-  const owner = await createHousehold(request, 'The browser house', 'Charlie')
-  const invitation = new URL('/', baseURL)
+  const owner = await createHousehold(accounts.store, 'The browser house', 'Charlie')
+  const invitation = new URL('/rooms/kitchen', baseURL)
   invitation.hash = `join=${encodeURIComponent(owner.household.inviteCode)}`
   const context = await browser.newContext()
   try {
     const roommate = await context.newPage()
+    await routeAccountApi(roommate, accounts)
     await roommate.goto(invitation.toString())
     await roommate.getByLabel('Your name', { exact: true }).fill('Dana')
     await roommate.getByRole('button', { name: 'Join the kitchen', exact: true }).click()
@@ -115,9 +116,9 @@ test('a new kitchen can be joined from a separate browser session', async ({ pag
   await expect(page.locator('.expense-row').filter({ hasText: 'Shared groceries' })).toContainText('Paid by Dana')
 })
 
-test('saved households restore the original roommate and shared expenses after switching', async ({ page, request }) => {
-  const original = await createHousehold(request, 'The saved house', 'Charlie')
-  const other = await createHousehold(request, 'Another home', 'Riley')
+test('saved households restore the original roommate and shared expenses after switching', async ({ page, accounts, request }) => {
+  const original = await createHousehold(accounts.store, 'The saved house', 'Charlie')
+  const other = await createHousehold(accounts.store, 'Another home', 'Riley')
   const joined = await request.post('/api/join', { data: { inviteCode: original.household.inviteCode, name: 'Dana' } })
   await expect(joined).toBeOK()
   const roommate = sessionSchema.parse(await joined.json())
@@ -148,7 +149,7 @@ test('saved households restore the original roommate and shared expenses after s
   await expect(restored).toContainText('2 shares')
 })
 
-test('mobile layout has no horizontal overflow and supports keyboard dialogs', async ({ page }) => {
+test('mobile layout has no horizontal overflow and supports keyboard dialogs', async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
@@ -160,7 +161,7 @@ test('mobile layout has no horizontal overflow and supports keyboard dialogs', a
   await expect(page.getByRole('dialog')).toHaveCount(0)
 })
 
-test('a rejected save keeps the expense draft available to retry', async ({ page }) => {
+test('a rejected save keeps the expense draft available to retry', async ({ page, populatedHousehold: _household }) => {
   await page.goto('/kitchen')
   await openGroceryForm(page)
   await page.getByLabel('What did you pick up?').fill('Keep this grocery draft')
@@ -178,7 +179,7 @@ test('a rejected save keeps the expense draft available to retry', async ({ page
   await expect(page.getByText('Keep this grocery draft', { exact: true })).toBeVisible()
 })
 
-test('budgets, category filtering, month navigation, and complete ledger export', async ({ page }) => {
+test('budgets, category filtering, month navigation, and complete ledger export', async ({ page, populatedHousehold: _household }) => {
   await page.goto('/kitchen')
   await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
   await page.getByRole('button', { name: 'Edit monthly budget', exact: true }).click()
@@ -208,7 +209,7 @@ test('budgets, category filtering, month navigation, and complete ledger export'
 })
 
 test.describe('room controls', { tag: '@room' }, () => {
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/kitchen')
     await expect(page.locator('.world-canvas canvas')).toBeVisible()
@@ -256,7 +257,7 @@ test.describe('room controls', { tag: '@room' }, () => {
   }
 })
 
-test('the ledger remains usable when WebGL is unavailable', async ({ page }) => {
+test('the ledger remains usable when WebGL is unavailable', async ({ page, populatedHousehold: _household }) => {
   await page.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext
     Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
@@ -272,7 +273,7 @@ test('the ledger remains usable when WebGL is unavailable', async ({ page }) => 
   await expect(page.locator('.expense-row')).toHaveCount(6)
 })
 
-test('the grocery bag and receipt book meshes work without clickable labels', { tag: '@room' }, async ({ page }) => {
+test('the grocery bag and receipt book meshes work without clickable labels', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/kitchen')
   await expect(page.locator('.hotspot-stock')).toBeVisible()
@@ -293,7 +294,7 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
 
-test('the kitchen stops drawing behind a finance panel and resumes when it closes', { tag: '@room' }, async ({ page }) => {
+test('the kitchen stops drawing behind a finance panel and resumes when it closes', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.addInitScript(() => {
     let draws = 0
     const original = WebGL2RenderingContext.prototype.drawElements
@@ -319,7 +320,7 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
   await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
 })
 
-test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page }) => {
+test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
@@ -357,7 +358,7 @@ test('the phone view gives the room most of the screen and keeps panels below it
   await expect(page.locator('.room-panel')).toHaveCount(0)
 })
 
-test('wheel zoom and the kettle respond without changing the household ledger', { tag: '@room' }, async ({ page }) => {
+test('wheel zoom and the kettle respond without changing the household ledger', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   const before = await page.locator('.fund-trigger strong').innerText()
@@ -374,7 +375,7 @@ test('wheel zoom and the kettle respond without changing the household ledger', 
   await expect(page.locator('.world-kettle-toggle')).toHaveAttribute('aria-pressed', 'false', { timeout: 15_000 })
 })
 
-test('header and footer wrappers are transparent while their controls keep their own surfaces', { tag: '@room' }, async ({ page }) => {
+test('header and footer wrappers are transparent while their controls keep their own surfaces', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   for (const selector of ['.game-hud', '.game-bottom']) {
@@ -399,7 +400,7 @@ test('header and footer wrappers are transparent while their controls keep their
   expect(focusedCanvas!.height).toBe(page.viewportSize()!.height)
 })
 
-test('touch gestures zoom and turn the room without opening an object', { tag: '@room' }, async ({ page }) => {
+test('touch gestures zoom and turn the room without opening an object', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()

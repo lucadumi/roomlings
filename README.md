@@ -21,15 +21,14 @@ npm install
 npm run preview:local
 ```
 
-Open http://localhost:5173 (API: port 4311). Sign in to create a household, or try a private sample without signing in. The sample uses separate access and never changes a personal household.
+Open http://localhost:5173 (API: port 4311). Explore the rooms on the public landing page, then sign in to create or join your household.
 
 | Entry | Purpose |
 | --- | --- |
 | `/` | Public landing page |
 | `/rooms/kitchen`, `/rooms/bathroom` | Personal rooms and sign-in |
-| `/sample/kitchen`, `/sample/bathroom` | Anonymous sample home |
 
-Email sign-in needs [Supabase setup](docs/accounts.md). Without it, local samples and existing browser recovery still work.
+Email sign-in needs [Supabase setup](docs/accounts.md). Existing real browser access and recovery remain supported. Public room previews do not create households or anonymous sessions.
 
 ## Development
 

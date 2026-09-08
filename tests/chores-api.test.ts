@@ -14,6 +14,7 @@ import type { AccountProvider } from '../server/provider.ts'
 import { balances, billingDate, choreCompletionLimit, choreLimit, choreSchema, householdSchema } from '../shared/domain.ts'
 import type { Chore, ChoreInput, Household, Session } from '../shared/domain.ts'
 import { choreAssignee, nextChoreDate } from '../shared/chores.ts'
+import { createPopulatedHousehold } from './household-fixture.ts'
 
 const appOrigin = 'http://localhost:5173'
 type RequestOptions = {
@@ -82,8 +83,8 @@ async function fixture(context: TestContext, options: { persistent?: boolean; ac
     })
     return { response, status: response.status, data: await response.json() }
   }
-  const create = async (demo = false): Promise<Session> => {
-    const result = await call(demo ? '/demo' : '/households', demo ? {} : {
+  const create = async (): Promise<Session> => {
+    const result = await call('/households', {
       name: 'Our chores house', memberName: 'Ada', currency: 'EUR', budget: 45000,
     })
     assert.equal(result.status, 201, JSON.stringify(result.data))
@@ -174,21 +175,15 @@ async function seedLedger(store: Store, session: Session) {
 }
 
 describe('shared chores API', () => {
-  it('starts personal homes empty and seeds only new sample homes without changing their ledger', async (context) => {
+  it('starts new homes empty while populated test fixtures remain outside production creation', async (context) => {
     const f = await fixture(context)
     const personal = await f.create()
     assert.deepEqual(personal.household.chores, { items: [], history: [] })
-    const sample = await f.create(true)
-    assert.equal(sample.household.chores.items.length, 4)
-    assert.deepEqual(new Set(sample.household.chores.items.map((chore) => chore.roomId)), new Set(['kitchen', 'bathroom']))
-    assert.ok(sample.household.chores.items.every((chore) => chore.rotation.length === 4 && chore.version === 0 && chore.occurrence === 0))
-    assert.deepEqual(sample.household.members.map((member) => member.name), ['You', 'Jules', 'Sam', 'Alex'])
-    assert.deepEqual(sample.household.expenses.map((expense) => expense.amount), [8632, 2840, 1875, 2490, 3620, 1260])
-    assert.deepEqual(sample.household.settlements, [])
-    assert.deepEqual(sample.household.bills, [])
-    assert.deepEqual(sample.household.shopping, { items: [], runs: [] })
-    assert.deepEqual(sample.household.chores.history, [])
-    assert.deepEqual(await f.current(sample), sample.household)
+    const populated = await createPopulatedHousehold(f.store)
+    assert.equal(populated.household.chores.items.length, 4)
+    assert.deepEqual(populated.household.members.map((member) => member.name), ['You', 'Jules', 'Sam', 'Alex'])
+    assert.deepEqual(populated.household.expenses.map((expense) => expense.amount), [8632, 2840, 1875, 2490, 3620, 1260])
+    assert.deepEqual(await f.current(populated), populated.household)
     assert.deepEqual(await f.current(personal), personal.household)
   })
 
@@ -661,24 +656,28 @@ describe('shared chores API', () => {
     assert.equal(saved.chores.items[0].archived, true)
   })
 
-  it('reads an older sample household with empty chores without reseeding it or replacing its existing session', async (context) => {
+  it('reads an older real household marker with empty chores without replacing its existing session', async (context) => {
     const f = await fixture(context, { persistent: true })
-    const sample = await f.create(true)
-    const legacy = Object.fromEntries(Object.entries(sample.household).filter(([key]) => key !== 'chores'))
+    const owner = await f.create()
+    const legacy = {
+      ...Object.fromEntries(Object.entries(owner.household).filter(([key]) => key !== 'chores')),
+      demo: false,
+    }
     await f.restart(() => {
       const database = new DatabaseSync(f.filename)
       try {
-        database.prepare('UPDATE households SET state = ? WHERE id = ?').run(JSON.stringify(legacy), sample.household.id)
+        database.prepare('UPDATE households SET state = ? WHERE id = ?').run(JSON.stringify(legacy), owner.household.id)
       } finally {
         database.close()
       }
     })
-    const restored = await f.current(sample)
-    assert.deepEqual(restored, { ...legacy, chores: { items: [], history: [] } })
-    assert.deepEqual(unchangedFields(restored), unchangedFields(sample.household))
-    assert.equal((await f.store.authenticate(sample.token))!.memberId, sample.memberId)
-    await f.change(sample, '/chores', input(sample.memberId))
+    const restored = await f.current(owner)
+    assert.deepEqual(restored, { ...owner.household, chores: { items: [], history: [] } })
+    assert.equal('demo' in restored, false)
+    assert.deepEqual(unchangedFields(restored), unchangedFields(owner.household))
+    assert.equal((await f.store.authenticate(owner.token))!.memberId, owner.memberId)
+    await f.change(owner, '/chores', input(owner.memberId))
     await f.restart()
-    assert.equal((await f.current(sample)).chores.items.length, 1)
+    assert.equal((await f.current(owner)).chores.items.length, 1)
   })
 })

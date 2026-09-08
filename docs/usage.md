@@ -31,15 +31,29 @@ Bathroom fixtures open their related chores; the cleaning caddy opens the room's
 
 Bills use the creator's time zone. Edits preserve earlier months and paid occurrences; resuming a paused bill does not backfill missed months. Short months use their last day.
 
+## Shared changes and retries
+
+Roommates see the same saved household. If a shopping item, chore, monthly bill or house rule changes while you edit it, the form keeps your draft and asks you to use the latest values or explicitly keep your draft. Bill payment forms also require review when the unpaid schedule changes.
+
+An interrupted response does not mean the server rejected a save. Retrying the same change confirms an already-saved result without adding another expense, bill, chore, shopping item or repayment. If you changed the draft after an earlier save succeeded, review the saved record before starting a new change. Shopping checkouts retain their own run identifier and purchased-item history.
+
+Repayments can combine balances from multiple expenses and months. Their limits follow the actual outstanding balances, not the maximum size of an individual grocery receipt. The app still records money already paid; it never transfers money.
+
+Household name changes refresh saved browser shortcuts. Account refreshes update saved profile and browser names without replacing unfinished drafts, and remove kitchens whose membership has ended. Conflicted membership actions refresh their settings before you confirm or retry them.
+
 ## Entry and access
 
 `/` is always the public home page; `/welcome` is an alias. Neither reads account access or creates a session. Sign-in opens `/rooms/kitchen`; successful sign-in or household creation enters the room directly. The room's wordmark returns home.
 
-`/sample/kitchen` or `/sample/bathroom` opens a private sample home without signing in. Both rooms reuse its sample access key, separate from personal and Coldshare sessions; sample edits never change your real household. A definitively expired sample can restart with an explicit notice, while outages retain the existing sample for retry.
+Room access belongs to a real household. Public previews never create households or anonymous sessions; sign in to create or join a home, or restore an existing real browser identity.
 
-Sign in to create a household or link an existing roommate identity. Old `/kitchen`, invitation and `/#recover` links remain supported, including `coldshare.*` storage. Expired browser-only access can return through a valid signed-in account without deleting old shortcuts. Genuinely expired or revoked accounts require a new email code, then reopen saved data rather than replacing it with a demo.
+Sign in to create a household or link an existing roommate identity. Old `/kitchen`, invitation and `/#recover` links remain supported, including `coldshare.*` storage. Expired browser-only access can return through a valid signed-in account without deleting old shortcuts. Genuinely expired or revoked accounts require a new email code, then reopen the original saved data.
 
 The short kitchen tour supports native scrolling, keyboard navigation, reduced motion and an illustrated fallback. The hero is a conceptual home illustration, not an exact floor plan.
+
+The landing page's **Explore the rooms** section uses one shared template for the kitchen and bathroom. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. Use the page's Sign in or Get started actions when you want to enter a real household. Existing kitchen chapter links remain supported, and `/#tour-bathroom` opens the bathroom exploration directly.
+
+Both rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They use the same overview scale and camera angle throughout their scroll tours. A 2D loading indicator stays visible until the renderer is ready; an illustrated fallback keeps the controls available if 3D cannot load. Reduced motion keeps the room stationary while its descriptions remain navigable. The closing invitation retains one direct Start sharing CTA.
 
 ## Development notes
 
@@ -48,5 +62,7 @@ Use http://localhost:5173 for review, preserving its data and browser sessions. 
 Room IDs, chore areas and restocking suggestions are registered in `shared/rooms.ts`; `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms there instead of adding placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
 Use `src/Dropdown.tsx` for form selects. It preserves raw values, including empty whole-home and one-off choices, while Radix handles menu positioning, keyboard navigation and touch interaction.
+
+Version-checked household mutations accept a stable `mutationId` and its original `mutationVersion`. The latest 1,000 mutation receipts persist with household JSON, independently of financial records. Replays return the current household without repeating a saved change; changed payloads or requests older than retained confirmation history require explicit review. Older clients without mutation metadata remain compatible. Do not regenerate a mutation identifier merely because a response was lost or a background refresh advanced the household version.
 
 Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork and the original Fraunces and DM Sans interface fonts. The outlined logo lettering is independent of interface fonts.

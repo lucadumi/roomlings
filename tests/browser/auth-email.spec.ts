@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 
 const template = readFileSync(new URL('../../emails/auth-code.html', import.meta.url), 'utf8')
 

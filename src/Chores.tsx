@@ -6,7 +6,7 @@ import type { Chore, ChoreCompletion, Household } from '../shared/domain.ts'
 import { canUndoChore, choreAssignee, choreStatus } from '../shared/chores.ts'
 import { choreAreaSchema, choreLocationLabel, roomCatalog, roomIds, roomIdSchema } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
-import { Avatar, Form } from './components.tsx'
+import { Avatar, DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { dateTitle } from './format.ts'
@@ -28,15 +28,14 @@ function inRoom(item: { roomId: RoomId | null; area: ChoreArea | null }, filter:
 }
 
 export function ChoresPanel({
-  household, memberId, filter, onFilter, view, onView, busy, onAdd, onEdit, onComplete, onArchive, onUndo, onRestock,
+  household, memberId, filter, onFilter, view, onView, mine, onMine, busy, onAdd, onEdit, onComplete, onArchive, onUndo, onRestock,
 }: {
   household: Household; memberId: string; filter: ChoreFilter; onFilter: (filter: ChoreFilter) => void
-  view: ChoreView; onView: (view: ChoreView) => void; busy: boolean
+  view: ChoreView; onView: (view: ChoreView) => void; mine: boolean; onMine: (mine: boolean) => void; busy: boolean
   onAdd: () => void; onEdit: (chore: Chore) => void; onComplete: (chore: Chore) => void
   onArchive: (chore: Chore) => void; onUndo: (completion: ChoreCompletion) => void
   onRestock: () => void
 }) {
-  const [mine, setMine] = useState(false)
   const [historyCount, setHistoryCount] = useState(20)
   const [filterError, setFilterError] = useState('')
   const today = billingDate(household.billingTimeZone)
@@ -85,7 +84,7 @@ export function ChoresPanel({
         <option value="">All areas</option>{room.areas.map((area) => <option key={area.id} value={area.id}>{area.label}</option>)}
       </Dropdown></label>}
     </div>
-    <label className="chore-mine"><input type="checkbox" checked={mine} disabled={busy} onChange={(event) => setMine(event.target.checked)} />{view === 'history' ? 'My turns and completions' : 'My turn only'}</label>
+    <label className="chore-mine"><input type="checkbox" checked={mine} disabled={busy} onChange={(event) => onMine(event.target.checked)} />{view === 'history' ? 'My turns and completions' : 'My turn only'}</label>
     <button className="text-button chore-supplies" disabled={busy} onClick={onRestock}>Restock room supplies</button>
     {filterError && <p className="form-error" role="alert">{filterError}</p>}
     {busy && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Saving chores...</p>}
@@ -100,7 +99,7 @@ export function ChoresPanel({
       return <article className="chore-card" key={chore.id} aria-label={chore.title}>
         <header><h3>{chore.title}</h3><span className={`chore-status ${status}`}>{status === 'due' ? 'Due today' : status === 'overdue' ? 'Overdue' : status === 'completed' ? 'Completed' : status === 'archived' ? 'Archived' : 'Upcoming'}</span></header>
         <p className="chore-location">{choreLocationLabel(chore.roomId, chore.area)}</p>
-        <p className="chore-schedule">{chore.dueDate ? dateTitle(chore.dueDate) : 'One-off completed'}<span>{repeats(chore.repeatDays)}</span></p>
+        <p className="chore-schedule">{chore.dueDate ? dateTitle(chore.dueDate, today) : 'One-off completed'}<span>{repeats(chore.repeatDays)}</span></p>
         {chore.notes && <p className="chore-notes">{chore.notes}</p>}
         <div className="chore-assignee">{assignee ? <><Avatar member={assignee} small /><span>{assignee.id === memberId ? 'Your turn' : `${assignee.name}'s turn`}</span></> : <><Users size={17} /><span>Unassigned. Choose an active roommate.</span></>}
           {chore.rotation.length > 1 && <small>Rotating</small>}
@@ -122,8 +121,8 @@ export function ChoresPanel({
         return <article className="chore-card chore-completion" key={completion.id} aria-label={`Completion: ${completion.title}`}>
           <header><h3>{completion.title}</h3><span className={`chore-status ${completion.undoneAt ? 'undone' : 'completed'}`}>{completion.undoneAt ? 'Undone' : 'Done'}</span></header>
           <p className="chore-location">{choreLocationLabel(completion.roomId, completion.area)}</p>
-          <p>{memberName(completion.completedBy)} completed it on {dateTitle(billingDate(household.billingTimeZone, new Date(completion.completedAt)))}.</p>
-          <p className="field-hint">Scheduled for {dateTitle(completion.dueDate)}{completion.assignedTo ? `; assigned to ${memberName(completion.assignedTo)}.` : '; no assigned roommate.'}</p>
+          <p>{memberName(completion.completedBy)} completed it on {dateTitle(billingDate(household.billingTimeZone, new Date(completion.completedAt)), today)}.</p>
+          <p className="field-hint">Scheduled for {dateTitle(completion.dueDate, today)}{completion.assignedTo ? `; assigned to ${memberName(completion.assignedTo)}.` : '; no assigned roommate.'}</p>
           {completion.undoneAt && <p className="field-hint">Undone by {completion.undoneBy ? memberName(completion.undoneBy) : 'a roommate'}.</p>}
           {canUndoChore(chore, completion) && <button className="text-button" disabled={busy} onClick={() => onUndo(completion)}><RotateCcw size={14} />Undo completion</button>}
           {chore && !chore.archived && chore.dueDate === null && !completion.undoneAt && chore.occurrence === completion.occurrence + 1
@@ -222,10 +221,9 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
     </Dropdown></label>
     <p className="field-hint">One person keeps the assignment. Multiple people rotate in the order above after each completion. Dates use {household.billingTimeZone}.</p>
     {blocked && <p className="form-error" role="alert">This chore is unavailable or archived. Close the form and review the chore list.</p>}
-    {!blocked && changed && latest && <div className="shopping-conflict"><p role="alert">This chore changed. Review the latest schedule before saving your draft.</p><div className="button-row">
-      <button type="button" className="text-button" onClick={() => restoreValues(latest)}>Use latest values</button>
-      <button type="button" className="text-button" onClick={() => { setBaseVersion(latest.version); setLocalError('') }}>Keep my draft</button>
-    </div></div>}
+    {!blocked && changed && latest && <DraftConflict onLatest={() => restoreValues(latest)}
+      onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
+    >This chore changed. Review the latest schedule before saving your draft.</DraftConflict>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
     <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{chore ? 'Save chore' : 'Create chore'}</button>
   </Form>

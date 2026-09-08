@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 import type { Locator, Page, Route } from '@playwright/test'
 import type { Session } from '../../shared/domain.ts'
-import { test as accountTest } from './account-fixtures.ts'
-import { createHousehold, openGroceryForm, pauseRequest, sampleSession, savedKitchen } from './fixtures.ts'
+import { createHousehold, openGroceryForm, pauseRequest, savedKitchen } from './fixtures.ts'
+import { createPopulatedHousehold } from '../household-fixture.ts'
 
 async function restoreKitchen(page: Page, session: Session) {
   await page.addInitScript((kitchen) => {
@@ -223,8 +223,8 @@ async function expectSvgMotion(page: Page, markup: string, mode: 'normal' | 'lig
   }
 }
 
-test('the Roomlings rebrand restores existing Coldshare households without replacing them', async ({ page, request }) => {
-  const original = await sampleSession(request)
+test('the Roomlings rebrand restores existing Coldshare households without replacing them', async ({ page, accounts }) => {
+  const original = await createPopulatedHousehold(accounts.store)
   const kitchen = savedKitchen(original)
   await page.addInitScript(({ token, kitchen }) => {
     localStorage.setItem('coldshare.session', token)
@@ -236,10 +236,9 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([{ ...kitchen, demo: true }])
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([kitchen])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(original.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([kitchen])
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(original.token)
 
   await page.reload()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
@@ -248,9 +247,9 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
   await expect(page.locator('.expense-row')).toHaveCount(original.household.expenses.length)
 })
 
-test('Roomlings sessions take precedence over retained legacy browser storage', async ({ page, request }) => {
-  const legacy = await sampleSession(request)
-  const current = await sampleSession(request)
+test('Roomlings sessions take precedence over retained legacy browser storage', async ({ page, accounts }) => {
+  const legacy = await createHousehold(accounts.store, 'The legacy household', 'Legacy roommate')
+  const current = await createHousehold(accounts.store, 'The current household', 'Current roommate')
   const currentKitchen = savedKitchen(current)
   await page.addInitScript(({ oldKitchen, currentKitchen }) => {
     localStorage.setItem('coldshare.session', oldKitchen.token)
@@ -262,10 +261,9 @@ test('Roomlings sessions take precedence over retained legacy browser storage', 
   await page.goto('/kitchen')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(current.token)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([{ ...currentKitchen, demo: true }])
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([currentKitchen])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(legacy.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([savedKitchen(legacy)])
-  expect(await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))).toBe(current.token)
 })
 
 test('landing branding keeps accessible links and fits phones, the icon breakpoint and landscape', async ({ page }) => {
@@ -336,9 +334,9 @@ test('the favicon uses the flat mark and both landing wordmarks are real outline
   expect(outlined.viewBox![2]).toBeGreaterThan(outlined.viewBox![3])
 })
 
-test('the in-app brand stays compact, accessible and unclipped after orientation changes', async ({ page, request }) => {
+test('the in-app brand stays compact, accessible and unclipped after orientation changes', async ({ page, accounts }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await restoreKitchen(page, await sampleSession(request))
+  await restoreKitchen(page, await createHousehold(accounts.store, 'The branded household', 'You'))
   await page.goto('/kitchen')
   const brand = page.locator('.game-hud .brand')
   await expect(brand).toHaveRole('link')
@@ -363,15 +361,14 @@ test('the in-app brand stays compact, accessible and unclipped after orientation
 for (const module of ['App', 'Welcome', 'KitchenWorld', 'BathroomWorld'] as const) {
   test(`the ${module} lazy boundary shows only the 2D scene loader until its import resolves`,
     module === 'KitchenWorld' || module === 'BathroomWorld' ? { tag: '@room' } : {},
-    async ({ page, request }) => {
+    async ({ page, accounts }) => {
       await page.emulateMedia({ reducedMotion: 'reduce' })
       if (module !== 'Welcome') {
-        const session = await sampleSession(request)
-        if (module === 'BathroomWorld') await page.addInitScript((token) => localStorage.setItem('roomlings.sample-session', token), session.token)
-        else await restoreKitchen(page, session)
+        const session = await createHousehold(accounts.store, 'The lazy household', 'You')
+        await restoreKitchen(page, session)
       }
       const pending = await pauseRequest(page, `**/{${module}.tsx*,${module}-*.js}`)
-      await page.goto(module === 'Welcome' ? '/' : module === 'BathroomWorld' ? '/sample/bathroom' : '/kitchen', { waitUntil: 'commit' })
+      await page.goto(module === 'Welcome' ? '/' : module === 'BathroomWorld' ? '/rooms/bathroom' : '/kitchen', { waitUntil: 'commit' })
       const route = await pending.pending
       const status = page.locator('.scene-loading[role="status"]')
       await expect(status).toHaveText(module === 'KitchenWorld' ? 'Opening the kitchen...' : module === 'BathroomWorld' ? 'Opening the bathroom...' : 'Opening Roomlings...')
@@ -381,7 +378,7 @@ for (const module of ['App', 'Welcome', 'KitchenWorld', 'BathroomWorld'] as cons
       if (module === 'Welcome') {
         await expect(page.getByRole('heading', { level: 1 })).toContainText('Share a home.')
       } else {
-        await expect(page.locator('.game-house')).toContainText('The Sunday House')
+        await expect(page.locator('.game-house')).toContainText('The lazy household')
       }
       await expect(page.locator('.scene-loading')).toHaveCount(0)
       if (module === 'KitchenWorld' || module === 'BathroomWorld') await expect(page.locator('.world-canvas canvas')).toBeVisible()
@@ -395,7 +392,7 @@ test('the pending kitchen tour obeys its own reduced-motion toggle without chang
   await page.goto('/welcome', { waitUntil: 'commit' })
   await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
   const route = await pending.pending
-  const status = page.locator('.welcome-scene-status[role="status"]')
+  const status = page.locator('.welcome-explore-loading[role="status"]')
   const loader = status.locator('img.roomlings-loader')
   await expectLoader(loader)
   const loadingText = await status.innerText()
@@ -416,7 +413,7 @@ test('the pending kitchen tour obeys its own reduced-motion toggle without chang
   await expect(status.locator('img.roomlings-loader')).toHaveCount(0)
 })
 
-accountTest('an initial account check announces loading before exposing the sign-in form', async ({ page }) => {
+test('an initial account check announces loading before exposing the sign-in form', async ({ page }) => {
   const pending = await holdApiRequests(page, '**/api/account')
   await page.goto('/#account', { waitUntil: 'commit' })
   await pending.pending
@@ -431,7 +428,7 @@ accountTest('an initial account check announces loading before exposing the sign
   await expect(dialog.getByLabel('Email address', { exact: true })).toBeVisible()
 })
 
-accountTest('account and primary-button loaders follow real requests, preserve retries and animate only their thresholds', async ({ page }) => {
+test('account and primary-button loaders follow real requests, preserve retries and animate only their thresholds', async ({ page }) => {
   const initial = await holdApiRequests(page, '**/api/account')
   await page.goto('/rooms/kitchen', { waitUntil: 'commit' })
   await initial.pending
@@ -486,8 +483,8 @@ accountTest('account and primary-button loaders follow real requests, preserve r
   await expectSvgMotion(page, lightMarkup, 'light')
 })
 
-test('browser-access loading and refresh icons recover from failure without pretending a refresh succeeded', async ({ page, request }) => {
-  await restoreKitchen(page, await createHousehold(request, 'The branding access home', 'Robin'))
+test('browser-access loading and refresh icons recover from failure without pretending a refresh succeeded', async ({ page, accounts }) => {
+  await restoreKitchen(page, await createHousehold(accounts.store, 'The branding access home', 'Robin'))
   await page.goto('/kitchen')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
   const initial = await holdApiRequests(page, '**/api/access')
@@ -527,8 +524,8 @@ test('browser-access loading and refresh icons recover from failure without pret
   await expect(refresh.locator('svg')).toBeVisible()
 })
 
-test('a pending grocery save uses the 2D loader and keeps the draft and retry on failure', async ({ page, request }) => {
-  await restoreKitchen(page, await createHousehold(request, 'The branding grocery home', 'Robin'))
+test('a pending grocery save uses the 2D loader and keeps the draft and retry on failure', async ({ page, accounts }) => {
+  await restoreKitchen(page, await createHousehold(accounts.store, 'The branding grocery home', 'Robin'))
   await page.goto('/kitchen')
   await openGroceryForm(page)
   const dialog = page.getByRole('dialog')

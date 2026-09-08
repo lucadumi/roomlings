@@ -2,17 +2,19 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Home } from 'lucide-react'
 import { currencies, parseMoney } from '../shared/domain.ts'
+import type { Household } from '../shared/domain.ts'
 import { Form } from './components.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { LoadingIcon } from './Branding.tsx'
 
-export function CreateKitchenForm({ busy, error, onSubmit, initialMemberName = '' }: {
+export function CreateKitchenForm({ busy, error, onSubmit, initialMemberName = '', initialValues }: {
   busy: boolean; error: ReactNode; onSubmit: (body: Record<string, unknown>) => void; initialMemberName?: string
+  initialValues?: Pick<Household, 'name' | 'currency' | 'budget'> & { memberName: string }
 }) {
-  const [name, setName] = useState('')
-  const [memberName, setMemberName] = useState(initialMemberName)
-  const [currency, setCurrency] = useState('EUR')
-  const [budget, setBudget] = useState('450')
+  const [name, setName] = useState(initialValues?.name ?? '')
+  const [memberName, setMemberName] = useState(initialValues?.memberName ?? initialMemberName)
+  const [currency, setCurrency] = useState<string>(initialValues?.currency ?? 'EUR')
+  const [budget, setBudget] = useState(initialValues ? (initialValues.budget / 100).toFixed(2) : '450')
   const [localError, setLocalError] = useState('')
   return <Form onSubmit={() => { const amount = parseMoney(budget); if (!amount) { setLocalError('Enter a positive monthly budget.'); return }; setLocalError(''); onSubmit({ name, memberName, currency, budget: amount }) }}>
     <label className="field">What do you call home?<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. The Sunday House" disabled={busy} /></label>

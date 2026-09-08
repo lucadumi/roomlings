@@ -1,8 +1,8 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
-test('the original Fraunces and DM Sans fonts load throughout while inputs remain responsive', async ({ page }) => {
+test('the original Fraunces and DM Sans fonts load throughout while inputs remain responsive', async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/')
   await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('font-family', /Fraunces Variable/)
@@ -13,7 +13,7 @@ test('the original Fraunces and DM Sans fonts load throughout while inputs remai
     return [...document.fonts].filter((font) => font.status === 'loaded').map((font) => font.family.replaceAll('"', '').replaceAll("'", ''))
   })
   expect(loaded).toEqual(expect.arrayContaining(['DM Sans Variable', 'Fraunces Variable']))
-  await page.goto('/sample/kitchen')
+  await page.goto('/kitchen')
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await page.evaluate(() => document.fonts.ready)
   const heading = page.locator('.room-panel-header h2')

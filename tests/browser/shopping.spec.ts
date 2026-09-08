@@ -1,9 +1,11 @@
-import { expect, test } from '@playwright/test'
+import { expect, test } from './account-fixtures.ts'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { householdSchema } from '../../shared/domain.ts'
 import type { Session, ShoppingItem } from '../../shared/domain.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { chooseOption, createHousehold, openShoppingBag, savedKitchen } from './fixtures.ts'
+
+test.use({ providerEnabled: false })
 
 async function current(request: APIRequestContext, token: string) {
   const response = await request.get('/api/household', { headers: { Authorization: `Bearer ${token}` } })
@@ -63,7 +65,7 @@ async function openCheckout(page: Page) {
 test.describe('shared shopping', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('plans without debts, checks out selected items once and keeps an archive after receipt removal', async ({ page, request }) => {
+  test('plans without debts, checks out selected items once and keeps an archive after receipt removal', async ({ page, request, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     const pot = page.locator('.fund-trigger strong')
     const share = page.locator('.game-balance strong')
@@ -127,8 +129,8 @@ test.describe('shared shopping', () => {
     await expect(page.locator('.shopping-run')).toHaveCount(1)
   })
 
-  test('shows competing claims and protects a draft from a background item edit', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'A shared list', 'Charlie')
+  test('shows competing claims and protects a draft from a background item edit', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'A shared list', 'Charlie')
     const joined = await request.post('/api/join', { data: { inviteCode: owner.household.inviteCode, name: 'Dana' } })
     const roommate = sessionSchema.parse(await joined.json())
     const item = await seedItem(request, owner)
@@ -137,7 +139,7 @@ test.describe('shared shopping', () => {
     await openShoppingBag(page)
     await page.route(`**/api/shopping/items/${item.id}/claim`, async (route) => {
       await change(request, roommate, `/shopping/items/${item.id}/claim`, { claimed: true, itemVersion: item.version })
-      await route.continue()
+      await route.fallback()
     })
     await page.getByRole('button', { name: 'Claim Milk', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('changed the kitchen')
@@ -164,8 +166,8 @@ test.describe('shared shopping', () => {
     expect((await current(request, owner.token)).expenses).toHaveLength(0)
   })
 
-  test('retains the basket, receipt draft and checkout key after a failed save', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The retry basket', 'Charlie')
+  test('retains the basket, receipt draft and checkout key after a failed save', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The retry basket', 'Charlie')
     await seedItem(request, owner, true)
     await restore(page, owner)
     await page.goto('/kitchen')
@@ -195,8 +197,8 @@ test.describe('shared shopping', () => {
     expect(saved.shopping.items).toHaveLength(0)
   })
 
-  test('reconciles a lost successful response without creating another receipt', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'A receipt saved once', 'Charlie')
+  test('reconciles a lost successful response without creating another receipt', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'A receipt saved once', 'Charlie')
     await seedItem(request, owner, true)
     await restore(page, owner)
     await page.goto('/kitchen')
@@ -220,8 +222,8 @@ test.describe('shared shopping', () => {
     expect(state.shopping.runs).toHaveLength(1)
   })
 
-  test('requires reviewing changed basket contents while preserving the entered total', async ({ page, request }) => {
-    const owner = await createHousehold(request, 'The updated basket', 'Charlie')
+  test('requires reviewing changed basket contents while preserving the entered total', async ({ page, accounts, request }) => {
+    const owner = await createHousehold(accounts.store, 'The updated basket', 'Charlie')
     const item = await seedItem(request, owner, true)
     await restore(page, owner)
     await page.goto('/kitchen')
@@ -242,7 +244,7 @@ test.describe('shared shopping', () => {
     expect((await current(request, owner.token)).shopping.runs[0].items[0].quantity).toBe('4 cartons')
   })
 
-  test('keeps small-screen list controls and notes usable without WebGL', async ({ page }) => {
+  test('keeps small-screen list controls and notes usable without WebGL', async ({ page, emptyHousehold: _household }) => {
     await page.setViewportSize({ width: 320, height: 568 })
     await page.addInitScript(() => {
       const original = HTMLCanvasElement.prototype.getContext

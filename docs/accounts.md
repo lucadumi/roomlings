@@ -11,7 +11,9 @@ Supabase Auth verifies email codes. Roomlings keeps its own server-validated ses
 5. Set `APP_ORIGIN=http://localhost:5173` for review, or an HTTPS origin for production. Configure reverse proxies deliberately rather than trusting arbitrary forwarded IP headers.
 6. Restart the API and request a fresh code through sign-in. Template changes apply only to new emails.
 
-Without provider configuration, local sample kitchens and browser recovery still work; email sign-in reports that setup is required. Partial configuration fails explicitly. Production refuses to start without complete account configuration and an HTTPS origin.
+Without provider configuration, browser-only kitchens and browser recovery still work; email sign-in reports that setup is required. Partial configuration fails explicitly. Production refuses to start without complete account configuration and an HTTPS origin.
+
+Provider configuration and gateway failures report that email sign-in is unavailable, rather than incorrectly asking for a different email code. Invalid or expired email codes still require a fresh code.
 
 ### Sender and template
 
@@ -34,9 +36,11 @@ Account recovery codes provide another way to sign in when email delivery or mai
 
 Generating, replacing or revoking codes requires a sign-in within the previous ten minutes. A successful email or recovery-code sign-in provides that recent proof. If asked to sign in again, return to the recovery-code settings and confirm the change yourself; the app does not automatically repeat it.
 
-Each code can create only one account session. Code consumption and session creation are one transaction, including concurrent requests. Only hashes are stored on the server, and neither the code list nor a pasted recovery code is put in URLs, localStorage or sessionStorage. Status requests return only the remaining count and the set's version and update time.
+Each code can create only one account session. Code consumption, session creation and preparation of the signed-in account state share one transaction, including concurrent requests. A server failure before that transaction commits leaves the code unused. A response lost after commit does not undo consumption; check whether this browser is signed in before trying another unused code.
 
-Recovery preserves the existing account, profile, active memberships and ledger. Other sessions remain signed in. Signing out all devices does not revoke unused account recovery codes; replace or revoke those separately if they may have been exposed. Account deletion disables the codes immediately, even if provider deletion is still pending. A recovery code cannot restore a removed household membership.
+Only hashes are stored on the server, and neither the code list nor a pasted recovery code is put in URLs, localStorage or sessionStorage. Status requests return only the remaining count and the set's version and update time.
+
+Recovery preserves the existing account, profile, active memberships and ledger. Other browsers remain signed in; recovery replaces only this browser's current account session, if any. Signing out all devices does not revoke unused account recovery codes; replace or revoke those separately if they may have been exposed. Account deletion disables the codes immediately, even if provider deletion is still pending. A recovery code cannot restore a removed household membership.
 
 Existing Postgres deployments need the explicit schema upgrade in the [storage guide](storage.md) before running this version. SQLite adds the recovery tables on startup without rewriting existing accounts or household JSON.
 
@@ -48,16 +52,27 @@ Saved browser kitchens are shortcuts, not proof of current access. When the serv
 
 Browser-only recovery requires the private kitchen code saved before browser access was lost. Signing in to an account, with either email or an account recovery code, restores that identity only if it was already linked to the account. Neither a matching name nor a kitchen invitation proves ownership of an old browser identity. The two kinds of recovery code are not interchangeable.
 
-Older sample shortcuts are identified only after the server confirms that the household is a sample, never by its name. Confirmed samples are excluded from personal-kitchen and account-linking lists. Opening an older sample uses its existing access on the sample route without replacing a personal session or account preference.
+Households previously stored with the retired example marker remain unchanged in storage, but their old browser sessions, recovery codes, invitations and account memberships no longer grant access. They are never converted into real kitchens or linkable account identities. Legitimate older kitchens stored with the original false marker remain readable and can continue normally.
 
-The original creator remains owner; linking an account does not transfer ownership. One account can join several kitchens, but cannot claim two members in the same kitchen.
+The original creator remains owner; linking an account does not transfer ownership. One account supports up to 50 active kitchens, but cannot claim two members in the same kitchen. The limit applies equally to creation, invitation acceptance and linking existing browser access. A kitchen already linked to the account can still be reopened at the limit.
+
+### Creation retries
+
+`POST /api/account/households` accepts an optional `requestId` UUID alongside `name`, `memberName`, `currency` and `budget`. Keep the same ID and details when retrying an interrupted creation, including after signing in again. Successful retries return the current account state with the original kitchen selected, without creating another kitchen or overwriting later edits.
+
+Use a new ID for an intentional separate creation, including another home with the same name. Reusing an ID with different normalized details returns `409 ACCOUNT_CREATION_CONFLICT`. Current membership is checked again, so a retry cannot restore removed access or transferred ownership. Requests without an ID retain the original creation behavior.
+
+The creation receipt is saved atomically with the kitchen and membership, survives restarts and ordinary household saves, and is not part of public ledger responses. This requires no new SQL schema version.
+
+### Invitations
 
 Account-managed invitations last seven days and reveal their secret only when created. Owners can revoke them. Recipients sign in before accepting; reopening an accepted invitation does not add another roommate. Old browser invitation codes cannot bypass account-managed access.
 
 ## Sessions and membership
 
-- Account sessions expire after 30 days, or seven days without use. Account settings support device labels, revocation and sign-out on one or all devices.
-- Returning to the public home page or trying a sample does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
+- Account sessions expire after 30 days, or seven days without use. An account supports up to 50 saved browsers. Account settings support device labels, revocation and sign-out on one or all devices.
+- Signing in again rotates this browser's session instead of adding another saved device. It keeps the same account's selected active kitchen; other browsers stay signed in. Failed sign-ins leave the previous session intact.
+- Returning to the public home page does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
 - Signing out all devices also revokes linked browser sessions. Unrelated saved browser identities stay separate.
 - Owners manage invitations, remove access and transfer ownership. All active roommates can edit the shared ledger.
 - Before leaving a kitchen with other members, its owner must transfer ownership.
@@ -72,3 +87,5 @@ Deletion requires email confirmation, a sign-in within the previous ten minutes 
 Deletion removes sign-in identity and access, not shared financial records, debts or names written into descriptions. Export needed ledgers first.
 
 If Supabase deletion fails, access is disabled and deletion remains pending. The server retries at startup and every minute; keep its administrative credential configured until completion. Do not present a queued deletion as successful.
+
+Reloading the browser that requested deletion retains its deletion-only status and **Retry account deletion** action. This exposes no household access, memberships or recovery codes, and does not restore other signed-in devices. The browser can finish the queued deletion without repeating the original ownership handoff.

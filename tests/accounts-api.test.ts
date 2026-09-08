@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../server/app.ts'
 import { Store } from '../server/store.ts'
+import { SQLiteDatabase } from '../server/database.ts'
 import { ApiError } from '../server/errors.ts'
 import { retryAccountDeletions } from '../server/accounts-api.ts'
 import type { AccountProvider } from '../server/provider.ts'
@@ -46,7 +47,8 @@ afterEach(async () => {
 
 async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
   let time = Date.now()
-  const store = new Store(':memory:', { now: () => time })
+  const database = new SQLiteDatabase(':memory:')
+  const store = new Store(database, { now: () => time })
   const provider = new TestProvider()
   const server = createApp(store, { provider: configured ? provider : undefined, appOrigin, allowLocalDevelopment: true }).listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -108,7 +110,7 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
       },
     }
   }
-  return { store, provider, call, browser, advance(ms: number) { time += ms } }
+  return { store, database, provider, call, browser, advance(ms: number) { time += ms } }
 }
 
 async function secondLegacy(store: Store, first: Session, name = 'Ben') {
@@ -121,7 +123,7 @@ async function secondLegacy(store: Store, first: Session, name = 'Ben') {
 }
 
 describe('verified account HTTP lifecycle', () => {
-  it('keeps unconfigured/private legacy creation and demo access working while public auth fails clearly', async () => {
+  it('keeps unconfigured browser-only creation working while public auth fails clearly', async () => {
     const f = await fixture(false)
     const state = await f.call('/account')
     assert.deepEqual(accountStateSchema.parse(state.data), { configured: false, account: null, memberships: [], devices: [], csrfToken: null, session: null })
@@ -130,7 +132,7 @@ describe('verified account HTTP lifecycle', () => {
     const legacy = await f.call('/households', { name: 'Private kitchen', memberName: 'Ada', currency: 'EUR', budget: 10000 })
     assert.equal(legacy.status, 201)
     assert.equal((await f.call('/household', undefined, { token: legacy.data.token })).status, 200)
-    assert.equal((await f.call('/demo', {})).status, 201)
+    assert.equal((await f.call('/demo', {})).status, 404)
   })
 
   it('normalizes verified emails, uses opaque HttpOnly cookies, and never overwrites a returning profile', async () => {
@@ -160,6 +162,60 @@ describe('verified account HTTP lifecycle', () => {
     const secure = await fixture(true, 'https://roomlings.example')
     const login = await secure.browser().request('/account/verify', { email: 'a@example.com', code: '123456', name: 'A' })
     assert.match(login.response.headers.get('set-cookie')!, /; Secure/)
+  })
+
+  it('rotates the current browser on reauthentication without losing its kitchen or other devices', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com', 'Ada')
+    await browser.create('First kitchen')
+    const selected = await browser.create('Selected kitchen')
+    const other = f.browser()
+    await other.signIn('ada@example.com')
+    const previousCookie = browser.cookie
+    f.advance(accountReauthLifetime + 1)
+    const refreshed = await browser.signIn('ada@example.com')
+    assert.notEqual(browser.cookie, previousCookie)
+    assert.equal(refreshed.devices.length, 2)
+    assert.equal(refreshed.session?.household.id, selected.session?.household.id)
+    assert.equal((await f.call('/account', undefined, { cookie: previousCookie })).data.account, null)
+    assert.equal((await other.state()).account?.id, selected.account?.id)
+
+    const generated = accountRecoveryResultSchema.parse((await browser.request('/account/recovery', { version: 0 })).data)
+    const emailCookie = browser.cookie
+    const recovered = await browser.request('/account/recover', {
+      email: 'ada@example.com', code: generated.codes[0], label: 'Reauthenticated browser',
+    })
+    assert.equal(recovered.status, 200)
+    const recoveredState = accountStateSchema.parse(recovered.data)
+    assert.equal(recoveredState.devices.length, 2)
+    assert.equal(recoveredState.session?.household.id, selected.session?.household.id)
+    assert.equal((await f.call('/account', undefined, { cookie: emailCookie })).data.account, null)
+    assert.equal((await browser.request('/account/recovery')).data.remaining, 9)
+
+    const switched = await browser.signIn('ben@example.com', 'Ben')
+    assert.notEqual(switched.account?.id, selected.account?.id)
+    assert.equal(switched.memberships.length, 0)
+    assert.equal(switched.session, null)
+    assert.equal((await other.state()).devices.length, 1)
+  })
+
+  it('allows the current browser to reauthenticate at the saved-browser limit', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com', 'Ada')
+    const identity = { providerId: f.provider.ids.get('ada@example.com')!, email: 'ada@example.com' }
+    for (let index = 1; index < 50; index++) await f.store.accounts.signIn(identity, 'Ada', `Other browser ${index}`)
+    const refreshed = await browser.signIn('ada@example.com')
+    assert.equal(refreshed.devices.length, 50)
+    const newBrowser = await f.call('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' })
+    assert.equal(newBrowser.status, 409)
+    assert.equal((await browser.state()).account?.id, refreshed.account?.id)
+    const otherAccount = f.browser()
+    const otherState = await otherAccount.signIn('ben@example.com', 'Ben')
+    const failedSwitch = await otherAccount.request('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' })
+    assert.equal(failedSwitch.status, 409)
+    assert.equal((await otherAccount.state()).account?.id, otherState.account?.id)
   })
 
   it('blocks login CSRF, cookie mutations without CSRF, cross-origin requests, and forged bearer fallback', async () => {
@@ -212,6 +268,17 @@ describe('verified account HTTP lifecycle', () => {
     assert.equal(mismatch.response.headers.get('set-cookie'), null)
   })
 
+  it('does not retain an undelivered sign-in session when loading its response fails', async (t) => {
+    const f = await fixture()
+    const failure = t.mock.method(f.store.accounts, 'state', async () => { throw new Error('Simulated account response failure') })
+    const failed = await f.call('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' })
+    assert.equal(failed.status, 500)
+    assert.equal(failed.response.headers.get('set-cookie'), null)
+    failure.mock.restore()
+    const state = await f.browser().signIn('ada@example.com')
+    assert.equal(state.devices.length, 1)
+  })
+
   it('expires idle and absolute sessions, clears expired cookies, and supports current/all-device logout', async () => {
     const f = await fixture()
     const browser = f.browser()
@@ -246,11 +313,11 @@ describe('verified account HTTP lifecycle', () => {
     assert.ok((await stranger.state()).account)
   })
 
-  it('requires account creation/joining publicly, keeps demos public, and isolates explicit household headers', async () => {
+  it('requires account creation and joining publicly, removes demos, and isolates explicit household headers', async () => {
     const f = await fixture()
     assert.equal((await f.call('/households', { name: 'Public', memberName: 'Ada', currency: 'EUR', budget: 30000 })).status, 401)
     assert.equal((await f.call('/join', { inviteCode: 'old-invite', name: 'Ada' })).status, 401)
-    assert.equal((await f.call('/demo', {})).status, 201)
+    assert.equal((await f.call('/demo', {})).status, 404)
     const browser = f.browser()
     await browser.signIn('ada@example.com')
     const first = (await browser.create('First')).session!
@@ -269,6 +336,104 @@ describe('verified account HTTP lifecycle', () => {
     await stranger.signIn('stranger@example.com')
     assert.equal((await stranger.request(`/account/households/${first.household.id}`)).status, 403)
     assert.equal((await stranger.request('/household', undefined, { householdId: first.household.id })).status, 403)
+  })
+})
+
+describe('idempotent account kitchen creation', () => {
+  const creation = () => ({
+    requestId: randomUUID(), name: 'Our kitchen', memberName: 'Ada', currency: 'EUR' as const, budget: 30000,
+  })
+
+  it('replays an interrupted or concurrent creation without creating another household or overwriting later changes', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com', 'Ada')
+    const input = creation()
+    const attempts = await Promise.all([
+      browser.request('/account/households', input), browser.request('/account/households', input),
+    ])
+    assert.deepEqual(attempts.map((attempt) => attempt.status), [201, 201])
+    const first = accountStateSchema.parse(attempts[0].data)
+    const second = accountStateSchema.parse(attempts[1].data)
+    assert.equal(first.session?.household.id, second.session?.household.id)
+    assert.equal((await browser.state()).memberships.length, 1)
+    const household = first.session!.household
+    household.name = 'Renamed after creation'
+    household.budget = 40000
+    household.version++
+    await f.store.save(household)
+    const replay = await browser.request('/account/households', input)
+    assert.equal(replay.status, 201)
+    assert.equal(replay.data.session.household.id, household.id)
+    assert.equal(replay.data.session.household.name, household.name)
+    assert.equal(replay.data.session.household.version, household.version)
+    const changed = await browser.request('/account/households', { ...input, budget: input.budget + 1 })
+    assert.equal(changed.status, 409)
+    assert.equal(changed.data.code, 'ACCOUNT_CREATION_CONFLICT')
+    assert.equal((await browser.state()).memberships.length, 1)
+  })
+
+  it('keeps separate same-named creations and another account using the same request identifier independent', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com', 'Ada')
+    const input = creation()
+    const first = await browser.request('/account/households', input)
+    const second = await browser.request('/account/households', { ...input, requestId: randomUUID() })
+    const { requestId: _requestId, ...legacy } = input
+    const unkeyed = await browser.request('/account/households', legacy)
+    assert.equal((await browser.state()).memberships.length, 3)
+    assert.equal(new Set([first, second, unkeyed].map((result) => result.data.session.household.id)).size, 3)
+    const other = f.browser()
+    await other.signIn('ben@example.com', 'Ben')
+    const invitation = await browser.invite(accountStateSchema.parse(first.data).session!.household)
+    assert.equal((await other.request('/account/invitations/accept', { code: invitation.code, memberName: 'Ben' })).status, 200)
+    const independent = await other.request('/account/households', input)
+    assert.equal(independent.status, 201)
+    const state = accountStateSchema.parse(independent.data)
+    assert.equal(state.memberships.length, 2)
+    assert.notEqual(state.session?.household.id, first.data.session.household.id)
+    assert.equal(state.memberships.find((membership) => membership.householdId === state.session?.household.id)?.role, 'owner')
+  })
+
+  it('never restores transferred ownership or removed membership when replaying a creation', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com', 'Ada')
+    const input = creation()
+    const created = accountStateSchema.parse((await browser.request('/account/households', input)).data)
+    const initial = created.session!
+    const invitation = await browser.invite(initial.household)
+    const other = f.browser()
+    await other.signIn('ben@example.com', 'Ben')
+    const joined = accountStateSchema.parse((await other.request('/account/invitations/accept', {
+      code: invitation.code, memberName: 'Ben',
+    })).data)
+    const transfer = await browser.request(`/account/households/${initial.household.id}/owner`, {
+      version: joined.session!.household.version, memberId: joined.session!.memberId,
+    })
+    assert.equal(transfer.status, 200)
+    const replay = await browser.request('/account/households', input)
+    assert.equal(replay.status, 201)
+    assert.equal(replay.data.memberships[0].role, 'member')
+    const removed = await other.request(`/account/households/${initial.household.id}/members/${initial.memberId}`, {
+      version: replay.data.session.household.version,
+    }, { method: 'DELETE' })
+    assert.equal(removed.status, 200)
+    assert.equal((await browser.request('/account/households', input)).status, 403)
+    assert.equal((await browser.state()).memberships.length, 0)
+    assert.equal((await f.call('/account/households', input)).status, 401)
+    assert.equal((await other.state()).memberships.length, 1)
+  })
+
+  it('validates creation identifiers without weakening cookie or CSRF requirements', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const input = creation()
+    assert.equal((await browser.request('/account/households', { ...input, requestId: 'not-a-uuid' })).status, 400)
+    assert.equal((await browser.request('/account/households', input, { csrf: '' })).status, 403)
+    assert.equal((await browser.state()).memberships.length, 0)
   })
 })
 
@@ -347,6 +512,27 @@ describe('account recovery HTTP lifecycle', () => {
     assert.deepEqual(attempts.map((result) => result.status).sort(), [200, 401])
     assert.equal((await owner.request('/account/recovery')).data.remaining, 9)
     assert.equal((await owner.state()).devices.length, 2)
+  })
+
+  it('preserves a recovery code for retry if preparing the signed-in response fails', async (t) => {
+    const f = await fixture()
+    const owner = f.browser()
+    await owner.signIn('ada@example.com')
+    const generated = accountRecoveryResultSchema.parse((await owner.request('/account/recovery', { version: 0 })).data)
+    const input = { email: 'ada@example.com', code: generated.codes[0], label: 'Recovered browser' }
+    const failure = t.mock.method(f.store.accounts, 'state', async () => { throw new Error('Simulated account response failure') })
+    const previousCookie = owner.cookie
+    const failed = await owner.request('/account/recover', input)
+    assert.equal(failed.status, 500)
+    assert.equal(failed.response.headers.get('set-cookie'), null)
+    failure.mock.restore()
+    assert.equal(owner.cookie, previousCookie)
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 10)
+    assert.equal((await owner.state()).devices.length, 1)
+    const retried = await f.call('/account/recover', input)
+    assert.equal(retried.status, 200)
+    assert.equal(accountStateSchema.parse(retried.data).devices.length, 2)
+    assert.equal((await owner.request('/account/recovery')).data.remaining, 9)
   })
 
   it('rate-limits recovery attempts independently of the email fallback without using valid codes', async () => {
@@ -433,10 +619,20 @@ describe('account invitations and membership lifecycle', () => {
     assert.equal((await ben.request('/account/link', { token: first.token })).status, 409)
     const third = (await secondLegacy(f.store, first, 'Charlie'))
     assert.equal((await ada.request('/account/link', { token: third.token })).status, 409)
-    const demo = (await f.store.create('Practice', 'You', 'EUR', 30000, true))
-    const sample = await ada.request('/account/link', { token: demo.token })
-    assert.equal(sample.status, 400)
-    assert.equal(sample.data.code, 'SAMPLE_KITCHEN')
+    const retired = await f.store.create('Retired example', 'You', 'EUR', 30000)
+    const retiredSession = await f.store.authenticate(retired.token)
+    assert.ok(retiredSession)
+    const retiredRecovery = await f.store.rotateRecovery(retiredSession, { version: 0, revokeOthers: false })
+    assert.ok(retiredRecovery && retiredRecovery !== 'conflict')
+    const retiredState = JSON.stringify({ ...retired.household, demo: true })
+    await f.database.prepare('UPDATE households SET state = ? WHERE id = ?').run(retiredState, retired.household.id)
+    const retiredBrowser = await ada.request('/account/link', { token: retired.token })
+    assert.equal(retiredBrowser.status, 401)
+    assert.equal(retiredBrowser.data.code, 'BROWSER_ACCESS_EXPIRED')
+    const retiredCode = await ada.request('/account/link', { recoveryCode: retiredRecovery.code })
+    assert.equal(retiredCode.status, 401)
+    assert.equal(retiredCode.data.code, 'INVALID_RECOVERY_CODE')
+    assert.equal((await f.database.prepare('SELECT state FROM households WHERE id = ?').get(retired.household.id))?.state, retiredState)
     const invalidBrowser = await ada.request('/account/link', { token: 'invalid-proof-123456789' })
     assert.equal(invalidBrowser.status, 401)
     assert.equal(invalidBrowser.data.code, 'BROWSER_ACCESS_EXPIRED')
@@ -632,6 +828,27 @@ describe('account invitations and membership lifecycle', () => {
 })
 
 describe('account deletion and durable retry', () => {
+  it('keeps scheduled deletion retries alive after a transient queue lookup failure', async (t) => {
+    const f = await fixture()
+    const owner = await f.store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Laptop')
+    await f.store.accounts.beginDeletion(owner.session, 'ada@example.com')
+    const pending = f.store.accounts.pendingDeletions.bind(f.store.accounts)
+    let attempts = 0
+    t.mock.method(f.store.accounts, 'pendingDeletions', async () => {
+      if (attempts++ === 0) throw new Error('Private database connection detail')
+      return pending()
+    })
+    const logged = t.mock.method(console, 'error', () => {})
+    await assert.doesNotReject(retryAccountDeletions(f.store, f.provider))
+    assert.equal(f.provider.deleted.length, 0)
+    assert.equal((await pending()).length, 1)
+    assert.equal(logged.mock.calls.length, 1)
+    assert.ok(!JSON.stringify(logged.mock.calls).includes('Private database connection detail'))
+    await retryAccountDeletions(f.store, f.provider)
+    assert.equal((await pending()).length, 0)
+    assert.equal(await f.store.accounts.authenticate(owner.token), null)
+  })
+
   it('retains shared outstanding debts and historical bill schedules when a nonowner deletes their account', async () => {
     const f = await fixture()
     const owner = f.browser()
@@ -763,7 +980,16 @@ describe('account deletion and durable retry', () => {
     assert.equal((await other.state()).account, null)
     assert.equal((await browser.request('/household')).status, 409)
     assert.equal((await browser.request('/account', { name: 'Not allowed' }, { method: 'PATCH' })).status, 409)
-    assert.equal((await browser.request('/account')).status, 409)
+    const pending = await browser.request('/account')
+    assert.equal(pending.status, 200)
+    const pendingState = accountStateSchema.parse(pending.data)
+    assert.equal(pendingState.deletionPending, true)
+    assert.equal(pendingState.account?.email, 'ada@example.com')
+    assert.deepEqual(pendingState.memberships, [])
+    assert.equal(pendingState.session, null)
+    assert.equal(pendingState.devices.length, 1)
+    assert.equal(pendingState.devices[0].current, true)
+    assert.ok(pendingState.csrfToken)
     assert.equal((await browser.request('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' })).status, 409)
     assert.equal((await f.store.accounts.pendingDeletions()).length, 1)
     f.provider.failDelete = false

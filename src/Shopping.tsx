@@ -6,7 +6,7 @@ import {
 } from '../shared/domain.ts'
 import type { Household, ShoppingItem, ShoppingItemInput } from '../shared/domain.ts'
 import { canEditShoppingItem, checkoutItems, inBasket, normalizeShoppingName } from '../shared/shopping.ts'
-import { Form } from './components.tsx'
+import { DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { ExpenseForm } from './ExpenseForm.tsx'
 import { dateTitle } from './format.ts'
@@ -111,13 +111,10 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
     <label className="field">Notes<textarea maxLength={240} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={busy} placeholder="Brand, preference or anything useful" /></label>
     {blocked && <p className="form-error" role="alert">This item left the list, is in a basket, or is being handled by another roommate. Close this form and review the list.</p>}
     {duplicate && <p className="field-hint">This supply is already on the shared list. Review its existing quantity instead of adding it again.</p>}
-    {!blocked && changed && latest && <div className="shopping-conflict">
-      <p role="alert">This item changed. Latest: {latest.quantity} {latest.name}{latest.notes ? `, ${latest.notes}` : ''}.</p>
-      <div className="button-row">
-        <button type="button" className="text-button" onClick={() => { setName(latest.name); setQuantity(latest.quantity); setNotes(latest.notes); setBaseVersion(latest.version); setLocalError('') }}>Use latest values</button>
-        <button type="button" className="text-button" onClick={() => { setBaseVersion(latest.version); setLocalError('') }}>Keep my draft</button>
-      </div>
-    </div>}
+    {!blocked && changed && latest && <DraftConflict
+      onLatest={() => { setName(latest.name); setQuantity(latest.quantity); setNotes(latest.notes); setBaseVersion(latest.version); setLocalError('') }}
+      onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
+    >This item changed. Latest: {latest.quantity} {latest.name}{latest.notes ? `, ${latest.notes}` : ''}.</DraftConflict>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
     <button className="button primary full" disabled={busy || blocked || changed || duplicate}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
   </Form>

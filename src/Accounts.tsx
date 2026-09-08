@@ -4,10 +4,10 @@ import { Check, Home, KeyRound, LogOut, Mail, Plus, RefreshCw, Users } from 'luc
 import { z } from 'zod'
 import {
   acceptAccountInvitationSchema, accountInvitationResultSchema, accountRecoveryResultSchema, accountRecoveryStateSchema, accountStateSchema,
-  deleteAccountSchema, householdAccessSchema, linkAccountSchema,
+  createAccountHouseholdSchema, deleteAccountSchema, householdAccessSchema, linkAccountSchema,
   sendAccountCodeSchema, verifyAccountCodeSchema,
 } from '../shared/accounts.ts'
-import type { AccountRecoveryState, AccountState, HouseholdAccess } from '../shared/accounts.ts'
+import type { AccountRecoveryState, AccountState, CreateAccountHousehold, HouseholdAccess } from '../shared/accounts.ts'
 import type { Session } from '../shared/domain.ts'
 import { nameSchema } from '../shared/domain.ts'
 import { getAccountState, request, RequestError } from './api.ts'
@@ -32,7 +32,7 @@ const dateTime = (value: string) => new Intl.DateTimeFormat('en-GB', {
 }).format(new Date(value))
 
 function browserKitchens(session: Session | null, saved: SavedKitchen[]): SavedKitchen[] {
-  const current = session && !session.household.demo ? [{
+  const current = session ? [{
     token: session.token, householdId: session.household.id, memberId: session.memberId,
     name: session.household.name,
     memberName: session.household.members.find((member) => member.id === session.memberId)?.name ?? 'Saved roommate',
@@ -67,12 +67,13 @@ export function AccountDialog({
   const [signInEmail, setSignInEmail] = useState('')
   const [recovery, setRecovery] = useState<AccountRecoveryState | null>(null)
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
-  const [pendingDeletion, setPendingDeletion] = useState(false)
+  const [pendingDeletion, setPendingDeletion] = useState(initialState?.deletionPending ?? false)
   const pending = useRef(pendingDeletion)
   const [legacy, setLegacy] = useState(() => browserKitchens(legacySession, savedLegacy))
   const retired = useRef(new Set<string>())
   const mounted = useRef(false)
   const working = useRef(false)
+  const creation = useRef<{ accountId: string; input: CreateAccountHousehold } | null>(null)
   const contextEpoch = useRef(0)
   const latest = useRef(state)
   const change = useRef(onChange)
@@ -84,9 +85,25 @@ export function AccountDialog({
 
   const acceptState = (next: AccountState, kind: AccountChange) => {
     if (!mounted.current) return
+    setPendingDeletion(next.deletionPending ?? false)
+    if (next.deletionPending) {
+      kind = 'deleting'
+      setConfirmation(null)
+      setReauthenticate(false)
+      setRecoverySignIn(false)
+      setRecoveryCodes([])
+      setRecovery(null)
+    }
     const previous = latest.current
     const accountChanged = previous?.account?.id !== next.account?.id
+    if (kind === 'signed-out' || kind === 'deleting' || (next.account && creation.current?.accountId !== next.account.id)) creation.current = null
     const deviceChanged = previous?.devices.find((device) => device.current)?.id !== next.devices.find((device) => device.current)?.id
+    if (accountChanged || !next.account || (access && !next.memberships.some((membership) => membership.householdId === access.household.id))) {
+      setAccess(null)
+      setConfirmation(null)
+      setInviteSecret('')
+      setView(accessIntent)
+    }
     if (!next.account || accountChanged || deviceChanged) setRecoveryCodes([])
     if (!next.account || accountChanged || (kind === 'refresh' && deviceChanged)) setRecovery(null)
     if (previous?.account && (accountChanged || (kind === 'refresh' && deviceChanged))) setView(accessIntent)
@@ -101,8 +118,25 @@ export function AccountDialog({
   }
   useEffect(() => {
     const previous = latest.current
-    if (!initialState || (initialState.account?.id === previous?.account?.id
-      && initialState.devices.find((device) => device.current)?.id === previous?.devices.find((device) => device.current)?.id)) return
+    if (!initialState || initialState === previous) return
+    setPendingDeletion(initialState.deletionPending ?? false)
+    if (initialState.deletionPending) {
+      setConfirmation(null)
+      setRecoveryCodes([])
+      setRecovery(null)
+    }
+    if (initialState.account?.id === previous?.account?.id
+      && initialState.devices.find((device) => device.current)?.id === previous?.devices.find((device) => device.current)?.id) {
+      latest.current = initialState
+      setState(initialState)
+      if (access && !initialState.memberships.some((membership) => membership.householdId === access.household.id)) {
+        setAccess(null)
+        setConfirmation(null)
+        setInviteSecret('')
+        setView(accessIntent)
+      }
+      return
+    }
     contextEpoch.current++
     working.current = false
     latest.current = initialState
@@ -110,6 +144,7 @@ export function AccountDialog({
     setBusy(false)
     setLoading(false)
     setConfirmation(null)
+    setAccess(null)
     setReauthenticate(false)
     setRecoverySignIn(false)
     setSignInEmail('')
@@ -118,7 +153,6 @@ export function AccountDialog({
     setView(accessIntent)
     setInviteSecret('')
     setError('')
-    setPendingDeletion(false)
     if (!initialState.account) {
       setNotice(pending.current
         ? 'Account access has ended. Any queued deletion continues on the server until it succeeds.'
@@ -139,13 +173,26 @@ export function AccountDialog({
     mounted.current = true
     const controller = new AbortController()
     const epoch = contextEpoch.current
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)])
     setLoading(true)
-    getAccountState(AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)])).then((next) => {
+    getAccountState(signal).then(async (next) => {
       if (controller.signal.aborted || contextEpoch.current !== epoch) return
+      const sameAccount = next.account?.id === latest.current?.account?.id
       const ended = pending.current && next.account === null
-      setPendingDeletion(false)
       acceptState(next, ended ? 'signed-out' : 'refresh')
+      if (next.deletionPending) return
       if (ended) { setView('manage'); setError(''); setNotice('Account access has ended. Any queued deletion continues on the server until it succeeds.') }
+      if (sameAccount && next.account && view === 'household' && access
+        && next.memberships.some((membership) => membership.householdId === access.household.id)) {
+        const fresh = householdAccessSchema.parse(await request(`/account/households/${access.household.id}`, { signal }))
+        if (!controller.signal.aborted && contextEpoch.current === epoch) acceptAccess(fresh)
+      } else if (sameAccount && next.account && view === 'recovery') {
+        const fresh = accountRecoveryStateSchema.parse(await request('/account/recovery', { signal }))
+        if (!controller.signal.aborted && contextEpoch.current === epoch) {
+          setRecovery(fresh)
+          setRecoveryCodes([])
+        }
+      }
     }).catch((failure: unknown) => {
       if (controller.signal.aborted || contextEpoch.current !== epoch) return
       setError(failure instanceof Error ? failure.message : 'Account access could not be loaded.')
@@ -154,6 +201,10 @@ export function AccountDialog({
         setRecoveryCodes([])
         setRecovery(null)
         if (latest.current) change.current(latest.current, 'deleting')
+      } else if (failure instanceof RequestError && failure.status === 401 && latest.current) {
+        acceptState({
+          configured: latest.current.configured, account: null, memberships: [], devices: [], csrfToken: null, session: null,
+        }, 'refresh')
       }
     }).finally(() => { if (!controller.signal.aborted && contextEpoch.current === epoch) setLoading(false) })
     return () => { mounted.current = false; controller.abort() }
@@ -188,6 +239,12 @@ export function AccountDialog({
           setConfirmation(null)
           setReauthenticate(true)
           setRecoveryCodes([])
+        } else if (failure instanceof RequestError && (failure.status === 409 || failure.status === 404)) {
+          setConfirmation(null)
+          setInviteSecret('')
+          setRecoveryCodes([])
+          setLoading(true)
+          setRefreshId((value) => value + 1)
         }
       }
       return false
@@ -272,6 +329,7 @@ export function AccountDialog({
     }
   }
   const navigate = (next: AccountView) => {
+    creation.current = null
     setError('')
     setNotice('')
     setConfirmation(null)
@@ -304,8 +362,8 @@ export function AccountDialog({
       if (mounted.current) { navigate('manage'); setNotice('Your existing roommate identity is linked. Its history is unchanged.') }
     } catch (failure) {
       if (mounted.current && contextEpoch.current === epoch && failure instanceof RequestError
-        && (failure.code === 'BROWSER_ACCESS_EXPIRED' || failure.code === 'SAMPLE_KITCHEN')) {
-        const change: SavedKitchenChange = failure.code === 'SAMPLE_KITCHEN' ? { demo: true } : { expired: true }
+        && failure.code === 'BROWSER_ACCESS_EXPIRED') {
+        const change: SavedKitchenChange = { expired: true }
         setLegacy((previous) => previous.map((saved) => saved.token === kitchen.token ? { ...saved, ...change } : saved))
         onLegacyChange(kitchen.token, change)
         setConfirmation(null)
@@ -315,7 +373,7 @@ export function AccountDialog({
   }
 
   const account = state?.account
-  const browserLegacy = legacy.filter((kitchen) => !kitchen.demo)
+  const browserLegacy = legacy
   const disabled = loading || busy
   const title = pendingDeletion ? 'Account deletion is pending.' : confirmation?.title ?? (recoverySignIn && (reauthenticate || !account) ? 'Recover your account.'
     : reauthenticate || !account ? 'Your place, on every device.' : view === 'recovery' ? 'Your account recovery codes.'
@@ -456,9 +514,15 @@ export function AccountDialog({
             button: 'Revoke recovery codes', action: () => revokeCodes(recovery.version),
           })}
         />}
-        {view === 'create' && <CreateKitchenForm initialMemberName={account.name} busy={disabled} error={null} onSubmit={(body) => {
+        {view === 'create' && <CreateKitchenForm key={account.id} initialMemberName={account.name}
+          initialValues={creation.current?.accountId === account.id ? creation.current.input : undefined}
+          busy={disabled} error={null} onSubmit={(body) => {
           void run(async () => {
-            await accountAction('/account/households', body, 'POST', 'select')
+            const input = createAccountHouseholdSchema.parse(body)
+            const requestId = creation.current?.accountId === account.id ? creation.current.input.requestId : undefined
+            if (!requestId && !globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to safely create a kitchen.')
+            creation.current = { accountId: account.id, input: { ...input, requestId: requestId ?? crypto.randomUUID() } }
+            await accountAction('/account/households', creation.current.input, 'POST', 'select')
             if (mounted.current) {
               if (autoEnter) onClose()
               else { navigate('manage'); setNotice('Your account now owns the new kitchen.') }
@@ -616,6 +680,13 @@ function AccountProfile({ name, label, busy, onName, onLabel }: {
   const [draftName, setDraftName] = useState(name)
   const [draftLabel, setDraftLabel] = useState(label)
   const [error, setError] = useState('')
+  const saved = useRef({ name, label })
+  useEffect(() => {
+    const previous = saved.current
+    setDraftName((draft) => draft.trim() === previous.name || draft.trim() === name ? name : draft)
+    setDraftLabel((draft) => draft.trim() === previous.label || draft.trim() === label ? label : draft)
+    saved.current = { name, label }
+  }, [name, label])
   const submit = (value: string, save: (value: string) => void) => {
     const input = nameSchema.safeParse(value)
     if (!input.success) { setError(input.error.issues[0].message); return }

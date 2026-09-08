@@ -7,7 +7,7 @@ import type { Household } from '../shared/domain.ts'
 function kitchen(): Household {
   return {
     id: randomUUID(), name: 'Test kitchen', currency: 'EUR', budget: 45000, inviteCode: 'test-invite',
-    demo: false, version: 0, members: ['A', 'B', 'C'].map((name) => ({ id: randomUUID(), name, color: '#888888' })),
+    version: 0, members: ['A', 'B', 'C'].map((name) => ({ id: randomUUID(), name, color: '#888888' })),
     expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
     roomStyle: 'original',
     shopping: { items: [], runs: [] },

@@ -4,7 +4,7 @@ import {
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { RoomStyle } from '../shared/domain.ts'
-import { baseCameraOffset, cameraFraming } from './camera.ts'
+import { cameraFraming, fitRoomBounds } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
 import type { ContactShadow } from './lighting.ts'
 import { roomPresets } from './roomStyles.ts'
@@ -20,7 +20,7 @@ export const bathroomLabels: Record<BathroomTarget, string> = {
 
 type Position = [number, number, number]
 
-export function bathroomFocusForRequest(target: SceneFocus): BathroomFocus {
+export function bathroomFocusForRequest(target: SceneFocus | BathroomFocus): BathroomFocus {
   return bathroomTargets.find((candidate) => candidate === target) ?? 'room'
 }
 
@@ -252,28 +252,42 @@ export function bathroomFraming(width: number, height: number, bounds: Box3, rot
     || bounds.isEmpty()) {
     throw new Error('Bathroom framing needs positive scene dimensions and finite bounds.')
   }
+
   const axis = new Vector3(0, 1, 0)
   if (options.closeRoom) {
     const view = cameraFraming(width, height, 'room', false)
     const center = new Vector3(...view.center).applyAxisAngle(axis, rotation)
     return { center: [center.x, center.y, center.z], halfHeight: view.halfHeight }
   }
-  const center = bounds.getCenter(new Vector3())
-  const backward = new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).normalize()
-  const right = new Vector3().crossVectors(axis, backward).normalize()
-  const up = new Vector3().crossVectors(backward, right).normalize()
-  let horizontal = 0
-  let vertical = 0
-  for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) {
-    for (const z of [bounds.min.z, bounds.max.z]) {
-      const corner = new Vector3(x, y, z).sub(center).applyAxisAngle(axis, rotation)
-      horizontal = Math.max(horizontal, Math.abs(corner.dot(right)))
-      vertical = Math.max(vertical, Math.abs(corner.dot(up)))
-    }
+  return fitRoomBounds(width, height, bounds, rotation, pitch)
+}
+
+export function bathroomTourFraming(
+  width: number, height: number, progress: number, bounds: Box3,
+  actorBounds: ReadonlyMap<BathroomTarget, Box3>, stops: readonly BathroomFocus[],
+): { center: Position; halfHeight: number } {
+  if (!Number.isFinite(progress) || stops.length < 2 || bounds.isEmpty()
+    || ![...bounds.min.toArray(), ...bounds.max.toArray()].every(Number.isFinite)) {
+    throw new Error('Bathroom exploration needs valid bounds, finite progress and at least two stops.')
   }
-  center.applyAxisAngle(axis, rotation)
+  const step = Math.max(0, Math.min(1, progress)) * (stops.length - 1)
+  const index = Math.min(stops.length - 2, Math.floor(step))
+  const amount = step - index
+  const eased = amount * amount * (3 - 2 * amount)
+  const frame = (focus: BathroomFocus) => {
+    if (focus === 'room') return cameraFraming(width, height, 'room', true)
+    const box = actorBounds.get(focus)
+    if (!box) throw new Error('The bathroom exploration stop is missing its measured bounds.')
+    return bathroomFraming(width, height, box)
+  }
+  const from = frame(stops[index])
+  const to = frame(stops[index + 1])
   return {
-    center: [center.x, center.y, center.z],
-    halfHeight: Math.max(1.25, vertical + 0.18, (horizontal + 0.18) * height / width) * 1.08,
+    center: [
+      from.center[0] + (to.center[0] - from.center[0]) * eased,
+      from.center[1] + (to.center[1] - from.center[1]) * eased,
+      from.center[2] + (to.center[2] - from.center[2]) * eased,
+    ],
+    halfHeight: from.halfHeight + (to.halfHeight - from.halfHeight) * eased,
   }
 }

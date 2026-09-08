@@ -96,6 +96,45 @@ async function assertPrivateTables(db: PostgresDatabase, tables: readonly string
 }
 
 describe('real PostgreSQL storage', { skip: !enabled }, () => {
+  it('serializes account kitchen creation receipts across independent connections without restoring closed membership', async () => {
+    const config = configuration()
+    const firstDb = new PostgresDatabase(config)
+    const secondDb = new PostgresDatabase(config)
+    const first = new Store(firstDb)
+    const second = new Store(secondDb)
+    try {
+      await initializePostgres(firstDb)
+      await secondDb.verifySchema()
+      const owner = await first.accounts.signIn({ providerId: randomUUID(), email: 'creation@example.com' }, 'Ada', 'Original browser')
+      const input = { requestId: randomUUID(), name: 'One kitchen', memberName: 'Ada', currency: 'EUR' as const, budget: 45000 }
+      const created = await Promise.all([
+        first.accounts.createHousehold({ ...owner.session }, input),
+        second.accounts.createHousehold({ ...owner.session }, input),
+      ])
+      assert.equal(created[0].session?.household.id, created[1].session?.household.id)
+      assert.equal(Number((await firstDb.prepare('SELECT COUNT(*) AS count FROM households').get())?.count), 1)
+      assert.equal(Number((await secondDb.prepare('SELECT COUNT(*) AS count FROM account_memberships').get())?.count), 1)
+      const household = created[0].session!.household
+      household.name = 'Updated once'
+      household.version++
+      await first.save(household)
+      const replay = await second.accounts.createHousehold(owner.session, input)
+      assert.equal(replay.session?.household.id, household.id)
+      assert.equal(replay.session?.household.name, household.name)
+      await first.accounts.leave(owner.session, household.id, household.version)
+      await assert.rejects(second.accounts.createHousehold(owner.session, input),
+        (error: unknown) => error instanceof ApiError && error.status === 403)
+      const separate = await second.accounts.createHousehold(owner.session, { ...input, requestId: randomUUID() })
+      assert.notEqual(separate.session?.household.id, household.id)
+    } finally {
+      try {
+        if (await schemaExists(firstDb)) await removeTestSchema(firstDb)
+      } finally {
+        await Promise.all([first.close(), second.close()])
+      }
+    }
+  })
+
   it('preserves accounts, legacy recovery and transaction rollback with private tables', async () => {
     const db = new PostgresDatabase(configuration())
     assert.equal(await schemaExists(db), false)

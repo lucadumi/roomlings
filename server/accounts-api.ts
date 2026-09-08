@@ -3,9 +3,9 @@ import type { Express, Request, RequestHandler, Response } from 'express'
 import { z } from 'zod'
 import {
   acceptAccountInvitationSchema, accountRecoverySignInSchema, accountVersionSchema, createAccountInvitationSchema,
-  deleteAccountSchema, linkAccountSchema, sendAccountCodeSchema, transferOwnershipSchema, verifyAccountCodeSchema,
+  createAccountHouseholdSchema, deleteAccountSchema, linkAccountSchema, sendAccountCodeSchema, transferOwnershipSchema, verifyAccountCodeSchema,
 } from '../shared/accounts.ts'
-import { centsSchema, currencies, nameSchema } from '../shared/domain.ts'
+import { nameSchema } from '../shared/domain.ts'
 import type { AccountState } from '../shared/accounts.ts'
 import type { AccountSession } from './accounts-store.ts'
 import { accountAbsoluteLifetime } from './accounts-store.ts'
@@ -55,8 +55,20 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
   const signedOut = (): AccountState => ({
     configured: !!provider, account: null, memberships: [], devices: [], csrfToken: null, session: null,
   })
-  const respondSignedIn = async (res: Response, issued: { token: string; session: AccountSession }) => {
-    const state = await store.accounts.state(issued.session)
+  const respondSignedIn = async (req: Request, res: Response, issue: () => Promise<{ token: string; session: AccountSession }>) => {
+    const { issued, state } = await store.transaction(async () => {
+      const previous = await current(req, res, false)
+      // A failed sign-in rolls this browser's session revocation back with the new session.
+      if (previous) await store.accounts.logout(previous, false)
+      const issued = await issue()
+      const initial = await store.accounts.state(issued.session)
+      const householdId = previous?.selectedHouseholdId
+      const state = previous?.accountId === issued.session.accountId && householdId
+        && householdId !== issued.session.selectedHouseholdId
+        && initial.memberships.some((membership) => membership.householdId === householdId)
+        ? await store.accounts.select(issued.session, householdId) : initial
+      return { issued, state }
+    })
     res.cookie(accountCookieName, issued.token, { ...cookieOptions, maxAge: accountAbsoluteLifetime })
     res.json(state)
   }
@@ -68,13 +80,13 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       throw new ApiError(403, 'This account action must come from the Roomlings app.', 'CSRF_REJECTED')
     }
   }
-  const current = async (req: Request, res: Response) => {
+  const current = async (req: Request, res: Response, clearInvalid = true) => {
     const cookies = (req.headers.cookie ?? '').split(';').map((entry) => entry.trim())
       .filter((entry) => entry.startsWith(`${accountCookieName}=`))
     if (!cookies.length) return null
     const token = cookies.length === 1 ? cookies[0].slice(accountCookieName.length + 1) : ''
     const session = /^[A-Za-z0-9_-]{43}$/.test(token) ? (await store.accounts.authenticate(token)) : null
-    if (!session) clearCookie(res)
+    if (!session && clearInvalid) clearCookie(res)
     return session
   }
   const csrf = (req: Request, session: AccountSession) => {
@@ -125,11 +137,12 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       const input = verifyAccountCodeSchema.parse(req.body)
       const identity = await invokeProvider(() => provider!.verifyCode(input.email, input.code))
       if (!identity.providerId || identity.email !== input.email) throw new ApiError(401, 'The verified email did not match the requested account.')
-      await respondSignedIn(res, await store.accounts.signIn(identity, input.name, input.label))
+      await respondSignedIn(req, res, () => store.accounts.signIn(identity, input.name, input.label))
     })
   app.post('/api/account/recover',
     limit(30, 10 * 60_000, ip), limit(10, 10 * 60_000, email), async (req, res) => {
-      await respondSignedIn(res, await store.accounts.recoverAccount(accountRecoverySignInSchema.parse(req.body)))
+      const input = accountRecoverySignInSchema.parse(req.body)
+      await respondSignedIn(req, res, () => store.accounts.recoverAccount(input))
     })
   app.get('/api/account/recovery', async (req, res) => {
     res.json(await store.accounts.recoveryState(await authenticated(req, res)))
@@ -172,7 +185,7 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
   })
   app.post('/api/account/households', async (req, res) => {
     const session = (await authenticated(req, res))
-    const input = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema }).parse(req.body)
+    const input = createAccountHouseholdSchema.parse(req.body)
     res.status(201).json((await store.accounts.createHousehold(session, input)))
   })
   app.post('/api/account/households/:id/select', async (req, res) => {
@@ -239,7 +252,12 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
 }
 
 export async function retryAccountDeletions(store: Store, provider: AccountProvider) {
-  for (const account of (await store.accounts.pendingDeletions())) {
+  const pending = await store.accounts.pendingDeletions().catch(() => {
+    console.error('Queued account deletions could not be loaded; the database is temporarily unavailable.')
+    return null
+  })
+  if (pending === null) return
+  for (const account of pending) {
     try {
       await provider.deleteUser(account.providerId)
       await store.accounts.finishDeletion(account.id)

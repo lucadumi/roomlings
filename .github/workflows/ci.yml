@@ -29,7 +29,8 @@ jobs:
   browser:
     name: Browser checks (${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Include setup and cleanup beyond the software-rendered household suite.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -82,7 +83,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --test tests/postgres.test.ts
+      - run: node --test tests/postgres.test.ts tests/mutations-api.test.ts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser -- accounts.spec.ts account-recovery.spec.ts
       - uses: actions/upload-artifact@v4

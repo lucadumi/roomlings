@@ -59,8 +59,11 @@ describe('server-only Supabase verified-email adapter', () => {
       const provider = createSupabaseProvider(config, async () => json(body))
       await assert.rejects(provider.verifyCode('ada@example.com', '123456'), (error: unknown) => error instanceof ApiError && error.status === 401)
     }
-    const invalid = createSupabaseProvider(config, async () => json({ code: 'otp_expired', msg: 'Token has expired' }, 403))
-    await assert.rejects(invalid.verifyCode('ada@example.com', '123456'), (error: unknown) => error instanceof ApiError && error.status === 401)
+    for (const [code, status] of [['otp_expired', 403], ['invalid_credentials', 401], ['user_not_found', 404]] as const) {
+      const invalid = createSupabaseProvider(config, async () => json({ code, msg: 'The proof is invalid' }, status))
+      await assert.rejects(invalid.verifyCode('ada@example.com', '123456'), (error: unknown) =>
+        error instanceof ApiError && error.status === 401 && error.code === 'INVALID_EMAIL_CODE')
+    }
   })
 
   it('surfaces delivery/deletion failures and rate limits without leaking provider errors', async () => {
@@ -70,6 +73,20 @@ describe('server-only Supabase verified-email adapter', () => {
     const limited = createSupabaseProvider(config, async () => json({ msg: 'Too many requests' }, 429))
     await assert.rejects(limited.sendCode('ada@example.com'), (error: unknown) => error instanceof ApiError && error.status === 429)
     await assert.rejects(limited.verifyCode('ada@example.com', '123456'), (error: unknown) => error instanceof ApiError && error.status === 429)
+  })
+
+  it('does not report provider configuration and gateway failures as invalid email codes', async () => {
+    for (const [status, code] of [
+      [401, undefined], [404, undefined], [400, 'email_provider_disabled'],
+      [422, 'otp_disabled'], [403, 'bad_jwt'], [403, 'no_authorization'],
+    ] as const) {
+      const provider = createSupabaseProvider(config, async () => json({
+        code, message: 'Private provider configuration detail',
+      }, status))
+      await assert.rejects(provider.verifyCode('ada@example.com', '123456'), (error: unknown) =>
+        error instanceof ApiError && error.status === 503 && error.code === 'AUTH_PROVIDER_UNAVAILABLE'
+        && !error.message.includes('Private provider'))
+    }
   })
 
   it('bounds unresponsive provider requests and requires complete HTTPS configuration', async () => {

@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { billingDate, householdSchema, localDate, money } from '../../shared/domain.ts'
 import type { Session } from '../../shared/domain.ts'
 import {
-  accountState, browserAccountRequest, expect, test,
+  accountState, expect, test,
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 import { chooseOption, openGroceryForm, openShoppingBag, savedKitchen } from './fixtures.ts'
@@ -123,7 +123,7 @@ async function openAccount(page: Page) {
 test.describe('responsive current app', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('sample controls reflow through resizing and landscape orientation', { tag: '@room' }, async ({ page }) => {
+  test('room controls reflow through resizing and landscape orientation', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     await expect(page.locator('.world-canvas canvas')).toBeVisible()
     await page.evaluate(() => document.fonts.ready)
@@ -131,25 +131,26 @@ test.describe('responsive current app', () => {
       await page.setViewportSize(viewport)
       await settledLayout(page)
       const issues = await page.locator('.game-home').evaluate((home) => {
-        const selectors = ['.game-hud', '.room-caption', '.game-demo', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']
-        const boxes = selectors.map((selector) => ({ selector, box: home.querySelector(selector)!.getBoundingClientRect() }))
-        return boxes.flatMap(({ selector, box }, index) => [
+        const selectors = ['.game-hud', '.room-caption', '.game-identity', '.game-resources', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']
+        const boxes = selectors.map((selector) => {
+          const element = home.querySelector(selector)!
+          return { selector, element, box: element.getBoundingClientRect() }
+        })
+        return boxes.flatMap(({ selector, element, box }, index) => [
           ...(box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1 ? [`${selector} is outside the viewport`] : []),
-          ...boxes.slice(index + 1).filter(({ box: other }) =>
-            Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
+          ...boxes.slice(index + 1).filter(({ element: otherElement, box: other }) =>
+            !element.contains(otherElement) && !otherElement.contains(element)
+            && Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
             && Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top) > 1,
           ).map((other) => `${selector} overlaps ${other.selector}`),
         ])
       })
       expect(issues, `${viewport.width}x${viewport.height}`).toEqual([])
       await expectContentFits(page.locator('.game-hud'))
-      await expectContentFits(page.locator('.game-demo'))
       for (const button of await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button').all()) {
         await expectReachable(button, viewport.width <= 1024 ? 44 : 36)
       }
     }
-    await page.getByRole('button', { name: 'Make it yours', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Email address', { exact: true })).toBeVisible()
   })
 
   for (const viewport of viewports) {
@@ -366,17 +367,20 @@ test.describe('responsive current app', () => {
       await page.getByRole('button', { name: 'Back to account', exact: true }).click()
 
       await accounts.provider.send(email)
-      const anotherSession = await browserAccountRequest(page, '/account/verify', {
-        email, code: accounts.provider.codeFor(email), name: longName, label: otherName,
+      const anotherSession = await fetch(`${accounts.origin}/api/account/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Roomlings-Request': '1' },
+        body: JSON.stringify({ email, code: accounts.provider.codeFor(email), name: longName, label: otherName }),
       })
       expect(anotherSession.status).toBe(200)
+      await anotherSession.json()
       await page.getByRole('button', { name: 'Refresh account sessions', exact: true }).click()
-      await expect(page.getByRole('button', { name: `Revoke ${longName}`, exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: `Revoke ${otherName}`, exact: true })).toBeVisible()
       await expectContentFits(dialog)
-      await page.getByRole('button', { name: `Revoke ${longName}`, exact: true }).click()
+      await page.getByRole('button', { name: `Revoke ${otherName}`, exact: true }).click()
       await expectContentFits(dialog)
       await page.getByRole('button', { name: 'Revoke session', exact: true }).click()
-      await expect(page.getByRole('button', { name: `Revoke ${longName}`, exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: `Revoke ${otherName}`, exact: true })).toHaveCount(0)
       await page.getByRole('button', { name: 'Link existing kitchen access', exact: true }).click()
       await expectContentFits(dialog)
       const link = page.getByRole('button', { name: 'Link recovery identity to my account', exact: true })

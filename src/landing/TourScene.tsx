@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import {
   ACESFilmicToneMapping, Color, Group, MathUtils, Mesh, MeshBasicMaterial,
-  PCFShadowMap, PerspectiveCamera, PlaneGeometry, Scene, SRGBColorSpace, WebGLRenderer,
+  PCFShadowMap, OrthographicCamera, PlaneGeometry, Raycaster, Scene, SRGBColorSpace, Vector2, WebGLRenderer,
 } from 'three'
 import type { BufferGeometry } from 'three'
 import { buildKitchenModel } from '../kitchenModel.ts'
@@ -11,6 +11,9 @@ import { addContactShadows, createContactShadowTexture, createRoomLights, daylig
 import { dampTo, frameSeconds } from '../motion.ts'
 import { tourArea, tourFrame } from './tour.ts'
 import type { TourLayout } from './tour.ts'
+import { tourChapterForObject } from './tourPicking.ts'
+import { baseCameraOffset, cameraProjection } from '../camera.ts'
+import { tourCameraFraming } from './tourCamera.ts'
 
 export type TourStatus = 'loading' | 'ready' | 'unavailable'
 
@@ -20,12 +23,16 @@ type Props = {
   wake: RefObject<(() => void) | null>
   reducedMotion: boolean
   onStatus: (status: TourStatus) => void
+  onSelectChapter?: (index: number) => void
 }
 
-export default function TourScene({ progress, layout, wake, reducedMotion, onStatus }: Props) {
+export default function TourScene({ progress, layout, wake, reducedMotion, onStatus, onSelectChapter }: Props) {
   const host = useRef<HTMLDivElement>(null)
-  const state = useRef({ reducedMotion, onStatus })
-  state.current = { reducedMotion, onStatus }
+  const canvas = useRef<HTMLCanvasElement | null>(null)
+  const pickingUsable = useRef(false)
+  const cancelPicking = useRef<(() => void) | null>(null)
+  const state = useRef({ reducedMotion, onStatus, onSelectChapter })
+  state.current = { reducedMotion, onStatus, onSelectChapter }
 
   useEffect(() => {
     const element = host.current
@@ -46,12 +53,14 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     renderer.toneMappingExposure = 1.05
     renderer.setClearColor(0x000000, 0)
     renderer.domElement.setAttribute('aria-hidden', 'true')
+    renderer.domElement.style.pointerEvents = 'none'
     element.appendChild(renderer.domElement)
+    canvas.current = renderer.domElement
 
     const scene = new Scene()
     const room = new Group()
     scene.add(room)
-    const camera = new PerspectiveCamera(35, 1, 0.1, 150)
+    const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 150)
     const { group: lighting, sunlight, skyLight, fill } = createRoomLights()
     sunlight.shadow.mapSize.setScalar(element.clientWidth < 760 ? 1024 : 2048)
     scene.add(lighting)
@@ -95,6 +104,15 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     let lastShadow = -Infinity
     let shadowDirty = true
     let ambientTime = 0
+    const raycaster = new Raycaster()
+    const pointer = new Vector2()
+    let gesture: {
+      pointerId: number
+      startX: number
+      startY: number
+      chapter: number | null
+      invalid: boolean
+    } | null = null
 
     const requestFrame = () => {
       if (!frame && available && !disposed && onScreen && !document.hidden) frame = requestAnimationFrame(render)
@@ -112,7 +130,6 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       }
       if (needsResize) {
         renderer.setSize(width, height)
-        camera.aspect = width / height
         needsResize = false
       }
       displayedProgress = reduced ? progress.current : dampTo(displayedProgress, progress.current, 9, delta, 0.0001)
@@ -121,11 +138,16 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       const area = tourArea(displayedProgress, measured, reduced)
       const visible = area.height >= 48
       const view = tourFrame(displayedProgress, area.width, Math.max(1, area.height), reduced)
-      camera.position.set(...view.position)
-      camera.lookAt(...view.target)
-      camera.far = Math.max(150, Math.hypot(...view.position) + 30)
-      camera.fov = 2 * Math.atan(Math.tan(view.fov * Math.PI / 360) * height / Math.max(1, area.height)) * 180 / Math.PI
-      camera.setViewOffset(width, height, width / 2 - area.x - area.width / 2, height / 2 - area.y - area.height / 2, width, height)
+      const framing = tourCameraFraming(displayedProgress, area.width, Math.max(1, area.height), reduced)
+      camera.position.set(
+        framing.center[0] + baseCameraOffset[0], framing.center[1] + baseCameraOffset[1], framing.center[2] + baseCameraOffset[2],
+      )
+      camera.lookAt(...framing.center)
+      const projection = cameraProjection(width, height, area, framing.halfHeight, 1)
+      camera.left = projection.left
+      camera.right = projection.right
+      camera.top = projection.top
+      camera.bottom = projection.bottom
       camera.updateProjectionMatrix()
       renderer.domElement.style.clipPath = visible
         ? `inset(${area.y}px ${Math.max(0, width - area.x - area.width)}px ${Math.max(0, height - area.y - area.height)}px ${area.x}px)`
@@ -133,6 +155,8 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       element.dataset.sceneArea = JSON.stringify(area)
       element.dataset.cameraMoving = String(!reduced && displayedProgress !== progress.current)
       element.dataset.tourPosition = reduced ? 'static' : displayedProgress.toFixed(3)
+      element.dataset.cameraAngle = baseCameraOffset.join(',')
+      element.dataset.cameraScale = framing.halfHeight.toFixed(6)
 
       for (const [index, door] of doors.entries()) {
         const rotation = (index ? -1.72 : -1.97) * view.door
@@ -184,9 +208,81 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       element.dataset.rendering = reduced || !visible ? 'paused' : 'active'
       if (!ready) {
         ready = true
+        pickingUsable.current = true
+        renderer.domElement.style.pointerEvents = state.current.onSelectChapter ? 'auto' : 'none'
         state.current.onStatus('ready')
       }
       if (!reduced) requestFrame()
+    }
+    const canPick = () => available && !disposed && ready && Boolean(state.current.onSelectChapter)
+      && onScreen && !document.hidden && renderer.domElement.isConnected
+    const hitChapter = (clientX: number, clientY: number) => {
+      const rect = renderer.domElement.getBoundingClientRect()
+      if (!canPick() || !rect.width || !rect.height) return null
+      pointer.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1)
+      camera.updateMatrixWorld()
+      raycaster.setFromCamera(pointer, camera)
+      const hit = raycaster.intersectObject(room, true).find(({ object }) => {
+        for (let current = object; current !== room && current.parent; current = current.parent) {
+          if (!current.visible) return false
+        }
+        return true
+      })
+      return hit ? tourChapterForObject(hit.object, room) : null
+    }
+    const resetCursor = () => { renderer.domElement.style.cursor = '' }
+    const pointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 || (event.buttons & ~1) !== 0 || !event.isPrimary || !canPick()) {
+        if (gesture) gesture.invalid = true
+        return
+      }
+      if (gesture) {
+        gesture.invalid = true
+        return
+      }
+      gesture = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        chapter: hitChapter(event.clientX, event.clientY),
+        invalid: false,
+      }
+    }
+    const pointerMove = (event: PointerEvent) => {
+      if (gesture?.pointerId === event.pointerId) {
+        gesture.invalid ||= Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) >= 5
+        return
+      }
+      if (!gesture && event.pointerType !== 'touch') {
+        renderer.domElement.style.cursor = hitChapter(event.clientX, event.clientY) === null ? '' : 'pointer'
+      }
+    }
+    const pointerUp = (event: PointerEvent) => {
+      if (!gesture || gesture.pointerId !== event.pointerId) return
+      const finished = gesture
+      gesture = null
+      if (event.button !== 0 || finished.invalid
+        || Math.hypot(event.clientX - finished.startX, event.clientY - finished.startY) >= 5) return
+      const chapter = hitChapter(event.clientX, event.clientY)
+      if (chapter !== null && chapter === finished.chapter) state.current.onSelectChapter?.(chapter)
+    }
+    const pointerCancelled = (event: PointerEvent) => {
+      if (gesture?.pointerId === event.pointerId) gesture = null
+      resetCursor()
+    }
+    const pointerLeft = (event: PointerEvent) => {
+      if (gesture?.pointerId === event.pointerId) gesture = null
+      resetCursor()
+    }
+    const invalidateMultipleContacts = (event: PointerEvent) => {
+      if (gesture && gesture.pointerId !== event.pointerId) gesture.invalid = true
+    }
+    const releaseOutsideCanvas = (event: PointerEvent) => {
+      if (gesture?.pointerId === event.pointerId) gesture = null
+    }
+    cancelPicking.current = () => {
+      gesture = null
+      resetCursor()
     }
     const resize = () => {
       if (!element.clientWidth || !element.clientHeight) return
@@ -197,7 +293,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     }
     const visibilityChanged = () => {
       previousTime = performance.now()
-      if (document.hidden) { cancelAnimationFrame(frame); frame = 0 }
+      if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cancelPicking.current?.() }
       else requestFrame()
     }
     const contextLost = (event: Event) => {
@@ -205,6 +301,11 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       available = false
       cancelAnimationFrame(frame)
       frame = 0
+      gesture = null
+      pickingUsable.current = false
+      cancelPicking.current = null
+      renderer.domElement.style.pointerEvents = 'none'
+      resetCursor()
       console.warn('The welcome kitchen lost its WebGL context. The illustrated tour is still available.')
       state.current.onStatus('unavailable')
     }
@@ -217,22 +318,44 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       else {
         cancelAnimationFrame(frame)
         frame = 0
+        cancelPicking.current?.()
         element.dataset.rendering = 'paused'
       }
     })
     observer.observe(element)
     visibility.observe(element)
     document.addEventListener('visibilitychange', visibilityChanged)
+    window.addEventListener('pointerdown', invalidateMultipleContacts)
+    window.addEventListener('pointerup', releaseOutsideCanvas)
+    window.addEventListener('pointercancel', releaseOutsideCanvas)
+    renderer.domElement.addEventListener('pointerdown', pointerDown)
+    renderer.domElement.addEventListener('pointermove', pointerMove)
+    renderer.domElement.addEventListener('pointerup', pointerUp)
+    renderer.domElement.addEventListener('pointercancel', pointerCancelled)
+    renderer.domElement.addEventListener('pointerleave', pointerLeft)
     renderer.domElement.addEventListener('webglcontextlost', contextLost)
     resize()
 
     return () => {
       disposed = true
+      gesture = null
+      pickingUsable.current = false
+      cancelPicking.current = null
+      renderer.domElement.style.pointerEvents = 'none'
+      resetCursor()
       wake.current = null
       cancelAnimationFrame(frame)
       observer.disconnect()
       visibility.disconnect()
       document.removeEventListener('visibilitychange', visibilityChanged)
+      window.removeEventListener('pointerdown', invalidateMultipleContacts)
+      window.removeEventListener('pointerup', releaseOutsideCanvas)
+      window.removeEventListener('pointercancel', releaseOutsideCanvas)
+      renderer.domElement.removeEventListener('pointerdown', pointerDown)
+      renderer.domElement.removeEventListener('pointermove', pointerMove)
+      renderer.domElement.removeEventListener('pointerup', pointerUp)
+      renderer.domElement.removeEventListener('pointercancel', pointerCancelled)
+      renderer.domElement.removeEventListener('pointerleave', pointerLeft)
       renderer.domElement.removeEventListener('webglcontextlost', contextLost)
       const geometries = new Set<BufferGeometry>([contacts.geometry])
       scene.traverse((object) => { if (object instanceof Mesh) geometries.add(object.geometry) })
@@ -245,10 +368,17 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       renderer.dispose()
       renderer.forceContextLoss()
       renderer.domElement.remove()
+      canvas.current = null
     }
   }, [progress, layout, wake])
 
   useEffect(() => { wake.current?.() }, [reducedMotion])
+  useEffect(() => {
+    const element = canvas.current
+    if (!element) return
+    element.style.pointerEvents = pickingUsable.current && onSelectChapter ? 'auto' : 'none'
+    if (!onSelectChapter) cancelPicking.current?.()
+  }, [onSelectChapter])
 
   return <div className="welcome-canvas" ref={host} />
 }

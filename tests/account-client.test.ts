@@ -10,7 +10,6 @@ import {
   updateSavedKitchen,
 } from '../src/api.ts'
 import type { SavedKitchen } from '../src/api.ts'
-import { rememberSample, restoreSample } from '../src/sampleAccess.ts'
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>()
@@ -180,22 +179,20 @@ describe('account-aware client access', () => {
     assert.equal(savedKitchens()[0].expired, undefined)
   })
 
-  it('records confirmed samples without guessing from a household name or changing personal access', () => {
-    const sample = legacySession()
-    sample.household.demo = true
-    sample.household.name = 'The Sunday House'
+  it('hides retired example shortcuts without guessing by name or rewriting saved records', () => {
+    const retired = { ...shortcut(legacySession()), name: 'The Sunday House', demo: true }
     const personal = legacySession()
     personal.household.name = 'The Sunday House'
-    rememberKitchen(personal)
-    storage.setItem('coldshare.kitchens', JSON.stringify([shortcut(sample), shortcut(personal)]))
-    storage.setItem('roomlings.kitchens', JSON.stringify([shortcut(sample), shortcut(personal)]))
-    assert.deepEqual(updateSavedKitchen(sample.token, { demo: true }), [
-      { ...shortcut(sample), demo: true }, shortcut(personal),
-    ])
-    assert.equal(readToken(), personal.token)
-    assert.equal(readAccessMode(), 'browser')
-    assert.equal(savedKitchens()[1].demo, undefined)
-    assert.equal(rememberKitchen(sample)[0].demo, true)
+    const records = JSON.stringify([retired, shortcut(personal)])
+    storage.setItem('coldshare.kitchens', records)
+    assert.deepEqual(savedKitchens(), [shortcut(personal)])
+    assert.equal(storage.getItem('coldshare.kitchens'), records)
+    storage.setItem('roomlings.kitchens', records)
+    assert.deepEqual(savedKitchens(), [shortcut(personal)])
+    assert.equal(storage.getItem('roomlings.kitchens'), records)
+    assert.deepEqual(rememberKitchen(personal), [shortcut(personal)])
+    assert.deepEqual(JSON.parse(storage.getItem('roomlings.kitchens') ?? ''), [shortcut(personal), retired])
+    assert.equal(storage.getItem('coldshare.kitchens'), records)
   })
 
   it('does not invent missing shortcuts or silently discard unreadable saved access', () => {
@@ -248,53 +245,16 @@ describe('account-aware client access', () => {
     assert.equal(sameKitchenSession(null, null), false)
   })
 
-  it('keeps sample access separate from real and Coldshare identities and account preference', async () => {
+  it('ignores obsolete example-session storage while preserving real and Coldshare access', () => {
     const real = legacySession()
     storage.setItem('coldshare.session', real.token)
-    rememberKitchen(real)
-    rememberKitchen({ ...real, token: null })
-    const personalKeys = ['roomlings.session', 'roomlings.kitchens', 'coldshare.session', 'roomlings.access-mode']
-    const before = personalKeys.map((key) => storage.getItem(key))
-    const sample = legacySession()
-    sample.household.demo = true
-    rememberSample(sample)
-    mock.method(globalThis, 'fetch', async (url: string | URL | Request) => {
-      assert.equal(url, '/api/household')
-      return Response.json({ household: sample.household, memberId: sample.memberId })
-    })
-    assert.equal((await restoreSample()).session.token, sample.token)
-    assert.deepEqual(personalKeys.map((key) => storage.getItem(key)), before)
-    assert.throws(() => rememberSample(real), /cannot be saved as a sample/)
-  })
-
-  it('renews only definitively expired samples and retains the prior key until saving succeeds', async () => {
-    const expired = legacySession()
-    expired.household.demo = true
-    rememberSample(expired)
-    const replacement = legacySession()
-    replacement.household.demo = true
-    mock.method(globalThis, 'fetch', async (url: string | URL | Request) => url === '/api/household'
-      ? Response.json({ error: 'Sample access is no longer active.' }, { status: 401 })
-      : Response.json(replacement, { status: 201 }))
-    const result = await restoreSample()
-    assert.equal(result.renewed, true)
-    assert.equal(result.session.token, replacement.token)
-    assert.equal(storage.getItem('roomlings.sample-session'), expired.token)
-    rememberSample(result.session)
-    assert.equal(storage.getItem('roomlings.sample-session'), replacement.token)
-  })
-
-  it('does not replace a sample after an outage or accept a personal household as a sample', async () => {
-    const session = legacySession()
-    session.household.demo = true
-    rememberSample(session)
-    const calls = mock.method(globalThis, 'fetch', async () =>
-      Response.json({ error: 'The server is unavailable.' }, { status: 503 }))
-    await assert.rejects(restoreSample(), (error: unknown) => error instanceof RequestError && error.status === 503)
-    assert.equal(calls.mock.callCount(), 1)
-    assert.equal(storage.getItem('roomlings.sample-session'), session.token)
-    const real = legacySession()
-    mock.method(globalThis, 'fetch', async () => Response.json({ household: real.household, memberId: real.memberId }))
-    await assert.rejects(restoreSample(), /personal household/)
+    storage.setItem('roomlings.sample-session', 'retired-browser-value')
+    const calls = mock.method(globalThis, 'fetch', async () => { throw new Error('Access must not be fetched while reading shortcuts.') })
+    assert.equal(readToken(), real.token)
+    assert.deepEqual(rememberKitchen(real), [shortcut(real)])
+    assert.equal(readToken(), real.token)
+    assert.equal(storage.getItem('roomlings.sample-session'), 'retired-browser-value')
+    assert.equal(storage.getItem('coldshare.session'), real.token)
+    assert.equal(calls.mock.callCount(), 0)
   })
 })

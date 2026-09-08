@@ -1,10 +1,10 @@
 import { expect } from '@playwright/test'
-import type { APIRequestContext, Locator, Page, Route } from '@playwright/test'
-import { sessionSchema } from '../../src/api.ts'
+import type { Locator, Page, Route } from '@playwright/test'
 import type { SavedKitchen } from '../../src/api.ts'
 import type { Session } from '../../shared/domain.ts'
 import { roomCatalog } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
+import type { Store } from '../../server/store.ts'
 
 export async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
@@ -37,18 +37,8 @@ export async function trackDrawing(page: Page) {
   }))
 }
 
-export async function sampleSession(request: APIRequestContext): Promise<Session> {
-  const response = await request.post('/api/demo', { data: {} })
-  await expect(response).toBeOK()
-  return sessionSchema.parse(await response.json())
-}
-
-export async function createHousehold(request: APIRequestContext, name: string, memberName: string): Promise<Session> {
-  const response = await request.post('/api/households', {
-    data: { name, memberName, currency: 'EUR', budget: 45000 },
-  })
-  await expect(response).toBeOK()
-  return sessionSchema.parse(await response.json())
+export function createHousehold(store: Store, name: string, memberName: string): Promise<Session> {
+  return store.create(name, memberName, 'EUR', 45000)
 }
 
 export function savedKitchen(session: Session): SavedKitchen {

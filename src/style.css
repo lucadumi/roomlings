@@ -99,9 +99,6 @@ nav { display: grid; gap: 6px; }
 .sync-status.offline > span { background: var(--red); }
 .top-avatars { display: flex; padding-left: 6px; }
 .top-avatars .avatar { margin-left: -6px; }
-.demo-banner { display: flex; align-items: center; justify-content: center; gap: 22px; padding: 9px 24px; background: #f0eddf; border-bottom: 1px solid #e9e5d6; color: #85836d; font-size: 10px; }
-.demo-banner > span { display: flex; gap: 7px; align-items: center; }
-.demo-banner button { background: none; color: #9e624c; font-size: 10px; font-weight: 650; padding: 0; display: flex; align-items: center; gap: 7px; }
 main { max-width: 1510px; margin: 0 auto; padding: 36px 44px 0; }
 .page-intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 32px; }
 .eyebrow { font-size: 9px; letter-spacing: 1.4px; font-weight: 600; color: #878c79; display: flex; gap: 7px; align-items: center; line-height: 1.5; }
@@ -309,7 +306,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 .toast .icon-button { color: #c3d0b5; margin-left: auto; }
 .toast .icon-button:hover { background: #657559; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 70; background: #303d2d63; backdrop-filter: blur(5px); padding: 24px; display: flex; justify-content: center; align-items: center; overflow-y: auto; animation: fade-in 150ms ease-out; }
-.modal { position: relative; background: #fafaf2; box-shadow: 0 30px 100px #23331835; border: 1px solid #e2e8d6; border-radius: 15px; width: min(100%, 475px); max-height: calc(100dvh - 48px); overflow-y: auto; overflow-wrap: anywhere; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #c0ceaa transparent; padding: 32px; container: dialog / inline-size; }
+.modal { --control-height: 44px; position: relative; background: #fafaf2; box-shadow: 0 30px 100px #23331835; border: 1px solid #e2e8d6; border-radius: 15px; width: min(100%, 475px); max-height: calc(100dvh - 48px); overflow-y: auto; overflow-wrap: anywhere; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #c0ceaa transparent; padding: 32px; container: dialog / inline-size; }
 .modal.wide { width: min(100%, 580px); }
 .modal-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 12px; }
 .modal-close { flex-shrink: 0; }
@@ -363,7 +360,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
 .budget-note, .your-share-amount > span, .fridge-panel-footer, .fridge-tip, .fridge-tag,
 .muted-paragraph, .section-description, .info-note, .history-row > div span,
 .roommate-card > span:not(.avatar):not(.add-circle), .setting-row > span, .footer,
-.field-hint, .form-footnote, .modal-subtitle, .invite-rotate p, .demo-banner {
+.field-hint, .form-footnote, .modal-subtitle, .invite-rotate p {
   color: var(--muted);
 }
 .positive { color: #5e7847; }
@@ -495,10 +492,6 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
   .member-label > strong { font-size: 9px; }
   .balance-row .avatar { width: 25px; height: 25px; font-size: 9px; }
   .settle-link { font-size: 8px; margin-top: 14px; }
-  .demo-banner { font-size: 9px; gap: 12px; padding: 9px 12px; justify-content: space-between; }
-  .demo-banner > span { line-height: 1.5; }
-  .demo-banner > span > svg { display: none; }
-  .demo-banner button { font-size: 9px; flex-shrink: 0; gap: 3px; }
   .ledger-table-head, .expense-row { grid-template-columns: minmax(0, 1fr) 61px 67px 23px; gap: 7px; }
   .split-avatars, .ledger-table-head > span:nth-child(3) { display: none; }
   .paid-by { font-size: 8px; }
@@ -545,8 +538,6 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: #525e46;
   .sync-status { font-size: 0; gap: 0; }
   .sync-status > span { width: 6px; height: 6px; }
   .top-avatars > .avatar { height: 24px; width: 24px; }
-  .demo-banner { padding-inline: 19px; font-size: 8px; }
-  .demo-banner button { font-size: 8px; }
   main { padding: 27px 19px 0; }
   h1 { font-size: 33px; letter-spacing: -1.4px; margin-top: 11px; }
   .page-intro { margin-bottom: 23px; gap: 16px; }
