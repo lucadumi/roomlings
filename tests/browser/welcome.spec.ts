@@ -81,7 +81,7 @@ test('the public welcome page explains the product without opening or changing a
   expect(errors).toEqual([])
 })
 
-test('landing sections fill the viewport without clipping content or repeating promotional copy', async ({ page }) => {
+test('landing sections stay compact with spacing after the hero and shared-home section', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   for (const [width, height, maximum] of [[1440, 960, 700], [390, 844, 1050]]) {
     await page.setViewportSize({ width, height })
@@ -93,13 +93,25 @@ test('landing sections fill the viewport without clipping content or repeating p
       return {
         words: element.innerText.split(/\s+/).length,
         steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
-        sections: [...element.querySelectorAll('main > section')].map((section) => section.getBoundingClientRect().height),
+        heroGap: parseFloat(getComputedStyle(element.querySelector('.welcome-hero')!).marginBottom),
+        featuresGap: parseFloat(getComputedStyle(element.querySelector('.welcome-features')!).marginBottom),
+        headingGap: getComputedStyle(element.querySelector('.welcome-features .welcome-section-heading')!).marginBottom,
+        titleToContent: element.querySelector('.welcome-feature h3')!.getBoundingClientRect().top
+          - element.querySelector('#features-title')!.getBoundingClientRect().bottom,
+        sectionMinimums: [...element.querySelectorAll('main > section')].map((section) => getComputedStyle(section).minHeight),
+        otherMargins: [...element.querySelectorAll('main > section')].slice(1).map((section) => getComputedStyle(section).marginTop),
       }
     })
     expect(metrics.words).toBeLessThanOrEqual(230)
-    expect(metrics.steps).toBeLessThanOrEqual(Math.max(height, maximum))
-    expect(metrics.sections).toHaveLength(5)
-    for (const section of metrics.sections) expect(section).toBeGreaterThanOrEqual(height - 1)
+    expect(metrics.steps).toBeLessThanOrEqual(maximum)
+    expect(metrics.sectionMinimums).toEqual(['0px', '0px', '0px', '0px', '0px'])
+    expect(metrics.heroGap).toBeGreaterThanOrEqual(24)
+    expect(metrics.heroGap).toBeLessThanOrEqual(56)
+    expect(metrics.featuresGap).toBeGreaterThanOrEqual(16)
+    expect(metrics.featuresGap).toBeLessThanOrEqual(32)
+    expect(metrics.headingGap).toBe('0px')
+    expect(metrics.titleToContent).toBeLessThanOrEqual(24)
+    expect(metrics.otherMargins).toEqual(['0px', '0px', '0px', '0px'])
     await expect(page.locator('.welcome-edition, .welcome-eyebrow, .welcome-interlude, .welcome-margin-mark, .welcome-signature')).toHaveCount(0)
   }
 })

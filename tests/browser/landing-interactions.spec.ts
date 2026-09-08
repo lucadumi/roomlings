@@ -177,12 +177,27 @@ for (const room of ['kitchen', 'bathroom'] as const) {
     await expect(track).toHaveAttribute('data-flow', 'false')
     const chapters = roomTourChapters[room]
     const renderer = page.locator(room === 'kitchen' ? '.welcome-canvas' : '.bathroom-preview-canvas')
+    const earlyProgress = await track.evaluate((element) => {
+      const card = element.querySelector('.welcome-tour-pin')
+      const title = element.closest('section')?.querySelector('#tour-title')
+      if (!card || !title) throw new Error('The exploration heading is missing.')
+      const titleTop = scrollY + title.getBoundingClientRect().top
+      const gap = element.getBoundingClientRect().top - title.getBoundingClientRect().top
+      const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
+      const distance = Math.min(gap / 2, travel / 4)
+      window.scrollTo({ top: titleTop + distance, behavior: 'instant' })
+      return distance / travel
+    })
+    expect(earlyProgress).toBeGreaterThan(0)
+    await expect.poll(async () => Number(await renderer.getAttribute('data-tour-position'))).toBeCloseTo(earlyProgress, 2)
+    expect((await track.locator('.welcome-tour-pin').boundingBox())!.y).toBeGreaterThan(24)
     for (const index of [1, chapters.length - 1, 0]) {
       const fraction = index / (chapters.length - 1)
       await track.evaluate((element, fraction) => {
         const card = element.querySelector('.welcome-tour-pin')
-        if (!card) throw new Error('The shared exploration card is missing.')
-        const start = scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
+        const heading = element.closest('section')?.querySelector('#tour-title')
+        if (!card || !heading) throw new Error('The shared exploration card is missing.')
+        const start = scrollY + heading.getBoundingClientRect().top
         const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
         window.scrollTo({ top: start + travel * fraction, behavior: 'instant' })
       }, fraction)

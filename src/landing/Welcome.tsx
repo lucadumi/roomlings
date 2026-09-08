@@ -118,11 +118,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         </div>
       </section>
 
-      <section className="welcome-invitation-stage welcome-container" id="get-started" aria-labelledby="invitation-title">
-        <div className="welcome-invitation">
-          <div><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
-          <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
-        </div>
+      <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
+        <div><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
+        <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
       </section>
     </main>
     <footer className="welcome-footer welcome-container">

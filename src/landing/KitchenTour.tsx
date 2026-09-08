@@ -23,6 +23,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   const track = useRef<HTMLDivElement>(null)
   const pin = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
   const progress = useRef(0)
   const layout = useRef<TourLayout | null>(null)
   const wake = useRef<(() => void) | null>(null)
@@ -54,13 +55,14 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   const positionChapter = (index: number, behavior: ScrollBehavior) => {
     const element = track.current
     const card = pin.current
-    if (!element || !card) throw new Error('The kitchen tour is not mounted.')
+    const title = heading.current
+    if (!element || !card || !title) throw new Error('The room exploration is not mounted.')
     if (element.dataset.flow === 'true') {
       progress.current = index / (chapters.length - 1)
       setActive(index)
       if (!reducedMotion) wake.current?.()
     } else {
-      const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
+      const start = window.scrollY + title.getBoundingClientRect().top
       const travel = element.getBoundingClientRect().height - card.getBoundingClientRect().height
       window.scrollTo({ top: start + travel * index / (chapters.length - 1), behavior })
     }
@@ -98,7 +100,8 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
     const element = track.current
     const card = pin.current
     const viewport = stage.current
-    if (!element || !card || !viewport) return
+    const title = heading.current
+    if (!element || !card || !viewport || !title) return
     let frame = 0
     let previousLayout = ''
     const observedGeneration = generation.current
@@ -109,11 +112,12 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
       const cardHeight = card.getBoundingClientRect().height
       const height = `${cardHeight}px`
       if (element.style.getPropertyValue('--welcome-tour-height') !== height) element.style.setProperty('--welcome-tour-height', height)
+      const offset = `${title.getBoundingClientRect().top - element.getBoundingClientRect().top}px`
+      if (element.style.getPropertyValue('--welcome-tour-start-offset') !== offset) element.style.setProperty('--welcome-tour-start-offset', offset)
       const flowing = reducedMotion || cardHeight + 48 > window.innerHeight
       element.dataset.flow = String(flowing)
       if (!flowing) {
-        const inset = parseFloat(getComputedStyle(card).top)
-        const start = window.scrollY + element.getBoundingClientRect().top - inset
+        const start = window.scrollY + title.getBoundingClientRect().top
         const travel = element.getBoundingClientRect().height - cardHeight
         if (travel > 0) progress.current = scrollProgress(window.scrollY, [start, start + travel])
       }
@@ -132,11 +136,13 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
     const onHash = () => {
       const index = chapters.findIndex(({ id }) => location.hash === `#${id}`)
       if (index >= 0) positionChapter(index, 'instant')
+      else if (location.hash === '#tour' || location.hash === `#tour-${room}`) positionChapter(0, 'instant')
       requestUpdate()
     }
     const observer = new ResizeObserver(requestUpdate)
     observer.observe(viewport)
     observer.observe(card)
+    observer.observe(title)
     update()
     onHash()
     window.addEventListener('scroll', requestUpdate, { passive: true })
@@ -174,12 +180,12 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
     data-room={room} data-scene={status} data-chapter={chapters[active].id}>
     {roomIds.map((id) => <span className="welcome-room-anchor" id={`tour-${id}`} key={id} aria-hidden="true" />)}
     <div className="welcome-section-heading">
-      <h2 id="tour-title">Explore the rooms</h2>
+      <h2 id="tour-title" ref={heading}>Explore the rooms</h2>
       <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
     </div>
     <RoomChoices value={room} onChange={selectRoom} />
     <div className="welcome-tour-track" ref={track}>
-      {chapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-travel) * ${index / (chapters.length - 1)})` }} />)}
+      {chapters.map(({ id }, index) => <span className="welcome-tour-stop" id={id} key={id} style={{ top: `calc(var(--welcome-tour-start-offset, 0px) + var(--welcome-tour-travel) * ${index / (chapters.length - 1)})` }} />)}
       <div className="welcome-tour-pin" ref={pin}>
         <div className="welcome-tour-card">
           <div className="welcome-stage-shell">
