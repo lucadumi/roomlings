@@ -31,6 +31,16 @@ Bathroom fixtures open their related chores; the cleaning caddy opens the room's
 
 Bills use the creator's time zone. Edits preserve earlier months and paid occurrences; resuming a paused bill does not backfill missed months. Short months use their last day.
 
+## Shared changes and retries
+
+Roommates see the same saved household. If a shopping item, chore, monthly bill or house rule changes while you edit it, the form keeps your draft and asks you to use the latest values or explicitly keep your draft. Bill payment forms also require review when the unpaid schedule changes.
+
+An interrupted response does not mean the server rejected a save. Retrying the same change confirms an already-saved result without adding another expense, bill, chore, shopping item or repayment. If you changed the draft after an earlier save succeeded, review the saved record before starting a new change. Shopping checkouts retain their own run identifier and purchased-item history.
+
+Repayments can combine balances from multiple expenses and months. Their limits follow the actual outstanding balances, not the maximum size of an individual grocery receipt. The app still records money already paid; it never transfers money.
+
+Household name changes refresh saved browser shortcuts. Account refreshes update saved profile and browser names without replacing unfinished drafts, and remove kitchens whose membership has ended. Conflicted membership actions refresh their settings before you confirm or retry them.
+
 ## Entry and access
 
 `/` is always the public home page; `/welcome` is an alias. Neither reads account access or creates a session. Sign-in opens `/rooms/kitchen`; successful sign-in or household creation enters the room directly. The room's wordmark returns home.
@@ -48,5 +58,7 @@ Use http://localhost:5173 for review, preserving its data and browser sessions. 
 Room IDs, chore areas and restocking suggestions are registered in `shared/rooms.ts`; `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms there instead of adding placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
 Use `src/Dropdown.tsx` for form selects. It preserves raw values, including empty whole-home and one-off choices, while Radix handles menu positioning, keyboard navigation and touch interaction.
+
+Version-checked household mutations accept a stable `mutationId` and its original `mutationVersion`. The latest 1,000 mutation receipts persist with household JSON, independently of financial records. Replays return the current household without repeating a saved change; changed payloads or requests older than retained confirmation history require explicit review. Older clients without mutation metadata remain compatible. Do not regenerate a mutation identifier merely because a response was lost or a background refresh advanced the household version.
 
 Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork and the original Fraunces and DM Sans interface fonts. The outlined logo lettering is independent of interface fonts.

@@ -2,11 +2,11 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { Database } from './database.ts'
 import { transactional } from './database.ts'
 import {
-  accountRecoveryCodeCount, accountRecoveryCodePrefix, accountRecoveryResultSchema, accountRecoverySignInSchema,
-  accountRecoveryStateSchema, accountStateSchema, householdAccessSchema,
+  accountHouseholdCreationReceiptSchema, accountRecoveryCodeCount, accountRecoveryCodePrefix, accountRecoveryResultSchema, accountRecoverySignInSchema,
+  accountRecoveryStateSchema, accountStateSchema, createAccountHouseholdSchema, householdAccessSchema,
 } from '../shared/accounts.ts'
 import type {
-  AccountInvitationResult, AccountRecoveryResult, AccountRecoverySignIn, AccountRecoveryState, AccountState, HouseholdAccess,
+  AccountInvitationResult, AccountRecoveryResult, AccountRecoverySignIn, AccountRecoveryState, AccountState, CreateAccountHousehold, HouseholdAccess,
 } from '../shared/accounts.ts'
 import { activeMemberLimit, householdSchema, memberColors, retainedMemberLimit } from '../shared/domain.ts'
 import type { Household } from '../shared/domain.ts'
@@ -46,7 +46,7 @@ export class AccountStore {
     this.recoverAccount = transactional(db, this.recoverAccount.bind(this))
     this.pendingDeletions = transactional(db, this.pendingDeletions.bind(this))
     this.finishDeletion = transactional(db, this.finishDeletion.bind(this))
-    this.state = guarded(this.state.bind(this))
+    this.state = guarded(this.state.bind(this), true)
     this.household = guarded(this.household.bind(this))
     this.select = guarded(this.select.bind(this))
     this.profile = guarded(this.profile.bind(this))
@@ -221,15 +221,15 @@ export class AccountStore {
   }
 
   async state(session: AccountSession): Promise<AccountState> {
-    const account = (await this.db.prepare('SELECT id, email, name, created_at FROM accounts WHERE id = ? AND deleting = 0').get(session.accountId))
-    if (!account) throw new ApiError(409, 'Account deletion is pending. Access is disabled; retry deletion to finish.', 'ACCOUNT_DELETION_PENDING')
+    const account = (await this.db.prepare('SELECT id, email, name, created_at, deleting FROM accounts WHERE id = ?').get(session.accountId))
+    if (!account) throw new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
     await this.purgeSessions()
-    const memberships = (await this.memberships(session.accountId))
+    const memberships = account.deleting ? [] : (await this.memberships(session.accountId))
     const rows = await this.db.prepare('SELECT * FROM account_sessions WHERE account_id = ? ORDER BY last_used_at DESC, id').all(session.accountId)
     const current = rows.find((row) => row.id === session.id)
     if (!current) throw new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
     const selected = memberships.find((membership) => membership.householdId === current.selected_household_id)
-    const devices = rows.map((row) => ({
+    const devices = rows.filter((row) => !account.deleting || row.id === session.id).map((row) => ({
         id: String(row.id), label: String(row.label), createdAt: String(row.created_at),
         lastUsedAt: String(row.last_used_at),
         expiresAt: new Date(Math.min(Date.parse(String(row.expires_at)), Date.parse(String(row.last_used_at)) + accountIdleLifetime)).toISOString(),
@@ -237,6 +237,7 @@ export class AccountStore {
       }))
     return accountStateSchema.parse({
       configured: true,
+      ...(account.deleting ? { deletionPending: true } : {}),
       account: { id: account.id, email: account.email, name: account.name, createdAt: account.created_at },
       memberships, devices, csrfToken: session.csrfToken,
       session: selected ? { token: null, memberId: selected.memberId, household: (await this.store.get(selected.householdId)) } : null,
@@ -343,6 +344,7 @@ export class AccountStore {
       const other = (await this.db.prepare('SELECT member_id FROM account_memberships WHERE household_id = ? AND account_id = ?').get(household.id, session.accountId))
       if (other && other.member_id !== member.id) throw new ApiError(409, 'Your account already has a different roommate identity in this kitchen.')
       if (!existing) {
+        if ((await this.memberships(session.accountId)).length >= 50) throw new ApiError(409, 'This account already has 50 kitchens. Leave one before linking another.')
         await this.db.prepare('INSERT INTO household_accounts (household_id, owner_member_id) VALUES (?, ?) ON CONFLICT(household_id) DO NOTHING')
           .run(household.id, household.members[0].id)
         await this.db.prepare('INSERT INTO account_memberships (household_id, member_id, account_id) VALUES (?, ?, ?)')
@@ -353,15 +355,37 @@ export class AccountStore {
     }))
   }
 
-  async createHousehold(session: AccountSession, input: { name: string; memberName: string; currency: Household['currency']; budget: number }) {
+  async createHousehold(session: AccountSession, input: CreateAccountHousehold) {
+    const checked = createAccountHouseholdSchema.parse(input)
+    const payloadHash = hash(JSON.stringify([checked.name, checked.memberName, checked.currency, checked.budget]))
     return (await this.transaction(async () => {
+      if (checked.requestId) {
+        const rows = await this.db.prepare(`SELECT k.id, k.state, m.member_id FROM account_memberships m
+          JOIN households k ON k.id = m.household_id WHERE m.account_id = ? AND k.state LIKE ?`)
+          .all(session.accountId, `%${checked.requestId}%`)
+        for (const row of rows) {
+          const receipt = accountHouseholdCreationReceiptSchema.optional().parse(JSON.parse(String(row.state)).accountCreationReceipt)
+          if (receipt?.requestId !== checked.requestId || receipt.memberId !== row.member_id) continue
+          await this.household(session, String(row.id))
+          if (receipt.payloadHash !== payloadHash) {
+            throw new ApiError(409, 'This kitchen creation request was already used with different details. Start a new creation request to create another kitchen.', 'ACCOUNT_CREATION_CONFLICT')
+          }
+          return this.select(session, String(row.id))
+        }
+      }
       if ((await this.memberships(session.accountId)).length >= 50) throw new ApiError(409, 'This account already has 50 kitchens. Leave one before creating another.')
-      const created = (await this.store.create(input.name, input.memberName, input.currency, input.budget))
+      const created = (await this.store.create(checked.name, checked.memberName, checked.currency, checked.budget))
       // Store.create is shared with the legacy path; do not retain or disclose its bearer credential.
       await this.db.prepare('DELETE FROM sessions WHERE hash = ?').run(hash(created.token))
       await this.db.prepare('INSERT INTO household_accounts (household_id, owner_member_id) VALUES (?, ?)').run(created.household.id, created.memberId)
       await this.db.prepare('INSERT INTO account_memberships (household_id, member_id, account_id) VALUES (?, ?, ?)')
         .run(created.household.id, created.memberId, session.accountId)
+      if (checked.requestId) {
+        const row = await this.db.prepare('SELECT state FROM households WHERE id = ?').get(created.household.id)
+        const receipt = accountHouseholdCreationReceiptSchema.parse({ requestId: checked.requestId, memberId: created.memberId, payloadHash })
+        await this.db.prepare('UPDATE households SET state = ? WHERE id = ?')
+          .run(JSON.stringify({ ...JSON.parse(String(row!.state)), accountCreationReceipt: receipt }), created.household.id)
+      }
       return (await this.select(session, created.household.id))
     }))
   }

@@ -54,7 +54,12 @@ export function createSupabaseProvider(config: SupabaseConfig, fetcher: typeof f
       return bounded(async () => {
         const { data, error } = await client().auth.verifyOtp({ email, token: code, type: 'email' })
         if (error?.status === 429) throw new ApiError(429, 'Too many sign-in attempts. Wait and request a fresh code.')
-        if (error && (error.status === undefined || error.status >= 500 || error.status === 0)) throw unavailable()
+        const rejectedProof = ['otp_expired', 'invalid_credentials', 'user_not_found'].includes(error?.code ?? '')
+        if (error && (error.status === undefined || error.status >= 500 || error.status === 0
+          || (!rejectedProof && [401, 404].includes(error.status))
+          || ['email_provider_disabled', 'otp_disabled', 'provider_disabled', 'bad_jwt', 'no_authorization'].includes(error.code ?? ''))) {
+          throw unavailable()
+        }
         const user = data.user
         if (error || !data.session || !user?.id || !user.email_confirmed_at || user.email?.trim().toLowerCase() !== email) {
           throw new ApiError(401, 'That email code is invalid or expired. Request a fresh code.', 'INVALID_EMAIL_CODE')

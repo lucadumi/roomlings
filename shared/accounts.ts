@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { currencies, householdSchema, nameSchema } from './domain.ts'
+import { centsSchema, currencies, householdSchema, nameSchema } from './domain.ts'
 import type { Session } from './domain.ts'
 import { recoveryCodeSchema } from './access.ts'
 
@@ -23,12 +23,16 @@ export const accountKitchenSessionSchema = z.object({
 })
 export const accountStateSchema = z.object({
   configured: z.boolean(),
+  deletionPending: z.literal(true).optional(),
   account: accountSchema.nullable(),
   memberships: z.array(accountMembershipSchema),
   devices: z.array(accountDeviceSchema),
   csrfToken: z.string().min(32).nullable(),
   session: accountKitchenSessionSchema.nullable(),
 }).superRefine((state, context) => {
+  if (state.deletionPending && (!state.account || state.session !== null || state.memberships.length || state.devices.length !== 1)) {
+    context.addIssue({ code: 'custom', message: 'Pending deletion can expose only the account and its current browser, not household access.' })
+  }
   if (!state.account) {
     if (state.csrfToken !== null || state.session !== null || state.devices.length || state.memberships.length) {
       context.addIssue({ code: 'custom', message: 'Signed-out account access cannot contain private session data.' })
@@ -80,6 +84,13 @@ export const linkAccountSchema = z.object({
 }).refine((input) => Number(input.token !== undefined) + Number(input.recoveryCode !== undefined) === 1,
   'Use either your existing browser access or your recovery code to link a roommate identity.')
 export const accountVersionSchema = z.object({ version: z.number().int().nonnegative() })
+export const createAccountHouseholdSchema = z.object({
+  name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema,
+  requestId: id.optional(),
+})
+export const accountHouseholdCreationReceiptSchema = z.object({
+  requestId: id, memberId: id, payloadHash: z.string().regex(/^[a-f0-9]{64}$/),
+})
 export const accountRecoveryCodeCount = 10
 export const accountRecoveryCodePrefix = 'roomlings-account-'
 export const accountRecoveryCodeSchema = z.string().trim().toLowerCase().regex(
@@ -125,3 +136,4 @@ export type KitchenSession = Session | AccountKitchenSession
 export type AccountRecoverySignIn = z.infer<typeof accountRecoverySignInSchema>
 export type AccountRecoveryState = z.infer<typeof accountRecoveryStateSchema>
 export type AccountRecoveryResult = z.infer<typeof accountRecoveryResultSchema>
+export type CreateAccountHousehold = z.infer<typeof createAccountHouseholdSchema>

@@ -64,7 +64,7 @@ const savedKitchenSchema = z.object({
   expired: z.literal(true).optional(),
 })
 export type SavedKitchen = z.infer<typeof savedKitchenSchema>
-export type SavedKitchenChange = Pick<SavedKitchen, 'demo' | 'expired'>
+export type SavedKitchenChange = Pick<SavedKitchen, 'demo' | 'expired'> & Partial<Pick<SavedKitchen, 'name' | 'memberName'>>
 
 export function readToken(): string | null {
   // Existing kitchens migrate when rememberKitchen saves a successfully restored session.

@@ -1,11 +1,11 @@
 import express from 'express'
 import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
   activeMemberLimit, balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
   centsSchema, choreArchiveSchema, choreCompletionLimit, choreEditInputSchema, choreInputSchema, choreLimit, choreVersionSchema,
-  currencies, expenseInputSchema, memberColors, nameSchema, roomStyleSchema,
+  currencies, expenseInputSchema, memberColors, mutationInputSchema, mutationReceiptLimit, nameSchema, roomStyleSchema, settlementSchema,
   shoppingCheckoutSchema, shoppingClaimSchema, shoppingItemEditSchema, shoppingItemInputSchema,
   retainedMemberLimit, shoppingItemLimit, shoppingItemVersionSchema, shoppingPickSchema, shoppingRunLimit,
 } from '../shared/domain.ts'
@@ -23,6 +23,15 @@ const createSchema = z.object({ name: nameSchema, memberName: nameSchema, curren
 const joinSchema = z.object({ inviteCode: z.string().min(8).max(80), name: nameSchema })
 const versionSchema = z.object({ version: z.number().int().nonnegative() })
 const expiredSession = 'This browser session has expired or was revoked. Recover access or join again with your invitation.'
+
+function canonicalPayload(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalPayload)
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, canonicalPayload(entry)]))
+  }
+  return value
+}
 
 function rateLimit(maximum: number, window: number, message: string): RequestHandler {
   const attempts = new Map<string, { count: number; expires: number }>()
@@ -68,16 +77,41 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     return result
   }
   const mutate = async (req: Request, res: Response, change: (household: Household, memberId: string) => void | Promise<void>) => {
-    const household = await store.transaction(async () => {
+    const result = await store.transaction(async () => {
       const { household, memberId } = await authenticated(req, res)
       const { version } = versionSchema.parse(req.body)
+      const mutation = req.body.mutationId === undefined && req.body.mutationVersion === undefined
+        ? null : mutationInputSchema.parse(req.body)
+      if (mutation && mutation.mutationVersion > version) throw new ApiError(400, 'The change cannot precede its original kitchen version.')
+      const payload = Object.fromEntries(Object.entries(req.body)
+        .filter(([key]) => !['version', 'mutationId', 'mutationVersion'].includes(key)))
+      const fingerprint = createHash('sha256').update(JSON.stringify([req.method, req.path, canonicalPayload(payload)])).digest('hex')
+      const receipts = household.mutationReceipts ?? []
+      if (mutation) {
+        const recorded = receipts.find((receipt) => receipt.id === mutation.mutationId)
+        if (recorded) {
+          if (recorded.memberId !== memberId) throw new ApiError(409, 'This change identifier belongs to another roommate. Start a new action.', 'MUTATION_ID_CONFLICT')
+          if (recorded.fingerprint !== fingerprint) {
+            throw new ApiError(409, 'Your earlier change was already saved with different details. Review the latest kitchen before making a new change.', 'MUTATION_PAYLOAD_CHANGED')
+          }
+          return { household, replayed: true }
+        }
+        // An old unconfirmed request must not become a new mutation after its receipt is pruned.
+        if (receipts.length === mutationReceiptLimit && mutation.mutationVersion < receipts[0].version - 1) {
+          throw new ApiError(409, 'This old change can no longer be confirmed. Review the latest kitchen, then reopen the form to make a new change.', 'MUTATION_TOO_OLD')
+        }
+      }
       if (version !== household.version) throw new ApiError(409, 'A roommate just changed the kitchen. It has been refreshed; please try again.')
       await change(household, memberId)
       household.version++
+      if (mutation) household.mutationReceipts = [
+        ...receipts.slice(-(mutationReceiptLimit - 1)),
+        { id: mutation.mutationId, memberId, version: household.version, fingerprint },
+      ]
       await store.save(household)
-      return household
+      return { household }
     })
-    res.json({ household })
+    res.json(result)
   }
   const requireRoommates = (household: Household, participants: string[], paidBy?: string) => {
     const members = new Set(household.members.filter((member) => !member.inactive).map((member) => member.id))
@@ -353,7 +387,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     })
   })))
   app.post('/api/settlements', async (req, res) => (await mutate(req, res, (household) => {
-    const transfer = z.object({ from: z.string().uuid(), to: z.string().uuid(), amount: centsSchema }).parse(req.body)
+    const transfer = settlementSchema.pick({ from: true, to: true, amount: true }).parse(req.body)
     const current = balances(household)
     if (transfer.from === transfer.to || !current.has(transfer.from) || !current.has(transfer.to)
       || (current.get(transfer.from) ?? 0) >= 0 || (current.get(transfer.to) ?? 0) <= 0

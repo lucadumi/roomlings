@@ -25,7 +25,7 @@ import {
   updateSavedKitchen,
 } from './api.ts'
 import type { SavedKitchen, SavedKitchenChange } from './api.ts'
-import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel } from './components.tsx'
+import { Avatar, CategoryIcon, CopyField, DraftConflict, Form, Modal, RoomPanel } from './components.tsx'
 import { LoadingIcon, SceneLoading } from './Branding.tsx'
 import { AccessDialog, RecoveryForm } from './Access.tsx'
 import { AccountDialog } from './Accounts.tsx'
@@ -118,6 +118,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const sessionRef = useRef(session)
   sessionRef.current = session
   const sessionEpoch = useRef(0)
+  const pendingMutation = useRef<{ key: string; id: string; version: number } | null>(null)
   const [account, setAccount] = useState<AccountState | null>(null)
   const accountRef = useRef(account)
   accountRef.current = account
@@ -138,6 +139,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const [billMonth, setBillMonth] = useState(localDate().slice(0, 7))
   const [shoppingView, setShoppingView] = useState<ShoppingView>('list')
   const [choreView, setChoreView] = useState<ChoreView>('active')
+  const [choreMine, setChoreMine] = useState(false)
   const [choreFilter, setChoreFilter] = useState<ChoreFilter>({ room: currentRoom, area: null })
   const [supplyRoom, setSupplyRoom] = useState<RoomId>(currentRoom)
   const [filter, setFilter] = useState<Category | 'all'>('all')
@@ -154,6 +156,17 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     }
   }, [])
 
+  useEffect(() => {
+    if (!session) return
+    for (const kitchen of saved) {
+      if (kitchen.householdId !== session.household.id) continue
+      const member = session.household.members.find((member) => member.id === kitchen.memberId)
+      if (kitchen.name !== session.household.name || (member && kitchen.memberName !== member.name)) {
+        changeSavedKitchen(kitchen.token, { name: session.household.name, ...(member ? { memberName: member.name } : {}) })
+      }
+    }
+  }, [session, saved, changeSavedKitchen])
+
   const initialize = useCallback(() => {
     const attempt = ++startupAttempt.current
     setLoading(true)
@@ -167,6 +180,11 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         try { setSaved(savedKitchens()) } catch {
           setError('This browser could not read its saved kitchen shortcuts. Account sign-in and recovery remain available.')
         }
+      }
+      if (accountState?.deletionPending) {
+        setError('Account deletion is pending. Account kitchen access is disabled.')
+        setDialog({ account: 'manage' })
+        return
       }
       const restored = await loadSession(accountState)
       if (startupAttempt.current !== attempt) return
@@ -257,6 +275,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setPage('overview')
     setChoreFilter({ room: currentRoom, area: null })
     setChoreView('active')
+    setChoreMine(false)
     setSupplyRoom(currentRoom)
     setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
   }, [currentRoom])
@@ -265,7 +284,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     const timer = window.setTimeout(() => setNotice(''), 6500)
     return () => clearTimeout(timer)
   }, [notice])
-  useEffect(() => { setFormError('') }, [dialog])
+  useEffect(() => { setFormError(''); pendingMutation.current = null }, [dialog])
 
   const expireSession = useCallback((expected: KitchenSession, message: string, accountExpired = false) => {
     if (!sameKitchenSession(sessionRef.current, expected)) return
@@ -356,6 +375,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
     setShoppingView('list')
     setChoreView('active')
+    setChoreMine(false)
     setChoreFilter({ room: currentRoom, area: null })
     setFilter('all')
     setPage('overview')
@@ -374,18 +394,28 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setFormError('')
     if (inline) setError('')
     try {
-      const result = await request<{ household: unknown }>(path, {
+      let mutation: { mutationId: string; mutationVersion: number } | undefined
+      if (path !== '/shopping/checkout') {
+        const key = JSON.stringify([epoch, session.household.id, session.memberId, path, method ?? 'POST', inline ? body : null])
+        if (pendingMutation.current?.key !== key) {
+          if (!globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to safely save a kitchen change.')
+          pendingMutation.current = { key, id: crypto.randomUUID(), version: session.household.version }
+        }
+        mutation = { mutationId: pendingMutation.current.id, mutationVersion: pendingMutation.current.version }
+      }
+      const result = await request<{ household: unknown; replayed?: boolean }>(path, {
         token: session.token, csrfToken: session.token === null ? accountRef.current?.csrfToken : undefined,
-        householdId: session.household.id, body: { ...body, version: session.household.version }, method,
+        householdId: session.household.id, body: { ...body, ...mutation, version: session.household.version }, method,
       })
       if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return
       const household = householdSchema.parse(result.household)
       setSession((previous) => previous && sameKitchenSession(previous, session) && household.version >= previous.household.version ? { ...previous, household } : previous)
-      setNotice(success)
+      pendingMutation.current = null
+      setNotice(result.replayed ? 'Your earlier change was already saved. The latest kitchen is now shown.' : success)
       if (!inline) setDialog(null)
       setSyncState('saved')
-      if (path === '/bills') setBillMonth(household.bills[0].startMonth)
-      if ((path === '/expenses' || path === '/shopping/checkout') && method !== 'DELETE') {
+      if (!result.replayed && path === '/bills') setBillMonth(household.bills[0].startMonth)
+      if (!result.replayed && (path === '/expenses' || path === '/shopping/checkout') && method !== 'DELETE') {
         const added = household.expenses[0]
         setMonth(added.date.slice(0, 7))
         setStockEvent({ id: added.id, category: added.category })
@@ -399,6 +429,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         return
       }
       const message = failure instanceof Error ? failure.message : 'The change could not be saved.'
+      if (failure instanceof RequestError && (failure.status === 0 || failure.status >= 500)) setSyncState('offline')
       if (inline) setError(message)
       else setFormError(message)
       if (failure instanceof RequestError && (failure.status === 409 || (failure.status === 403 && session.token === null))) {
@@ -449,6 +480,9 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         setBusy(false)
         setError('Choose, create or link a kitchen from your account.')
       }
+    } else if (current?.token === null && !next.memberships.some((membership) =>
+      membership.householdId === current.household.id && membership.memberId === current.memberId)) {
+      expireSession(current, 'Your membership changed. Choose an available kitchen from your account.')
     } else if (current?.token === null && next.session && sameKitchenSession(current, next.session)
       && next.session.household.version >= current.household.version) {
       sessionRef.current = next.session
@@ -565,6 +599,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const openChores = (area: ChoreArea | null = null) => {
     setChoreFilter({ room: currentRoom, area })
     setChoreView('active')
+    setChoreMine(false)
     visit('chores')
   }
   const openSupplies = (roomId = currentRoom) => {
@@ -667,7 +702,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         subtitle={completing ? 'This records a completed turn, not a payment.' : snapshot.archived ? 'The chore returns with its saved schedule. Previous history stays.' : 'The chore leaves the active list. Its history stays, and it can be restored later.'}
         onClose={close} busy={busy}>
         <div className="chore-confirmation"><h3>{snapshot.title}</h3><p>{choreLocationLabel(snapshot.roomId, snapshot.area)}</p>
-          {snapshot.dueDate && <p>Scheduled for {dateTitle(snapshot.dueDate)}.</p>}
+          {snapshot.dueDate && <p>Scheduled for {dateTitle(snapshot.dueDate, billingDate(household.billingTimeZone))}.</p>}
           {completing && <p>{assignee ? `Assigned to ${assignee.name}. ` : 'Unassigned. '}Completion will be recorded by {memberName(session.memberId)}.</p>}
         </div>
         {!allowed ? <p className="form-error" role="alert">This chore changed. Close the dialog and review its latest state before continuing.</p> : footerError}
@@ -684,7 +719,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const chore = household.chores.items.find((item) => item.id === dialog.undoChore.choreId)
       const allowed = !!completion && canUndoChore(chore, completion)
       return <Modal title="Undo this chore completion?" subtitle="Restore the previous due date and turn. A later edit or completion cannot be overwritten." onClose={close} busy={busy}>
-        <div className="chore-confirmation"><h3>{dialog.undoChore.title}</h3><p>Scheduled for {dateTitle(dialog.undoChore.dueDate)}.</p></div>
+        <div className="chore-confirmation"><h3>{dialog.undoChore.title}</h3><p>Scheduled for {dateTitle(dialog.undoChore.dueDate, billingDate(household.billingTimeZone))}.</p></div>
         {!allowed ? <p className="form-error" role="alert">This completion can no longer be undone because the chore changed.</p> : footerError}
         <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep completion</button>
           <button className="button primary" disabled={busy || !allowed} onClick={() => {
@@ -861,7 +896,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}` : page}
       onClose={() => visit('overview')}
     ><div className="game-panel-content">
-        {page === 'chores' && <ChoresPanel household={household} memberId={session.memberId} filter={choreFilter} onFilter={setChoreFilter} view={choreView} onView={setChoreView} busy={busy}
+        {page === 'chores' && <ChoresPanel household={household} memberId={session.memberId} filter={choreFilter} onFilter={setChoreFilter} view={choreView} onView={setChoreView} mine={choreMine} onMine={setChoreMine} busy={busy}
           onAdd={() => openDialog({ createChore: { roomId: choreFilter.room === 'home' ? null : choreFilter.room === 'all' ? currentRoom : choreFilter.room, area: choreFilter.area } })}
           onEdit={(chore) => openDialog({ editChore: chore })} onComplete={(chore) => openDialog({ completeChore: chore })}
           onArchive={(chore) => openDialog({ archiveChore: chore })} onUndo={(completion) => openDialog({ undoChore: completion })}
@@ -937,13 +972,29 @@ function SettingsForm({ household, busy, error, onSubmit }: { household: Househo
   const [name, setName] = useState(household.name)
   const [budget, setBudget] = useState((household.budget / 100).toFixed(2))
   const [currency, setCurrency] = useState<string>(household.currency)
+  const [reviewed, setReviewed] = useState({ name: household.name, budget: household.budget, currency: household.currency })
   const [localError, setLocalError] = useState('')
   const currencyLocked = household.expenses.length > 0 || household.settlements.length > 0 || household.bills.length > 0
-  return <Form onSubmit={() => { const amount = parseMoney(budget); if (!amount) { setLocalError('Enter a positive budget with up to two decimal places.'); return }; setLocalError(''); onSubmit({ name, budget: amount, currency }) }}>
+  const changed = reviewed.name !== household.name || reviewed.budget !== household.budget || reviewed.currency !== household.currency
+  const currentCurrency = currencyLocked ? household.currency : currency
+  return <Form onSubmit={() => {
+    if (changed) { setLocalError('Review the latest house rules before saving.'); return }
+    const amount = parseMoney(budget)
+    if (!amount) { setLocalError('Enter a positive budget with up to two decimal places.'); return }
+    setLocalError('')
+    onSubmit({ name, budget: amount, currency: currentCurrency })
+  }}>
     <label className="field">Kitchen name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /></label>
-    <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<Dropdown label="Currency" value={currency} onValueChange={setCurrency} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</Dropdown></label></div>
+    <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<Dropdown label="Currency" value={currentCurrency} onValueChange={setCurrency} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</Dropdown></label></div>
     <p className="field-hint">The monthly grocery target applies to every month. {currencyLocked && 'Currency stays fixed after adding expenses or monthly bills.'}</p>
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
+    {changed && <DraftConflict
+      onLatest={() => {
+        setName(household.name); setBudget((household.budget / 100).toFixed(2)); setCurrency(household.currency)
+        setReviewed({ name: household.name, budget: household.budget, currency: household.currency }); setLocalError('')
+      }}
+      onKeep={() => { setReviewed({ name: household.name, budget: household.budget, currency: household.currency }); setLocalError('') }}
+    >The house rules changed. Review the latest values before saving your draft.</DraftConflict>}
+    {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy || changed}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
   </Form>
 }
 

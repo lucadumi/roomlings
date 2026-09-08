@@ -5,9 +5,131 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Store } from '../server/store.ts'
+import { SQLiteDatabase } from '../server/database.ts'
 import { activeMemberLimit, balances, householdSchema, memberColors, retainedMemberLimit } from '../shared/domain.ts'
 
 describe('account persistence and migration', () => {
+  it('persists account creation receipts through household saves and fresh account sessions after restart', async () => {
+    const directory = join(process.cwd(), `.accounts-creation-${randomUUID()}`)
+    mkdirSync(directory)
+    const filename = join(directory, 'kitchen.sqlite')
+    let store = new Store(filename)
+    try {
+      const identity = { providerId: randomUUID(), email: 'ada@example.com' }
+      const owner = await store.accounts.signIn(identity, 'Ada', 'Laptop')
+      const input = { requestId: randomUUID(), name: 'Our kitchen', memberName: 'Ada', currency: 'EUR' as const, budget: 10000 }
+      const first = await store.accounts.createHousehold(owner.session, input)
+      const household = first.session!.household
+      household.name = 'Updated kitchen'
+      household.version++
+      const clientState = {
+        ...household,
+        accountCreationReceipt: { requestId: randomUUID(), memberId: first.session!.memberId, payloadHash: '0'.repeat(64) },
+      }
+      await store.save(clientState)
+      const invitation = await store.accounts.invite(owner.session, household.id, household.version, 7)
+      await store.close()
+      store = new Store(filename)
+      const fresh = await store.accounts.signIn(identity, 'Ada', 'Different browser')
+      const replay = await store.accounts.createHousehold(fresh.session, input)
+      assert.equal(replay.memberships.length, 1)
+      assert.equal(replay.session?.household.id, household.id)
+      assert.equal(replay.session?.memberId, first.session?.memberId)
+      assert.equal(replay.session?.household.name, household.name)
+      assert.equal(replay.session?.household.version, invitation.access.household.version)
+      assert.ok(!JSON.stringify(replay).includes('accountCreationReceipt'))
+      const inspect = new DatabaseSync(filename, { readOnly: true })
+      try {
+        const saved = JSON.parse(String(inspect.prepare('SELECT state FROM households WHERE id = ?').get(household.id)?.state))
+        assert.equal(saved.accountCreationReceipt.requestId, input.requestId)
+        assert.equal(saved.accountCreationReceipt.memberId, first.session?.memberId)
+        assert.match(saved.accountCreationReceipt.payloadHash, /^[a-f0-9]{64}$/)
+      } finally {
+        inspect.close()
+      }
+    } finally {
+      await store.close()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('rolls back account creation receipts with an undeliverable account state and permits a safe retry', async (t) => {
+    const db = new SQLiteDatabase(':memory:')
+    const store = new Store(db)
+    try {
+      const owner = await store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Laptop')
+      const input = { requestId: randomUUID(), name: 'Our kitchen', memberName: 'Ada', currency: 'EUR' as const, budget: 10000 }
+      const failure = t.mock.method(store.accounts, 'state', async () => { throw new Error('Simulated creation response failure') })
+      await assert.rejects(store.accounts.createHousehold(owner.session, input), /Simulated creation response failure/)
+      failure.mock.restore()
+      assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM households').get())?.count, 0)
+      assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM account_memberships').get())?.count, 0)
+      assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM sessions').get())?.count, 0)
+      const first = await store.accounts.createHousehold(owner.session, input)
+      const replay = await store.accounts.createHousehold(owner.session, input)
+      assert.equal(replay.session?.household.id, first.session?.household.id)
+      assert.equal(replay.memberships.length, 1)
+    } finally {
+      await store.close()
+    }
+  })
+
+  it('reopens a successful creation at the account kitchen limit without recreating a closed kitchen', async () => {
+    const store = new Store(':memory:')
+    try {
+      const owner = await store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Laptop')
+      const input = { requestId: randomUUID(), name: 'Our kitchen', memberName: 'Ada', currency: 'EUR' as const, budget: 10000 }
+      const first = await store.accounts.createHousehold(owner.session, input)
+      for (let index = 1; index < 50; index++) {
+        await store.accounts.createHousehold(owner.session, { ...input, requestId: randomUUID(), name: `Kitchen ${index}` })
+      }
+      const replay = await store.accounts.createHousehold(owner.session, input)
+      assert.equal(replay.memberships.length, 50)
+      assert.equal(replay.session?.household.id, first.session?.household.id)
+      await store.accounts.leave(owner.session, first.session!.household.id, first.session!.household.version)
+      await assert.rejects(store.accounts.createHousehold(owner.session, input), /active access/)
+      assert.equal((await store.accounts.state(owner.session)).memberships.length, 49)
+      const separate = await store.accounts.createHousehold(owner.session, { ...input, requestId: randomUUID() })
+      assert.notEqual(separate.session?.household.id, first.session?.household.id)
+      assert.equal(separate.memberships.length, 50)
+    } finally {
+      await store.close()
+    }
+  })
+
+  it('applies the kitchen limit to browser linking without preventing an existing link from reopening', async () => {
+    const store = new Store(':memory:')
+    try {
+      const account = await store.accounts.signIn({ providerId: randomUUID(), email: 'ada@example.com' }, 'Ada', 'Laptop')
+      const linked = await store.create('Linked kitchen', 'Ada', 'EUR', 10000)
+      await store.accounts.link(account.session, { token: linked.token })
+      for (let index = 1; index < 50; index++) {
+        await store.accounts.createHousehold(account.session, {
+          name: `Kitchen ${index}`, memberName: 'Ada', currency: 'EUR', budget: 10000,
+        })
+      }
+      const overflow = await store.create('Another browser kitchen', 'Ada', 'EUR', 10000)
+      const browser = await store.authenticate(overflow.token)
+      assert.ok(browser)
+      const recovery = await store.rotateRecovery(browser, { version: 0, revokeOthers: false })
+      assert.ok(recovery && recovery !== 'conflict')
+      for (const proof of [{ token: overflow.token }, { recoveryCode: recovery.code }]) {
+        await assert.rejects(store.accounts.link(account.session, proof), /50 kitchens/)
+        assert.equal(await store.accounts.isManaged(overflow.household.id), false)
+        assert.deepEqual(await store.get(overflow.household.id), overflow.household)
+      }
+      const reopened = await store.accounts.link(account.session, { token: linked.token })
+      assert.equal(reopened.memberships.length, 50)
+      assert.equal(reopened.session?.memberId, linked.memberId)
+      await store.accounts.leave(account.session, linked.household.id, reopened.session!.household.version)
+      const accepted = await store.accounts.link(account.session, { recoveryCode: recovery.code })
+      assert.equal(accepted.memberships.length, 50)
+      assert.equal(accepted.session?.memberId, overflow.memberId)
+    } finally {
+      await store.close()
+    }
+  })
+
   it('releases active seats while retaining former members, balances, and bill schedules beyond twelve identities', async () => {
     const store = new Store(':memory:')
     try {

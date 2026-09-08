@@ -80,6 +80,71 @@ describe('shared kitchen API', () => {
     const undone = await (await call(`/settlements/${paid.household.settlements[0].id}`, { version: 3 }, first.token, 'DELETE')).json()
     assert.equal(balances(undone.household).get(second.memberId), -amount)
   })
+  it('records a valid repayment larger than an individual expense limit', async () => {
+    const first = await create()
+    const second: Session = await (await call('/join', { inviteCode: first.household.inviteCode, name: 'Ben' })).json()
+    let household = second.household
+    for (let index = 0; index < 3; index++) {
+      const response = await call('/expenses', {
+        description: `Large shared purchase ${index + 1}`, amount: 100_000_000, paidBy: first.memberId,
+        participants: [first.memberId, second.memberId], category: 'other', date: localDate(), version: household.version,
+      }, first.token)
+      assert.equal(response.status, 200)
+      household = householdSchema.parse((await response.json()).household)
+    }
+    const amount = -balances(household).get(second.memberId)!
+    assert.equal(amount, 150_000_000)
+    const response = await call('/settlements', {
+      from: second.memberId, to: first.memberId, amount, version: household.version,
+    }, second.token)
+    assert.equal(response.status, 200)
+    const paid = householdSchema.parse((await response.json()).household)
+    assert.equal(paid.settlements[0].amount, amount)
+    assert.ok([...balances(paid).values()].every((balance) => balance === 0))
+  })
+  it('replays a confirmed mutation without duplicating it or restoring a later deletion', async () => {
+    const session = await create()
+    const input = {
+      description: 'Receipt saved once', amount: 1301, paidBy: session.memberId, participants: [session.memberId],
+      category: 'pantry', date: localDate(), version: 0, mutationId: randomUUID(), mutationVersion: 0,
+    }
+    const response = await call('/expenses', input, session.token)
+    assert.equal(response.status, 200)
+    const first = householdSchema.parse((await response.json()).household)
+    for (const version of [0, first.version]) {
+      const replay = await call('/expenses', { ...input, version }, session.token)
+      assert.equal(replay.status, 200)
+      const result = await replay.json()
+      assert.equal(result.replayed, true)
+      assert.equal(result.household.version, first.version)
+      assert.equal(result.household.expenses.length, 1)
+    }
+    const changed = await call('/expenses', { ...input, amount: 1401, version: first.version }, session.token)
+    assert.equal(changed.status, 409)
+    assert.equal((await changed.json()).code, 'MUTATION_PAYLOAD_CHANGED')
+    const removed = await call(`/expenses/${first.expenses[0].id}`, { version: first.version }, session.token, 'DELETE')
+    assert.equal(removed.status, 200)
+    const latest = householdSchema.parse((await removed.json()).household)
+    const replay = await call('/expenses', { ...input, version: latest.version }, session.token)
+    assert.equal(replay.status, 200)
+    const result = await replay.json()
+    assert.equal(result.replayed, true)
+    assert.equal(result.household.expenses.length, 0)
+    assert.equal(result.household.version, latest.version)
+  })
+  it('does not reserve a mutation identifier for a rejected input', async () => {
+    const session = await create()
+    const input = {
+      description: 'Corrected receipt', amount: 301, paidBy: session.memberId, participants: [randomUUID()],
+      category: 'dairy', date: localDate(), version: 0, mutationId: randomUUID(), mutationVersion: 0,
+    }
+    assert.equal((await call('/expenses', input, session.token)).status, 400)
+    const response = await call('/expenses', { ...input, participants: [session.memberId] }, session.token)
+    assert.equal(response.status, 200)
+    const household = householdSchema.parse((await response.json()).household)
+    assert.equal(household.expenses.length, 1)
+    assert.equal(household.version, 1)
+  })
   it('retires invitation links without revoking existing member sessions', async () => {
     const session = await create()
     const rotated = await call('/invite/rotate', { version: 0 }, session.token)

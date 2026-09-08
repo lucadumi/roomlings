@@ -3,7 +3,7 @@ import type { Locator, Page } from '@playwright/test'
 import { billingDate, householdSchema, localDate, money } from '../../shared/domain.ts'
 import type { Session } from '../../shared/domain.ts'
 import {
-  accountState, browserAccountRequest, expect, test,
+  accountState, expect, test,
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 import { chooseOption, openGroceryForm, openShoppingBag, savedKitchen } from './fixtures.ts'
@@ -366,17 +366,20 @@ test.describe('responsive current app', () => {
       await page.getByRole('button', { name: 'Back to account', exact: true }).click()
 
       await accounts.provider.send(email)
-      const anotherSession = await browserAccountRequest(page, '/account/verify', {
-        email, code: accounts.provider.codeFor(email), name: longName, label: otherName,
+      const anotherSession = await fetch(`${accounts.origin}/api/account/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Roomlings-Request': '1' },
+        body: JSON.stringify({ email, code: accounts.provider.codeFor(email), name: longName, label: otherName }),
       })
       expect(anotherSession.status).toBe(200)
+      await anotherSession.json()
       await page.getByRole('button', { name: 'Refresh account sessions', exact: true }).click()
-      await expect(page.getByRole('button', { name: `Revoke ${longName}`, exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: `Revoke ${otherName}`, exact: true })).toBeVisible()
       await expectContentFits(dialog)
-      await page.getByRole('button', { name: `Revoke ${longName}`, exact: true }).click()
+      await page.getByRole('button', { name: `Revoke ${otherName}`, exact: true }).click()
       await expectContentFits(dialog)
       await page.getByRole('button', { name: 'Revoke session', exact: true }).click()
-      await expect(page.getByRole('button', { name: `Revoke ${longName}`, exact: true })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: `Revoke ${otherName}`, exact: true })).toHaveCount(0)
       await page.getByRole('button', { name: 'Link existing kitchen access', exact: true }).click()
       await expectContentFits(dialog)
       const link = page.getByRole('button', { name: 'Link recovery identity to my account', exact: true })

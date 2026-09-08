@@ -75,4 +75,6 @@ Postgres tests require `TEST_DATABASE_URL`; they use disposable `roomlings_test_
 
 Build with `npm run build`, then serve the build and API with `npm start`. Configure [Supabase accounts](accounts.md), HTTPS, the correct `APP_ORIGIN`, mail delivery, abuse limits, backups and a privacy/retention policy first.
 
+Keep API writers sharing a database on compatible builds, even when no SQL schema upgrade is needed. Household mutation-retry receipts and private account-creation receipts live inside household JSON; an older server can pass the SQL schema check but discard that metadata on its next save. Coordinate deployment and restarts for every writer rather than relying on the schema version alone.
+
 Keep the development server private. Do not expose credentials in frontend environment variables, logs or source control.

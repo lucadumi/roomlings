@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Page, Route } from '@playwright/test'
 import { balances, localDate } from '../../shared/domain.ts'
-import { accountStateSchema } from '../../shared/accounts.ts'
+import { accountStateSchema, householdAccessSchema } from '../../shared/accounts.ts'
 import { openGroceryForm, savedKitchen } from './fixtures.ts'
 import {
   accountState, browserAccountRequest, closeAccountContext, expect, routeAccountApi, test,
@@ -399,5 +399,148 @@ test.describe('verified accounts and household membership', () => {
     await expect(dialog.getByRole('status')).toContainText('Account access has ended')
     await expect(dialog.getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
     expect(accounts.provider.deleted).toHaveLength(1)
+  })
+
+  test('refreshes saved account fields without replacing an unfinished profile draft', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'profile-refresh@example.com', 'Ada')
+    const dialog = page.getByRole('dialog')
+    expect((await browserAccountRequest(page, '/account', { name: 'Updated Ada' }, 'PATCH')).status).toBe(200)
+    await dialog.getByRole('button', { name: 'Refresh account sessions', exact: true }).click()
+    await expect(dialog.getByLabel('Account display name', { exact: true })).toHaveValue('Updated Ada')
+    await dialog.getByLabel('Account display name', { exact: true }).fill('Keep my account draft')
+    expect((await browserAccountRequest(page, '/account', { name: 'Latest saved Ada' }, 'PATCH')).status).toBe(200)
+    expect((await browserAccountRequest(page, '/account/device', { label: 'A renamed browser' }, 'PATCH')).status).toBe(200)
+    await dialog.getByRole('button', { name: 'Refresh account sessions', exact: true }).click()
+    await expect(dialog.getByLabel('Account display name', { exact: true })).toHaveValue('Keep my account draft')
+    await expect(dialog.getByLabel('Name this account browser', { exact: true })).toHaveValue('A renamed browser')
+    await expect(dialog.getByText('Latest saved Ada', { exact: true })).toBeVisible()
+  })
+
+  test('retrying an interrupted account kitchen creation does not create another household', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'create-once@example.com', 'Ada')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Create a kitchen', exact: true }).click()
+    await dialog.getByLabel('What do you call home?', { exact: true }).fill('One new household')
+    await page.route('**/api/account/households', async (route) => {
+      const saved = await route.fetch({ url: `${accounts.origin}/api/account/households`, maxRedirects: 0 })
+      await expect(saved).toBeOK()
+      await route.fulfill({ status: 503, json: { error: 'The new kitchen response was interrupted. Try again.' } })
+    })
+    await dialog.getByRole('button', { name: 'Create our kitchen', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('interrupted')
+    await expect(dialog.getByLabel('What do you call home?', { exact: true })).toHaveValue('One new household')
+    await page.unroute('**/api/account/households')
+    await dialog.getByRole('button', { name: 'Create our kitchen', exact: true }).click()
+    await expect(dialog).toHaveAccessibleName('Your Roomlings account.')
+    expect((await accountState(page)).memberships).toHaveLength(1)
+    await expect(dialog.getByRole('button', { name: 'Open One new household', exact: true })).toHaveCount(1)
+  })
+
+  test('retains a creation request and its details through reauthentication after an interrupted response', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'create-reauth@example.com', 'Ada')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Create a kitchen', exact: true }).click()
+    await dialog.getByLabel('What do you call home?', { exact: true }).fill('A creation kept through sign-in')
+    await dialog.getByLabel('Your name', { exact: true }).fill('Ada at home')
+    await dialog.getByLabel('Monthly grocery budget', { exact: true }).fill('555')
+    const ids: string[] = []
+    await page.route('**/api/account/households', async (route) => {
+      ids.push(route.request().postDataJSON().requestId)
+      if (ids.length === 1) {
+        const saved = await route.fetch({ url: `${accounts.origin}/api/account/households`, maxRedirects: 0 })
+        await expect(saved).toBeOK()
+        await route.fulfill({ status: 503, json: { error: 'The creation response was interrupted.' } })
+      } else {
+        await route.fulfill({ status: 401, json: { error: 'Sign in again before continuing.', code: 'REAUTHENTICATION_REQUIRED' } })
+      }
+    })
+    await dialog.getByRole('button', { name: 'Create our kitchen', exact: true }).click()
+    await expect(dialog.getByRole('alert')).toContainText('interrupted')
+    await dialog.getByRole('button', { name: 'Create our kitchen', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Send sign-in code', exact: true })).toBeVisible()
+    await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
+    await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('create-reauth@example.com'))
+    await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
+    await expect(dialog.getByLabel('What do you call home?', { exact: true })).toHaveValue('A creation kept through sign-in')
+    await expect(dialog.getByLabel('Your name', { exact: true })).toHaveValue('Ada at home')
+    await expect(dialog.getByLabel('Monthly grocery budget', { exact: true })).toHaveValue('555.00')
+    await page.unroute('**/api/account/households')
+    const retried = page.waitForRequest('**/api/account/households')
+    await dialog.getByRole('button', { name: 'Create our kitchen', exact: true }).click()
+    ids.push((await retried).postDataJSON().requestId)
+    await expect(dialog).toHaveAccessibleName('Your Roomlings account.')
+    expect(ids[0]).toMatch(/^[0-9a-f-]{36}$/)
+    expect(new Set(ids).size).toBe(1)
+    expect((await accountState(page)).memberships).toHaveLength(1)
+  })
+
+  test('restores deletion-only retry after reload without reopening household access', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'delete-retry@example.com', 'Ada')
+    await createKitchen(page, 'A deletion kept pending')
+    accounts.provider.failDelete = true
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await dialog.getByLabel('Confirm your email', { exact: true }).fill('delete-retry@example.com')
+    await dialog.getByRole('button', { name: 'Delete my account', exact: true }).click()
+    await expect(dialog).toHaveAccessibleName('Account deletion is pending.')
+    await page.reload()
+    await expect(dialog).toHaveAccessibleName('Account deletion is pending.')
+    await expect(dialog.getByRole('button', { name: 'Retry account deletion', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: 'Create a kitchen', exact: true })).toHaveCount(0)
+    await expect(page.locator('.game-house')).toHaveCount(0)
+    const state = await accountState(page)
+    expect(state.deletionPending).toBe(true)
+    expect(state.memberships).toEqual([])
+    expect(state.session).toBeNull()
+    expect((await browserAccountRequest(page, '/household')).status).toBe(409)
+    accounts.provider.failDelete = false
+    await dialog.getByRole('button', { name: 'Retry account deletion', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('deletion has completed')
+    expect((await accountState(page)).account).toBeNull()
+    expect(accounts.provider.deleted).toHaveLength(1)
+  })
+
+  test('refreshes conflicted membership settings before an explicit invitation retry', async ({ page, accounts }) => {
+    await page.goto('/#account')
+    await signIn(page, accounts, 'membership-refresh@example.com', 'Ada')
+    await createKitchen(page, 'The current membership home')
+    const state = await accountState(page)
+    if (!state.session) throw new Error('The membership flow needs a selected household.')
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Manage The current membership home', exact: true }).click()
+    expect((await browserAccountRequest(page, '/expenses', {
+      description: 'A simultaneous grocery run', amount: 1200, paidBy: state.session.memberId,
+      participants: [state.session.memberId], category: 'pantry', date: localDate(), version: state.session.household.version,
+    })).status).toBe(200)
+    const create = dialog.getByRole('button', { name: 'Create seven-day invitation', exact: true })
+    await create.click()
+    await expect(dialog.getByRole('alert')).toContainText('changed')
+    await expect(create).toBeEnabled()
+    await create.click()
+    await expect(dialog.getByLabel('Account invitation link', { exact: true })).toBeVisible()
+    const access = await browserAccountRequest(page, `/account/households/${state.session.household.id}`)
+    expect(householdAccessSchema.parse(access.body).invitations).toHaveLength(1)
+  })
+
+  test('stops displaying a household removed by another device when account access refreshes', async ({ page, accounts }) => {
+    await page.clock.install()
+    await page.goto('/#account')
+    await signIn(page, accounts, 'membership-ended@example.com', 'Ada')
+    await createKitchen(page, 'A home left elsewhere')
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000))
+    const state = await accountState(page)
+    if (!state.session) throw new Error('The membership flow needs a selected household.')
+    expect((await browserAccountRequest(page, `/account/households/${state.session.household.id}/membership`, {
+      version: state.session.household.version,
+    }, 'DELETE')).status).toBe(200)
+    const dialog = page.getByRole('dialog')
+    await dialog.getByRole('button', { name: 'Refresh account sessions', exact: true }).click()
+    await expect(dialog.getByRole('button', { name: 'Open A home left elsewhere', exact: true })).toHaveCount(0)
+    await expect(page.locator('.game-house')).toHaveCount(0)
+    await expect(dialog.getByRole('button', { name: 'Create a kitchen', exact: true })).toBeVisible()
   })
 })

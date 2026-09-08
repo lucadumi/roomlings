@@ -8,9 +8,14 @@ export const currencies = ['EUR', 'USD', 'GBP', 'RON'] as const
 export const memberColors = ['#c9533a', '#7d9070', '#c2a34e', '#7c89a1', '#aa7893', '#738f91']
 export const activeMemberLimit = 12
 export const retainedMemberLimit = 200
+export const mutationReceiptLimit = 1000
 export const roomStyleSchema = z.enum(['original', 'sage', 'clay', 'linen'])
 
 const id = z.string().uuid()
+export const mutationInputSchema = z.object({ mutationId: id, mutationVersion: z.number().int().nonnegative() })
+const mutationReceiptSchema = z.object({
+  id, memberId: id, version: z.number().int().positive(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+})
 export const nameSchema = z.string().trim().min(1, 'Please enter a name.').max(50)
 export const centsSchema = z.number().int().positive().max(100_000_000)
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
@@ -181,7 +186,7 @@ export const settlementSchema = z.object({
   id,
   from: id,
   to: id,
-  amount: centsSchema,
+  amount: z.number().int().positive(),
   createdAt: z.string().datetime(),
 })
 export const householdSchema = z.object({
@@ -193,6 +198,7 @@ export const householdSchema = z.object({
   inviteCode: z.string(),
   demo: z.boolean(),
   version: z.number().int().nonnegative(),
+  mutationReceipts: z.array(mutationReceiptSchema).max(mutationReceiptLimit).optional(),
   members: z.array(memberSchema).min(1).max(retainedMemberLimit),
   expenses: z.array(expenseSchema),
   settlements: z.array(settlementSchema),
@@ -212,6 +218,14 @@ export const householdSchema = z.object({
   }
   const bills = new Map(household.bills.map((bill) => [bill.id, bill]))
   const members = new Set(household.members.map((member) => member.id))
+  const receiptIds = new Set<string>()
+  household.mutationReceipts?.forEach((receipt, index, receipts) => {
+    if (receiptIds.has(receipt.id) || !members.has(receipt.memberId) || receipt.version > household.version
+      || (index > 0 && receipt.version <= receipts[index - 1].version)) {
+      context.addIssue({ code: 'custom', message: 'Saved changes need unique identifiers, valid roommates and ordered versions.', path: ['mutationReceipts', index] })
+    }
+    receiptIds.add(receipt.id)
+  })
   if (bills.size !== household.bills.length) {
     context.addIssue({ code: 'custom', message: 'Monthly bills need unique identifiers.', path: ['bills'] })
   }

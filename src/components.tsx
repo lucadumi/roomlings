@@ -112,6 +112,18 @@ export function Form({ children, onSubmit }: { children: ReactNode; onSubmit: ()
   return <form onSubmit={(event: FormEvent) => { event.preventDefault(); onSubmit() }}>{children}</form>
 }
 
+export function DraftConflict({ children, onLatest, onKeep }: {
+  children: ReactNode; onLatest: () => void; onKeep: () => void
+}) {
+  return <div className="shopping-conflict">
+    <p role="alert">{children}</p>
+    <div className="button-row">
+      <button type="button" className="text-button" onClick={onLatest}>Use latest values</button>
+      <button type="button" className="text-button" onClick={onKeep}>Keep my draft</button>
+    </div>
+  </div>
+}
+
 export function CopyField({ label, value, buttonLabel, copiedLabel, multiline = false }: {
   label: string; value: string; buttonLabel: string; copiedLabel: string; multiline?: boolean
 }) {

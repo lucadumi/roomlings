@@ -3,6 +3,7 @@ import { billingDate, householdSchema, localDate, memberColors, nameSchema } fro
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
+import { accountHouseholdCreationReceiptSchema } from '../shared/accounts.ts'
 import { AccountStore } from './accounts-store.ts'
 import { SQLiteDatabase, transactional } from './database.ts'
 import type { Database } from './database.ts'
@@ -48,8 +49,14 @@ export class Store {
 
   async save(household: Household) {
     const checked = householdSchema.parse(household)
+    const previous = await this.db.prepare('SELECT state FROM households WHERE id = ?').get(checked.id)
+    const receipt = accountHouseholdCreationReceiptSchema.optional().parse(
+      previous ? JSON.parse(String(previous.state)).accountCreationReceipt : undefined,
+    )
+    // Creation receipts are private persistence metadata, not client-editable household state.
+    const state = receipt ? { ...checked, accountCreationReceipt: receipt } : checked
     await this.db.prepare('INSERT INTO households (id, invite, state) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET invite = excluded.invite, state = excluded.state')
-      .run(checked.id, checked.inviteCode, JSON.stringify(checked))
+      .run(checked.id, checked.inviteCode, JSON.stringify(state))
   }
 
   private tokenHash(token: string) { return createHash('sha256').update(token).digest('hex') }
