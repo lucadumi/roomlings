@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { balances, householdSchema, shoppingItemInputSchema, shoppingItemSchema } from '../shared/domain.ts'
 import type { Household, ShoppingItem } from '../shared/domain.ts'
-import { canEditShoppingItem, checkoutItems, inBasket } from '../shared/shopping.ts'
+import { canEditShoppingItem, checkoutItems, inBasket, normalizeShoppingName } from '../shared/shopping.ts'
 
 function household(): Household {
   return householdSchema.parse({
@@ -22,6 +22,12 @@ function item(state: Household): ShoppingItem {
 }
 
 describe('shared shopping list', () => {
+  it('matches restocking names without case or compatibility-width duplicates', () => {
+    assert.equal(normalizeShoppingName('  Hand Soap  '), normalizeShoppingName('hand soap'))
+    assert.equal(normalizeShoppingName('Ｓｏａｐ'), normalizeShoppingName('Soap'))
+    assert.notEqual(normalizeShoppingName('Hand soap'), normalizeShoppingName('Dish soap'))
+  })
+
   it('restores old households with an empty list and no new debts', () => {
     const state = household()
     assert.equal(state.shopping.items.length, 0)

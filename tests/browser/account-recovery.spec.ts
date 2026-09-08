@@ -124,6 +124,25 @@ test('copies a one-time code set and restores the same account on another device
   }
 })
 
+test('account recovery opens the requested bathroom with the same household and ledger', async ({ page, accounts }) => {
+  const before = await signedIn(page, accounts)
+  const session = await currentSession(page, accounts)
+  const generated = await accounts.store.accounts.generateRecoveryCodes(session, 0)
+  expect((await browserAccountRequest(page, '/account/logout', { all: false })).status).toBe(200)
+  await page.goto(roomPath('bathroom'))
+  await enterRecovery(page, generated.codes[0])
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Bathroom')
+  await expect(page).toHaveURL(new RegExp(`${roomPath('bathroom')}$`))
+  const restored = await accountState(page)
+  expect(restored.account).toEqual(before.account)
+  expect(restored.session).toEqual(before.session)
+  expect(restored.memberships).toEqual(before.memberships)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Bathroom')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+})
+
 test('keeps recovery input through failures, distinguishes kitchen codes and returns to email without losing the address', async ({ page, accounts }) => {
   await signedIn(page, accounts, false)
   const session = await currentSession(page, accounts)

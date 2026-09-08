@@ -6,7 +6,7 @@ import {
   accountState, browserAccountRequest, expect, test,
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
-import { openGroceryForm, openShoppingBag, savedKitchen } from './fixtures.ts'
+import { chooseOption, openGroceryForm, openShoppingBag, savedKitchen } from './fixtures.ts'
 
 const viewports = [
   { width: 320, height: 568 },
@@ -37,7 +37,7 @@ async function expectContentFits(container: Locator) {
         || element.closest('.sr-only, [hidden]') || getComputedStyle(element).visibility === 'hidden') return []
       const bounds = element.getBoundingClientRect()
       const outside = bounds.left < boundary.left - 1 || bounds.right > boundary.right + 1
-      const overflow = !element.matches('input, select, textarea, .game-house > span')
+      const overflow = !element.matches('input, select, textarea, .game-house > span, .dropdown-value')
         && element.scrollWidth > element.clientWidth + 1
       return outside || overflow ? [{
         element: element.className || element.tagName,
@@ -144,7 +144,7 @@ test.describe('responsive current app', () => {
       expect(issues, `${viewport.width}x${viewport.height}`).toEqual([])
       await expectContentFits(page.locator('.game-hud'))
       await expectContentFits(page.locator('.game-demo'))
-      for (const button of await page.getByRole('navigation', { name: 'Kitchen tools', exact: true }).getByRole('button').all()) {
+      for (const button of await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button').all()) {
         await expectReachable(button, viewport.width <= 1024 ? 44 : 36)
       }
     }
@@ -178,7 +178,7 @@ test.describe('responsive current app', () => {
       await expect(page.getByRole('button', { name: 'New monthly bill', exact: true }).locator('span')).toBeVisible()
 
       for (const name of ['Monthly budget', 'Settle up', 'The roommates']) {
-        await page.getByRole('navigation', { name: 'Kitchen tools', exact: true }).getByRole('button', { name, exact: true }).click()
+        await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name, exact: true }).click()
         await expectContentFits(panel)
       }
       await openShoppingBag(page)
@@ -243,7 +243,7 @@ test.describe('responsive current app', () => {
   }
 
   for (const viewport of [viewports[0], viewports[2], viewports[5]]) {
-    test(`forms keep native fields and saves usable at ${viewport.width}x${viewport.height}`, async ({ page, accounts }) => {
+    test(`forms keep themed fields and saves usable at ${viewport.width}x${viewport.height}`, async ({ page, accounts }) => {
       await page.setViewportSize(viewport)
       const { guest } = await seedContent(page, accounts)
       await page.goto('/kitchen')
@@ -251,10 +251,10 @@ test.describe('responsive current app', () => {
       const dialog = page.getByRole('dialog')
       await page.getByLabel('What did you pick up?', { exact: true }).fill('A responsive grocery run')
       await page.getByLabel('Total (RON)', { exact: true }).fill('17.03')
-      await page.getByRole('combobox', { name: 'Paid by', exact: true }).selectOption(guest.id)
-      await page.getByRole('combobox', { name: 'On which shelf?', exact: true }).selectOption('dairy')
+      await chooseOption(page.getByRole('combobox', { name: 'Paid by', exact: true }), guest.id)
+      await chooseOption(page.getByRole('combobox', { name: 'On which shelf?', exact: true }), 'dairy')
       await expectContentFits(dialog)
-      const fields = await dialog.locator('input:not([type="checkbox"]), select, textarea').evaluateAll((elements) =>
+      const fields = await dialog.locator('input:not([type="checkbox"]), [role="combobox"], textarea').evaluateAll((elements) =>
         elements.map((element) => ({ font: Number.parseFloat(getComputedStyle(element).fontSize), width: element.getBoundingClientRect().width })),
       )
       for (const field of fields) {
@@ -272,7 +272,7 @@ test.describe('responsive current app', () => {
       await page.getByRole('button', { name: `Record payment for ${billName}`, exact: true }).click()
       await expectContentFits(dialog)
       await page.getByLabel('Amount paid (RON)', { exact: true }).fill('103.07')
-      await page.getByRole('combobox', { name: 'Paid by', exact: true }).selectOption(guest.id)
+      await chooseOption(page.getByRole('combobox', { name: 'Paid by', exact: true }), guest.id)
       await expectReachable(page.getByRole('button', { name: 'Record bill payment', exact: true }))
       await page.getByRole('button', { name: 'Record bill payment', exact: true }).click()
       await expect(page.locator('.bill-occurrence .bill-status')).toHaveText('Paid')
@@ -281,7 +281,7 @@ test.describe('responsive current app', () => {
       await page.getByLabel('Default amount (RON)', { exact: true }).fill('205.09')
       await page.getByRole('button', { name: 'Save monthly bill', exact: true }).click()
       await expect(page.locator('.bill-schedule')).toContainText(money(20509, 'RON'))
-      await page.getByRole('navigation', { name: 'Kitchen tools', exact: true }).getByRole('button', { name: 'Settle up', exact: true }).click()
+      await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Settle up', exact: true }).click()
       await page.getByRole('button', { name: 'Record paid', exact: true }).click()
       await expectContentFits(dialog)
       await expectReachable(page.getByRole('button', { name: 'Yes, record payment', exact: true }))

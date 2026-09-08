@@ -7,6 +7,7 @@ import type { Category, RoomStyle } from '../shared/domain.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
 import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
+import { kitchenUtilityAnchors } from '../src/room.ts'
 
 function modelFor(context: TestContext, style: RoomStyle = 'original') {
   const room = new Group()
@@ -32,6 +33,28 @@ function closeTo(actual: Vector3, expected: [number, number, number]) {
 }
 
 describe('shared kitchen model', () => {
+  it('keeps chore fixtures and supply objects interactive after static batching', (context) => {
+    const { room, scenery } = modelFor(context)
+    assert.deepEqual([...scenery.utilityActors.keys()].sort(), ['chores', 'counters', 'floor', 'sink', 'supplies'])
+    const references = [...scenery.utilityActors].map(([utility, group]) => ({
+      utility, group, parent: group.parent, bounds: new Box3().setFromObject(group, true),
+    }))
+    batchStaticMeshes(room, new Set([...scenery.coins, ...scenery.receipts, ...scenery.steam, scenery.kettleLid]))
+    for (const { utility, group, parent, bounds } of references) {
+      assert.equal(room.getObjectById(group.id), group)
+      assert.equal(group.parent, parent)
+      assert.deepEqual(group.userData, { utility })
+      assert.ok(meshCount(group) > 0)
+      const after = new Box3().setFromObject(group, true)
+      closeTo(after.min, bounds.min.toArray())
+      closeTo(after.max, bounds.max.toArray())
+    }
+    for (const anchor of kitchenUtilityAnchors) {
+      assert.ok(scenery.utilityActors.has(anchor.utility))
+      assert.ok(anchor.position.every(Number.isFinite))
+    }
+  })
+
   for (const style of ['original', 'sage', 'clay', 'linen'] as const) {
     it(`keeps ${style} finishes when the kitchen model is shared with the landing`, (context) => {
       const { styleMaterials, foodMaterials, room } = modelFor(context, style)

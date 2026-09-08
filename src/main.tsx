@@ -1,9 +1,9 @@
 import React, { lazy, Suspense, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
-import { SceneLoading } from './Branding.tsx'
 import '@fontsource-variable/dm-sans'
 import '@fontsource-variable/fraunces'
 import '@fontsource-variable/fraunces/wght-italic.css'
+import { SceneLoading } from './Branding.tsx'
 import './style.css'
 import './game.css'
 import { resolveEntry } from './roomNavigation.ts'
@@ -22,10 +22,10 @@ function subscribeLocation(change: () => void) {
 function Entry() {
   const url = new URL(useSyncExternalStore(subscribeLocation, () => location.href))
   const entry = resolveEntry(url.pathname, url.hash)
-  return <Suspense fallback={<SceneLoading />}>
+  return <Suspense fallback={<SceneLoading label="Opening Roomlings..." />}>
     {entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
-      ? <Welcome accessNotice={<p className="form-error" role="alert">That room is not available. Choose the kitchen to continue.</p>} />
-      : <App />}
+      ? <Welcome accessNotice={<p className="form-error" role="alert">That room is not available. Open your home or try a sample to continue.</p>} />
+      : <App roomId={entry.roomId} />}
   </Suspense>
 }
 

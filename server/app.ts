@@ -4,12 +4,14 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import {
   activeMemberLimit, balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
-  centsSchema, currencies, expenseInputSchema, memberColors, nameSchema, roomStyleSchema,
+  centsSchema, choreArchiveSchema, choreCompletionLimit, choreEditInputSchema, choreInputSchema, choreLimit, choreVersionSchema,
+  currencies, expenseInputSchema, memberColors, nameSchema, roomStyleSchema,
   shoppingCheckoutSchema, shoppingClaimSchema, shoppingItemEditSchema, shoppingItemInputSchema,
   retainedMemberLimit, shoppingItemLimit, shoppingItemVersionSchema, shoppingPickSchema, shoppingRunLimit,
 } from '../shared/domain.ts'
-import type { Bill, Expense, Household, ShoppingItem } from '../shared/domain.ts'
+import type { Bill, Chore, Expense, Household, ShoppingItem } from '../shared/domain.ts'
 import { billOccurrence, reviseBill, setBillPaused } from '../shared/bills.ts'
+import { ChoreError, completeChore, undoChoreCompletion } from '../shared/chores.ts'
 import { canEditShoppingItem, checkoutItems } from '../shared/shopping.ts'
 import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
 import type { Store } from './store.ts'
@@ -103,6 +105,13 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   const changeShoppingItem = (item: ShoppingItem) => {
     item.version++
     item.updatedAt = new Date().toISOString()
+  }
+  const findChore = (household: Household, id: string, version: number): Chore => {
+    const choreId = z.string().uuid().parse(id)
+    const chore = household.chores.items.find((chore) => chore.id === choreId)
+    if (!chore) throw new ApiError(404, 'That chore was not found in this home.')
+    if (chore.version !== version) throw new ApiError(409, 'This chore changed. Review its latest details and try again.')
+    return chore
   }
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
@@ -248,6 +257,60 @@ export function createApp(store: Store, options: AccountOptions = {}) {
       items: selected.map(({ id, name, quantity, notes, createdBy, createdAt }) => ({ id, name, quantity, notes, createdBy, createdAt })),
     })
   })))
+  app.post('/api/chores', async (req, res) => (await mutate(req, res, (household, memberId) => {
+    const input = choreInputSchema.parse(req.body)
+    requireRoommates(household, input.rotation)
+    if (household.chores.items.length >= choreLimit) {
+      throw new ApiError(409, 'This home has reached its limit of 200 chores. Edit an existing chore instead; archived chores and history are retained.')
+    }
+    const now = new Date().toISOString()
+    household.chores.items.push({
+      ...input, id: randomUUID(), createdBy: memberId, createdAt: now, updatedAt: now,
+      version: 0, occurrence: 0, archived: false,
+    })
+  })))
+  app.patch('/api/chores/:id', async (req, res) => (await mutate(req, res, (household) => {
+    const { choreVersion, ...input } = choreEditInputSchema.parse(req.body)
+    const chore = findChore(household, req.params.id, choreVersion)
+    if (chore.archived) throw new ApiError(409, 'Restore this archived chore before editing it.')
+    requireRoommates(household, input.rotation)
+    Object.assign(chore, input, { version: chore.version + 1, updatedAt: new Date().toISOString() })
+  })))
+  app.patch('/api/chores/:id/archive', async (req, res) => (await mutate(req, res, (household) => {
+    const input = choreArchiveSchema.parse(req.body)
+    const chore = findChore(household, req.params.id, input.choreVersion)
+    if (chore.archived === input.archived) {
+      throw new ApiError(409, input.archived ? 'This chore is already archived.' : 'This chore is already active.')
+    }
+    chore.archived = input.archived
+    chore.version++
+    chore.updatedAt = new Date().toISOString()
+  })))
+  app.post('/api/chores/:id/complete', async (req, res) => (await mutate(req, res, (household, memberId) => {
+    const { choreVersion } = choreVersionSchema.parse(req.body)
+    const chore = findChore(household, req.params.id, choreVersion)
+    if (household.chores.history.length >= choreCompletionLimit) {
+      throw new ApiError(409, 'This home has reached its 20,000-completion history limit. Existing history has been kept.')
+    }
+    if (household.chores.history.some((completion) => completion.choreId === chore.id
+      && completion.occurrence === chore.occurrence && completion.undoneAt === null)) {
+      throw new ApiError(409, 'This chore occurrence has already been completed. Refresh its history.')
+    }
+    const now = new Date()
+    const result = completeChore(chore, household.members, memberId, randomUUID(), now.toISOString(), billingDate(household.billingTimeZone, now))
+    household.chores.items = household.chores.items.map((entry) => entry.id === chore.id ? result.chore : entry)
+    household.chores.history.unshift(result.completion)
+  })))
+  app.post('/api/chores/completions/:id/undo', async (req, res) => (await mutate(req, res, (household, memberId) => {
+    const id = z.string().uuid().parse(req.params.id)
+    const { choreVersion } = choreVersionSchema.parse(req.body)
+    const completion = household.chores.history.find((entry) => entry.id === id)
+    if (!completion) throw new ApiError(404, 'That chore completion was not found in this home.')
+    const chore = findChore(household, completion.choreId, choreVersion)
+    const result = undoChoreCompletion(chore, completion, household.members, memberId, new Date().toISOString())
+    household.chores.items = household.chores.items.map((entry) => entry.id === chore.id ? result.chore : entry)
+    household.chores.history = household.chores.history.map((entry) => entry.id === id ? result.completion : entry)
+  })))
   app.post('/api/bills', async (req, res) => (await mutate(req, res, (household) => {
     const input = billCreateInputSchema.parse(req.body)
     requireRoommates(household, input.participants)
@@ -323,6 +386,8 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: error.issues[0]?.message ?? 'Please check the form fields.' })
+    } else if (error instanceof ChoreError) {
+      res.status(error.status).json({ error: error.message })
     } else if (error instanceof ApiError) {
       res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) })
     } else if (error instanceof SyntaxError && 'status' in error && error.status === 400) {

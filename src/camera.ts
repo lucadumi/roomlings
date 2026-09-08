@@ -1,6 +1,6 @@
-import type { KitchenAction } from './room.ts'
+import type { KitchenAction, KitchenUtility } from './room.ts'
 
-export type SceneFocus = KitchenAction | 'room' | 'fridge' | 'brew'
+export type SceneFocus = KitchenAction | KitchenUtility | 'room' | 'fridge' | 'brew'
 export type FocusRequest = { target: SceneFocus; id: number }
 export const baseCameraOffset: [number, number, number] = [9, 7.85, 13]
 export type FramingArea = { x: number; y: number; width: number; height: number }
@@ -14,6 +14,11 @@ export const focusLabels: Record<SceneFocus, string> = {
   roommates: 'Your people',
   settle: 'The repayment envelope',
   brew: 'A little tea break',
+  chores: 'Room chores',
+  supplies: 'Room supplies',
+  sink: 'The sink',
+  counters: 'The counters',
+  floor: 'The floor',
 }
 
 const views: Record<SceneFocus, { center: [number, number, number]; halfHeight: number; width: number }> = {
@@ -25,6 +30,11 @@ const views: Record<SceneFocus, { center: [number, number, number]; halfHeight: 
   roommates: { center: [3.45, 2.8, -2.9], halfHeight: 2.65, width: 4.1 },
   settle: { center: [1.75, 1.15, 1.1], halfHeight: 2.7, width: 4.2 },
   brew: { center: [1.65, 2, -2.25], halfHeight: 2.65, width: 4.1 },
+  chores: { center: [-1.55, 0.75, -0.45], halfHeight: 2.4, width: 3.6 },
+  supplies: { center: [-4.55, 1.9, -1.8], halfHeight: 2.4, width: 3.6 },
+  sink: { center: [3.35, 1.7, -2.56], halfHeight: 2.6, width: 4.1 },
+  counters: { center: [2.05, 1.3, -2.56], halfHeight: 2.9, width: 5.3 },
+  floor: { center: [0, 0.6, 0], halfHeight: 4.25, width: 9.4 },
 }
 
 export function cameraFraming(width: number, height: number, focus: SceneFocus, wholeRoom: boolean): {

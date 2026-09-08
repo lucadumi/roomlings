@@ -1,18 +1,19 @@
-export const roomCatalog = {
-  kitchen: { label: 'The kitchen' },
-} as const
+import { roomIdSchema } from '../shared/rooms.ts'
+import type { RoomId } from '../shared/rooms.ts'
 
-export type RoomId = keyof typeof roomCatalog
+export { roomCatalog } from '../shared/rooms.ts'
+export type { RoomId } from '../shared/rooms.ts'
 export const defaultRoom: RoomId = 'kitchen'
 export const roomPath = (id: RoomId = defaultRoom) => `/rooms/${id}`
 export const samplePath = (id: RoomId = defaultRoom) => `/sample/${id}`
 
 export type EntryRoute =
-  | { kind: 'home' | 'unavailable' }
+  | { kind: 'home' }
+  | { kind: 'unavailable' }
   | { kind: 'room' | 'sample' | 'legacy'; roomId: RoomId }
 
 function isRoomId(value: string): value is RoomId {
-  return Object.hasOwn(roomCatalog, value)
+  return roomIdSchema.safeParse(value).success
 }
 
 export function resolveEntry(pathname: string, hash = ''): EntryRoute {

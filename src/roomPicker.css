@@ -1,0 +1,15 @@
+.room-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.room-preview-card { min-width: 0; padding: 0 0 14px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 10px; background: var(--control-surface); color: var(--control-ink); text-align: left; }
+.room-preview-card:hover { background: var(--control-hover); border-color: #91a57b; }
+.room-preview-card[aria-pressed="true"] { border-color: #7e9664; box-shadow: inset 0 0 0 1px #7e9664; background: #ecf1e2; }
+.room-preview-card:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.room-preview-card img { display: block; width: 100%; height: auto; aspect-ratio: 35 / 24; object-fit: contain; background: #f2f2e7; border-bottom: 1px solid var(--control-border); }
+.room-preview-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 14px 5px; }
+.room-preview-label strong { min-width: 0; font-family: var(--font-heading); font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
+.room-preview-label svg { flex-shrink: 0; }
+.room-preview-card small { display: block; padding-inline: 14px; color: #738063; font-size: .6875rem; line-height: 1.6; }
+@container dialog (max-width: 19rem) {
+  .room-preview-grid { gap: 10px; }
+  .room-preview-label { gap: 5px; padding-inline: 10px; }
+  .room-preview-card small { padding-inline: 10px; }
+}

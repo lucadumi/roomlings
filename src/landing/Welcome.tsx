@@ -14,7 +14,7 @@ function subscribeToMotion(callback: () => void) {
 }
 
 const features = [
-  { number: '01', title: 'Plan the shop.', description: 'Add groceries to one shared list and claim what you will pick up.' },
+  { number: '01', title: 'Plan together.', description: 'Share a shopping list and divide chores across your rooms.' },
   { number: '02', title: 'Split the costs.', description: 'Record paid groceries and household bills. Choose who shares each cost.' },
   { number: '03', title: 'Settle up.', description: 'See the balances, pay your roommate, then record the repayment.' },
 ]
@@ -78,12 +78,12 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       <section className="welcome-hero welcome-container" aria-labelledby="welcome-title">
         <div className="welcome-hero-copy">
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
-          <p>Groceries, household bills and who owes what, in one shared home.</p>
+          <p>Chores, shopping, household bills and who owes what, in one shared home.</p>
           <div className="welcome-actions">
             <a className="button primary welcome-enter" id="home-start" href={`${roomPath()}#account=create`}>Get started <ArrowRight size={18} /></a>
             <a className="welcome-text-link" href={samplePath()}>Try the sample <ArrowUpRight size={16} /></a>
           </div>
-          <p className="welcome-small"><Check size={14} />Try a sample kitchen without signing in.</p>
+          <p className="welcome-small"><Check size={14} />Try a sample home without signing in.</p>
         </div>
         <figure className="welcome-vignette" role="img" aria-label="Illustration of a shared home">
           <HomeIllustration />

@@ -242,7 +242,7 @@ test('revoked account access requires a fresh sign-in and then reopens the same 
 test('unimplemented rooms do not create samples or show placeholder controls', async ({ page }) => {
   const requests: string[] = []
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()) })
-  await page.goto('/rooms/bathroom')
+  await page.goto('/rooms/bedroom')
   await expect(page.getByRole('alert')).toContainText('That room is not available')
   await expect(page.locator('.game-house')).toHaveCount(0)
   expect(requests).toEqual([])

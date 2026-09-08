@@ -9,11 +9,16 @@ import {
   balances, billingDate, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
   money, monthlyGroceries, parseMoney, splitAmount, suggestedTransfers,
 } from '../shared/domain.ts'
-import type { Bill, Category, Expense, Household, Session, Settlement, ShoppingItem, Transfer } from '../shared/domain.ts'
+import type {
+  Bill, Category, Chore, ChoreCompletion, Expense, Household, Session, Settlement, ShoppingItem, ShoppingItemInput, Transfer,
+} from '../shared/domain.ts'
 import type { AccountState, KitchenSession } from '../shared/accounts.ts'
 import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
 import { canEditShoppingItem, inBasket } from '../shared/shopping.ts'
+import { canUndoChore, choreAssignee, choreStatus } from '../shared/chores.ts'
+import { choreLocationLabel, roomCatalog, roomIdSchema } from '../shared/rooms.ts'
+import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import {
   createDemo, forgetAccountKitchens, getAccountState, getHousehold, preferAccountAccess, readAccessMode,
   readToken, rememberKitchen, request, RequestError, sameKitchenSession, savedKitchens, sessionSchema,
@@ -37,19 +42,26 @@ import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
 import { defaultRoom, resolveEntry, roomPath, samplePath } from './roomNavigation.ts'
 import { rememberSample, restoreSample } from './sampleAccess.ts'
+import { ChoreForm, ChoresPanel } from './Chores.tsx'
+import type { ChoreFilter, ChoreView } from './Chores.tsx'
+import { RestockPanel } from './Restock.tsx'
+import { RoomPicker } from './RoomPicker.tsx'
+import { Dropdown } from './Dropdown.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const entryRoute = resolveEntry(location.pathname, location.hash)
-const currentRoom = 'roomId' in entryRoute ? entryRoute.roomId : defaultRoom
 const sampleEntry = entryRoute.kind === 'sample'
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
 
-type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
-type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'help'
+type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies'
+type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help'
   | { account: AccountIntent }
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
   | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } }
   | { editShopping: ShoppingItem } | { removeShopping: string } | { releaseShopping: string }
+  | { createChore: { roomId: RoomId | null; area: ChoreArea | null } } | { editChore: Chore }
+  | { completeChore: Chore } | { archiveChore: Chore } | { undoChore: ChoreCompletion }
+  | { restockItem: ShoppingItemInput }
   | { checkout: { id: string; items: ShoppingItem[] } } | null
 const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ?? ''
 const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
@@ -100,7 +112,7 @@ function loadSession(account: AccountState | null): Promise<InitialAccess> {
   return initialSession
 }
 
-export function App() {
+export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) {
   const enteringRoom = useRef(isRoomEntry())
   const [session, setSession] = useState<KitchenSession | null>(null)
   const sessionRef = useRef(session)
@@ -125,6 +137,9 @@ export function App() {
   const [month, setMonth] = useState(localDate().slice(0, 7))
   const [billMonth, setBillMonth] = useState(localDate().slice(0, 7))
   const [shoppingView, setShoppingView] = useState<ShoppingView>('list')
+  const [choreView, setChoreView] = useState<ChoreView>('active')
+  const [choreFilter, setChoreFilter] = useState<ChoreFilter>({ room: currentRoom, area: null })
+  const [supplyRoom, setSupplyRoom] = useState<RoomId>(currentRoom)
   const [filter, setFilter] = useState<Category | 'all'>('all')
   const [search, setSearch] = useState('')
   const [syncState, setSyncState] = useState<'saved' | 'offline'>('saved')
@@ -239,6 +254,13 @@ export function App() {
     if (session?.household.id) window.scrollTo({ top: 0, behavior: 'instant' })
   }, [session?.household.id])
   useEffect(() => {
+    setPage('overview')
+    setChoreFilter({ room: currentRoom, area: null })
+    setChoreView('active')
+    setSupplyRoom(currentRoom)
+    setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
+  }, [currentRoom])
+  useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(''), 6500)
     return () => clearTimeout(timer)
@@ -333,6 +355,8 @@ export function App() {
     setMonth(localDate().slice(0, 7))
     setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
     setShoppingView('list')
+    setChoreView('active')
+    setChoreFilter({ room: currentRoom, area: null })
     setFilter('all')
     setPage('overview')
     if (!keepDialog) setDialog(null)
@@ -538,6 +562,30 @@ export function App() {
     const pages: Record<KitchenAction, Page> = { stock: 'shopping', ledger: 'groceries', budget: 'budget', roommates: 'kitchen', settle: 'settle' }
     visit(pages[action])
   }
+  const openChores = (area: ChoreArea | null = null) => {
+    setChoreFilter({ room: currentRoom, area })
+    setChoreView('active')
+    visit('chores')
+  }
+  const openSupplies = (roomId = currentRoom) => {
+    setSupplyRoom(roomId)
+    visit('supplies')
+  }
+  const switchRoom = (value: string) => {
+    const parsed = roomIdSchema.safeParse(value)
+    if (!parsed.success) { setError('That room is not available in this home.'); return }
+    if (parsed.data === currentRoom) return
+    if (session?.household.demo && session.token !== null && !sampleEntry) {
+      try { rememberSample(session) } catch {
+        setError('This browser could not retain sample access. Enable browser storage before changing rooms.')
+        return
+      }
+      location.assign(samplePath(parsed.data))
+      return
+    }
+    history.pushState(null, '', sampleEntry ? samplePath(parsed.data) : roomPath(parsed.data))
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }
 
   const renderDialog = () => {
     if (!dialog) return null
@@ -567,6 +615,13 @@ export function App() {
       savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
       onLegacyChange={changeSavedKitchen}
       onOpenLegacy={(kitchen) => switchKitchen(kitchen, true)} />
+    if (dialog === 'help' && currentRoom === 'bathroom') return <Modal title="Your shared bathroom." subtitle="Chores and supplies use the same household as your kitchen." onClose={close}>
+      <div className="game-guide">
+        <p><Check size={19} /><span><strong>Choose a fixture.</strong> The sink, mirror, bath, toilet and floor open chores for that area.</span></p>
+        <p><Users size={19} /><span><strong>Share the work.</strong> Assign a person or rotation. Completing a chore records who did it and advances the next turn.</span></p>
+        <p><Plus size={19} /><span><strong>Restock supplies.</strong> The supply shelf adds items to the existing shopping list. It does not record a purchase.</span></p>
+      </div><p className="field-hint">Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.</p>
+    </Modal>
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
       <div className="game-guide">
         <p><Snowflake size={19} /><span><strong>Peek in the fridge.</strong> Click a door to open it. Click a grocery to find the expenses on that shelf.</span></p>
@@ -574,6 +629,7 @@ export function App() {
         <p><ReceiptText size={19} /><span><strong>Keep the receipts.</strong> The book holds groceries and monthly bills. Record a bill only after someone has paid it.</span></p>
         <p><Wallet size={19} /><span><strong>Watch the house pot.</strong> The coins represent the monthly budget you have left, not points or rewards.</span></p>
         <p><Users size={19} /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
+        <p><Check size={19} /><span><strong>Keep up with chores.</strong> The cleaning caddy opens this room's tasks. Room supplies go onto the existing shopping list.</span></p>
       </div><p className="field-hint">Drag to turn the room. Scroll or pinch to zoom. Selecting an object brings it closer while its details stay beside the room. Use Whole room to pull back, or tap the kettle for a little tea break. Everything is also available from the toolbar. The fridge visualizes purchases, not what is left to eat.</p>
     </Modal>
     // Keep welcome-screen forms mounted when the loaded kitchen replaces the welcome content.
@@ -590,6 +646,57 @@ export function App() {
       <RecoveryForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/recover', body) }} />
     </Modal>
     if (!household || !session) return null
+    if (dialog === 'rooms') return <RoomPicker currentRoom={currentRoom} onClose={close}
+      onSelect={(roomId) => { switchRoom(roomId); setDialog(null) }} />
+    if (typeof dialog === 'object' && 'createChore' in dialog) return <Modal title="Add a household chore." subtitle="Choose a room, schedule and who takes turns." onClose={close} busy={busy}>
+      <ChoreForm household={household} memberId={session.memberId} initialRoom={dialog.createChore.roomId} initialArea={dialog.createChore.area} busy={busy} error={footerError}
+        onSubmit={(body) => { void action('/chores', body, 'Chore added to your household.') }} />
+    </Modal>
+    if (typeof dialog === 'object' && 'editChore' in dialog) return <Modal title="Edit a household chore." subtitle="Completed turns stay in history. Changes apply to the scheduled task." onClose={close} busy={busy}>
+      <ChoreForm household={household} memberId={session.memberId} chore={dialog.editChore} initialRoom={dialog.editChore.roomId} busy={busy} error={footerError}
+        onSubmit={(body) => { void action(`/chores/${dialog.editChore.id}`, body, 'Chore updated.', 'PATCH') }} />
+    </Modal>
+    if (typeof dialog === 'object' && ('completeChore' in dialog || 'archiveChore' in dialog)) {
+      const completing = 'completeChore' in dialog
+      const snapshot = completing ? dialog.completeChore : dialog.archiveChore
+      const chore = household.chores.items.find((item) => item.id === snapshot.id)
+      const allowed = !!chore && chore.version === snapshot.version && (!completing || (!chore.archived && chore.dueDate !== null))
+      const assignee = chore ? choreAssignee(chore, household.members) : null
+      const label = completing ? 'Record completion' : snapshot.archived ? 'Restore chore' : 'Archive chore'
+      return <Modal title={completing ? 'Mark this chore done?' : snapshot.archived ? 'Restore this chore?' : 'Archive this chore?'}
+        subtitle={completing ? 'This records a completed turn, not a payment.' : snapshot.archived ? 'The chore returns with its saved schedule. Previous history stays.' : 'The chore leaves the active list. Its history stays, and it can be restored later.'}
+        onClose={close} busy={busy}>
+        <div className="chore-confirmation"><h3>{snapshot.title}</h3><p>{choreLocationLabel(snapshot.roomId, snapshot.area)}</p>
+          {snapshot.dueDate && <p>Scheduled for {dateTitle(snapshot.dueDate)}.</p>}
+          {completing && <p>{assignee ? `Assigned to ${assignee.name}. ` : 'Unassigned. '}Completion will be recorded by {memberName(session.memberId)}.</p>}
+        </div>
+        {!allowed ? <p className="form-error" role="alert">This chore changed. Close the dialog and review its latest state before continuing.</p> : footerError}
+        <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
+          <button className="button primary" disabled={busy || !allowed} onClick={() => {
+            if (completing) void action(`/chores/${snapshot.id}/complete`, { choreVersion: snapshot.version }, 'Chore completed. The next turn is up to date.')
+            else void action(`/chores/${snapshot.id}/archive`, { choreVersion: snapshot.version, archived: !snapshot.archived }, snapshot.archived ? 'Chore restored.' : 'Chore archived. Its history is retained.', 'PATCH')
+          }}>{label}</button>
+        </div>
+      </Modal>
+    }
+    if (typeof dialog === 'object' && 'undoChore' in dialog) {
+      const completion = household.chores.history.find((item) => item.id === dialog.undoChore.id)
+      const chore = household.chores.items.find((item) => item.id === dialog.undoChore.choreId)
+      const allowed = !!completion && canUndoChore(chore, completion)
+      return <Modal title="Undo this chore completion?" subtitle="Restore the previous due date and turn. A later edit or completion cannot be overwritten." onClose={close} busy={busy}>
+        <div className="chore-confirmation"><h3>{dialog.undoChore.title}</h3><p>Scheduled for {dateTitle(dialog.undoChore.dueDate)}.</p></div>
+        {!allowed ? <p className="form-error" role="alert">This completion can no longer be undone because the chore changed.</p> : footerError}
+        <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep completion</button>
+          <button className="button primary" disabled={busy || !allowed} onClick={() => {
+            if (chore) void action(`/chores/completions/${dialog.undoChore.id}/undo`, { choreVersion: chore.version }, 'Completion undone. The previous turn is restored.')
+          }}>Undo completion</button>
+        </div>
+      </Modal>
+    }
+    if (typeof dialog === 'object' && 'restockItem' in dialog) return <Modal title="Restock a household supply." subtitle="Review the quantity before adding it to the shared shopping list." onClose={close} busy={busy}>
+      <ShoppingItemForm household={household} memberId={session.memberId} initialItem={dialog.restockItem} preventDuplicate busy={busy} error={footerError}
+        onSubmit={(body) => { void action('/shopping/items', body, 'Supply added to the shared shopping list.') }} />
+    </Modal>
     if (dialog === 'access' && session.token !== null) return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
       onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session, message)} />
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
@@ -681,7 +788,7 @@ export function App() {
 
   if (!household || !session) return <div className="entry-shell">
     <div inert={!!dialog}>
-      <Suspense fallback={<SceneLoading />}>
+      <Suspense fallback={<SceneLoading label="Opening your home..." />}>
         <Welcome paused={!!dialog} accessNotice={loading
           ? <p className="inline loading-status" role="status"><LoadingIcon size={20} />Checking saved access...</p>
           : error ? <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button secondary" onClick={initialize}>Try again</button><button className="text-button" onClick={() => openDialog('recover')}>Recover access</button></div></> : null} />
@@ -698,6 +805,11 @@ export function App() {
   const currentBalances = balances(household)
   const yourBalance = currentBalances.get(session.memberId) ?? 0
   const transfers = suggestedTransfers(household)
+  const today = billingDate(household.billingTimeZone)
+  const roomDue = household.chores.items.filter((chore) => chore.roomId === currentRoom
+    && ['due', 'overdue'].includes(choreStatus(chore, today)))
+  const dueChores: Partial<Record<ChoreArea, number>> = {}
+  for (const chore of roomDue) if (chore.area) dueChores[chore.area] = (dueChores[chore.area] ?? 0) + 1
   const filtered = expenses.filter((expense) => (filter === 'all' || expense.category === filter)
     && `${expense.description} ${memberName(expense.paidBy)}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
@@ -734,20 +846,28 @@ export function App() {
     <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
-      expenseCount={expenses.length} receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
+      receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
       stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
-      panelOpen={page !== 'overview'} activeTool={page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
+      busy={busy} onRooms={() => openDialog('rooms')} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
+      panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
       onAction={interact} onCreate={() => openDialog('create')} onInvite={() => openDialog('invite')}
       onSettings={() => openDialog('settings')} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
     {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button></div>}
     {page !== 'overview' && !dialog && <RoomPanel
-      title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.' }[page]}
-      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'One kitchen. Different tastes. Always a fair share.', budget: 'Your remaining grocery budget for the selected month.' }[page]}
-      view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page}
+      title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.` }[page]}
+      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', supplies: 'Use the same shopping list for supplies across your home.' }[page]}
+      view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}` : page}
       onClose={() => visit('overview')}
     ><div className="game-panel-content">
+        {page === 'chores' && <ChoresPanel household={household} memberId={session.memberId} filter={choreFilter} onFilter={setChoreFilter} view={choreView} onView={setChoreView} busy={busy}
+          onAdd={() => openDialog({ createChore: { roomId: choreFilter.room === 'home' ? null : choreFilter.room === 'all' ? currentRoom : choreFilter.room, area: choreFilter.area } })}
+          onEdit={(chore) => openDialog({ editChore: chore })} onComplete={(chore) => openDialog({ completeChore: chore })}
+          onArchive={(chore) => openDialog({ archiveChore: chore })} onUndo={(completion) => openDialog({ undoChore: completion })}
+          onRestock={() => openSupplies(choreFilter.room === 'all' || choreFilter.room === 'home' ? currentRoom : choreFilter.room)} />}
+        {page === 'supplies' && <RestockPanel household={household} roomId={supplyRoom} busy={busy}
+          onAdd={(item) => openDialog({ restockItem: item })} onShopping={() => { setShoppingView('list'); visit('shopping') }} />}
         {page === 'shopping' && <ShoppingPanel household={household} memberId={session.memberId} view={shoppingView} onView={setShoppingView} busy={busy}
           onAdd={() => openDialog('shopping-add')} onEdit={(item) => openDialog({ editShopping: item })} onRemove={(item) => openDialog({ removeShopping: item.id })}
           onClaim={(item) => { void action(`/shopping/items/${item.id}/claim`, { itemVersion: item.version, claimed: true }, '', undefined, true) }}
@@ -821,7 +941,7 @@ function SettingsForm({ household, busy, error, onSubmit }: { household: Househo
   const currencyLocked = household.expenses.length > 0 || household.settlements.length > 0 || household.bills.length > 0
   return <Form onSubmit={() => { const amount = parseMoney(budget); if (!amount) { setLocalError('Enter a positive budget with up to two decimal places.'); return }; setLocalError(''); onSubmit({ name, budget: amount, currency }) }}>
     <label className="field">Kitchen name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /></label>
-    <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<select value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label></div>
+    <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<Dropdown label="Currency" value={currency} onValueChange={setCurrency} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</Dropdown></label></div>
     <p className="field-hint">The monthly grocery target applies to every month. {currencyLocked && 'Currency stays fixed after adding expenses or monthly bills.'}</p>
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
   </Form>
