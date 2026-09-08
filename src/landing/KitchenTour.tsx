@@ -10,11 +10,11 @@ import { samplePath } from '../roomNavigation.ts'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
 const chapters = [
-  { icon: Home, title: 'The kitchen', copy: 'Open shopping, chores, receipts and budget through objects in the room. The room menu also takes you to the bathroom.' },
-  { icon: ShoppingBasket, title: 'Groceries', copy: 'Claim items from the shopping list. Record a paid run to add it to the ledger and stock the fridge.' },
-  { icon: ReceiptText, title: 'Bills and receipts', copy: 'Keep grocery receipts and recurring household bills together, with the payer and shares recorded.' },
-  { icon: Wallet, title: 'Monthly budget', copy: 'The house pot shows the grocery budget left this month. Bills are tracked separately from this pot.' },
-  { icon: CheckCheck, title: 'Repayments', copy: 'Pay your roommate, then record the repayment to update the shared balances.' },
+  { icon: Home, title: 'A room you can use.', copy: 'Open chores from the cleaning caddy and supplies from the shelf. The toolbar keeps everything available, and Rooms opens your bathroom.' },
+  { icon: ShoppingBasket, title: 'From list to receipt.', copy: 'Add items, claim what you will buy and tick it into your basket. Saving the paid receipt archives the run in Past runs and updates the shared balances.' },
+  { icon: ReceiptText, title: 'Bills that repeat.', copy: 'Set up rent, utilities or subscriptions. Change defaults or pause future months without rewriting past payments, then record each paid month in the same ledger.' },
+  { icon: Wallet, title: 'A pot for groceries.', copy: 'Set a monthly grocery budget and see what is left for the month you are viewing. Bills and repayments do not spend this pot.' },
+  { icon: CheckCheck, title: 'Know who owes what.', copy: 'All paid costs feed the same roommate balances, across rooms and months. Record repayments after paying, undo mistakes and export the complete ledger.' },
 ]
 
 class TourBoundary extends Component<{ children: ReactNode; onFailure: () => void }, { failed: boolean }> {
@@ -126,7 +126,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
 
   return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title" data-scene={status} data-chapter={tourChapters[active].id}>
     <div className="welcome-section-heading">
-      <h2 id="tour-title">Inside the kitchen</h2>
+      <h2 id="tour-title">Explore the kitchen</h2>
       <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
     </div>
     <div className="welcome-tour-track" ref={track}>
@@ -162,7 +162,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         </div>
         <div className="welcome-scene-status" role="status">
           {mounted && status === 'loading' && <span className="loading-status"><LoadingIcon reducedMotion={reducedMotion || paused} />Loading the kitchen preview...</span>}
-          {status === 'unavailable' && '3D is unavailable. You can still explore the illustration and use every kitchen tool.'}
+          {status === 'unavailable' && '3D is unavailable. Explore the illustration, or open the sample to use the household tools.'}
         </div>
       </div>
     </div>
