@@ -2,22 +2,27 @@ import { expect, test } from '@playwright/test'
 
 test.use({ reducedMotion: 'reduce' })
 
-test('Georgia titles and system body fonts apply throughout while inputs remain responsive', async ({ page }) => {
+test('the original Fraunces and DM Sans fonts load throughout while inputs remain responsive', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('font-family', /Georgia/)
-  await expect(page.locator('.welcome-hero-copy > p').first()).toHaveCSS('font-family', /system-ui/)
-  await expect(page.locator('.welcome-feature h3').first()).toHaveCSS('font-family', /Georgia/)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('font-family', /Fraunces Variable/)
+  await expect(page.locator('.welcome-hero-copy > p').first()).toHaveCSS('font-family', /DM Sans Variable/)
+  await expect(page.locator('.welcome-feature h3').first()).toHaveCSS('font-family', /Fraunces Variable/)
+  const loaded = await page.evaluate(async () => {
+    await document.fonts.ready
+    return [...document.fonts].filter((font) => font.status === 'loaded').map((font) => font.family.replaceAll('"', '').replaceAll("'", ''))
+  })
+  expect(loaded).toEqual(expect.arrayContaining(['DM Sans Variable', 'Fraunces Variable']))
   await page.goto('/sample/kitchen')
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await page.evaluate(() => document.fonts.ready)
   const heading = page.locator('.room-panel-header h2')
-  await expect(heading).toHaveCSS('font-family', /Georgia/)
+  await expect(heading).toHaveCSS('font-family', /Fraunces Variable/)
   await expect(heading).toHaveCSS('font-size', '27px')
   await expect(page.locator('.room-panel-subtitle')).toHaveCSS('font-size', '12px')
   await expect(page.locator('.expense-description strong').first()).toHaveCSS('font-size', '12px')
   const exportButton = page.getByRole('button', { name: 'Export ledger', exact: true })
-  await expect(exportButton).toHaveCSS('font-family', /system-ui/)
+  await expect(exportButton).toHaveCSS('font-family', /DM Sans Variable/)
   await expect(exportButton).toHaveCSS('font-size', '11px')
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'House rules', exact: true }).click()
@@ -26,5 +31,5 @@ test('Georgia titles and system body fonts apply throughout while inputs remain 
   await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('font-size', '16px')
   const save = page.getByRole('button', { name: 'Save the house rules', exact: true })
   expect(await save.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44)
-  await expect(page.getByRole('dialog').getByRole('heading', { level: 2 })).toHaveCSS('font-family', /Georgia/)
+  await expect(page.getByRole('dialog').getByRole('heading', { level: 2 })).toHaveCSS('font-family', /Fraunces Variable/)
 })

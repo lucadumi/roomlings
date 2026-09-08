@@ -17,6 +17,8 @@ Open **Rooms** and choose a kitchen or bathroom preview card without changing yo
 
 The fridge visualizes purchases, not food remaining. Export the complete ledger from the receipt book.
 
+Form dropdowns use the same cream and sage styling throughout. Open one to choose an option, use arrow keys or type to find a choice, and press Escape to close just the menu without losing the form.
+
 ## Chores and restocking
 
 Add a chore with a room or whole-home scope, an optional area, a due date and a one-off or recurring schedule. One assigned person keeps the task; multiple people rotate in the chosen order. The next turn advances only after a saved completion. Any active roommate can do the task, and history records who actually completed it.
@@ -45,4 +47,6 @@ Use http://localhost:5173 for review, preserving its data and browser sessions. 
 
 Room IDs, chore areas and restocking suggestions are registered in `shared/rooms.ts`; `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms there instead of adding placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
-Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork, Georgia headings and system sans-serif body text. The outlined logo lettering is independent of interface fonts.
+Use `src/Dropdown.tsx` for form selects. It preserves raw values, including empty whole-home and one-off choices, while Radix handles menu positioning, keyboard navigation and touch interaction.
+
+Visual references: [The Modern House](https://www.themodernhouse.com), [Splitwise](https://www.splitwise.com) and [Partiful](https://partiful.com). Roomlings uses its own artwork and the original Fraunces and DM Sans interface fonts. The outlined logo lettering is independent of interface fonts.

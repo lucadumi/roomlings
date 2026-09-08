@@ -5,7 +5,7 @@ import type { Session } from '../../shared/domain.ts'
 import { addMonths } from '../../shared/bills.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { monthTitle } from '../../src/format.ts'
-import { createHousehold, savedKitchen } from './fixtures.ts'
+import { chooseOption, createHousehold, savedKitchen } from './fixtures.ts'
 
 async function createBill(request: APIRequestContext, session: Session, firstDueDate: string): Promise<Session> {
   const response = await request.post('/api/bills', {
@@ -42,9 +42,11 @@ test.describe('monthly bills', () => {
     const share = page.locator('.game-balance strong')
     const beforePot = await pot.innerText()
     const beforeShare = await share.innerText()
-    const groceryCount = page.locator('.room-label > span')
-    const beforeGroceries = await groceryCount.innerText()
-    await openBills(page)
+    await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+    const groceries = page.locator('.expense-row')
+    await expect(groceries).toHaveCount(6)
+    const beforeGroceries = await groceries.allTextContents()
+    await page.getByRole('button', { name: 'Bills', exact: true }).click()
     await page.getByRole('button', { name: 'New monthly bill', exact: true }).click()
     await page.getByLabel('Bill name', { exact: true }).fill('Rent')
     await page.getByLabel('Default amount (EUR)', { exact: true }).fill('100')
@@ -60,7 +62,7 @@ test.describe('monthly bills', () => {
     await page.getByRole('button', { name: 'Record payment for Rent', exact: true }).click()
     await expect(page.getByRole('dialog')).toContainText('does not move money')
     await page.getByLabel('Amount paid (EUR)', { exact: true }).fill('101.01')
-    await page.getByRole('combobox', { name: 'Paid by', exact: true }).selectOption({ label: 'Jules' })
+    await chooseOption(page.getByRole('combobox', { name: 'Paid by', exact: true }), { label: 'Jules' })
     await page.getByRole('button', { name: 'Record bill payment', exact: true }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(rent.locator('.bill-status')).toHaveText('Paid')
@@ -68,7 +70,6 @@ test.describe('monthly bills', () => {
     await expect(rent).toContainText('Paid by Jules')
     await expect(pot).toHaveText(beforePot)
     await expect(share).not.toHaveText(beforeShare)
-    await expect(groceryCount).toHaveText(beforeGroceries)
     await expect(page.getByRole('button', { name: 'Record payment for Rent', exact: true })).toHaveCount(0)
 
     const downloadEvent = page.waitForEvent('download')
@@ -82,7 +83,7 @@ test.describe('monthly bills', () => {
     expect(csv).toContain(`"${month}"`)
 
     await page.getByRole('button', { name: 'Groceries', exact: true }).click()
-    await expect(page.locator('.expense-row')).toHaveCount(6)
+    await expect(groceries).toHaveText(beforeGroceries)
     await expect(page.locator('.expense-row').filter({ hasText: 'Rent' })).toHaveCount(0)
     await page.locator('.category-tabs').getByRole('button', { name: 'Other groceries', exact: true }).click()
     await expect(page.locator('.expense-row')).toHaveCount(0)

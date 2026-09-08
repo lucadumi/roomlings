@@ -1,5 +1,8 @@
 import React, { lazy, Suspense, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
+import '@fontsource-variable/dm-sans'
+import '@fontsource-variable/fraunces'
+import '@fontsource-variable/fraunces/wght-italic.css'
 import { SceneLoading } from './Branding.tsx'
 import './style.css'
 import './game.css'

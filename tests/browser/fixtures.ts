@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import type { APIRequestContext, Page, Route } from '@playwright/test'
+import type { APIRequestContext, Locator, Page, Route } from '@playwright/test'
 import { sessionSchema } from '../../src/api.ts'
 import type { SavedKitchen } from '../../src/api.ts'
 import type { Session } from '../../shared/domain.ts'
@@ -84,4 +84,17 @@ export async function selectRoom(page: Page, roomId: RoomId) {
   const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
   await picker.getByRole('button', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
   await expect(picker).toHaveCount(0)
+}
+
+export async function chooseOption(control: Locator, value: string | { label: string }) {
+  await control.click()
+  const menu = control.page().getByRole('listbox')
+  const option = typeof value === 'string'
+    ? menu.locator(`[data-option-value=${JSON.stringify(value)}]`)
+    : menu.getByRole('option', { name: value.label, exact: true })
+  const expected = await option.getAttribute('data-option-value')
+  if (expected === null) throw new Error('The dropdown option has no value.')
+  await option.click()
+  await expect(menu).toHaveCount(0)
+  await expect(control).toHaveAttribute('data-value', expected)
 }

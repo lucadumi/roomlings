@@ -43,6 +43,7 @@ import { ChoreForm, ChoresPanel } from './Chores.tsx'
 import type { ChoreFilter, ChoreView } from './Chores.tsx'
 import { RestockPanel } from './Restock.tsx'
 import { RoomPicker } from './RoomPicker.tsx'
+import { Dropdown } from './Dropdown.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const entryRoute = resolveEntry(location.pathname, location.hash)
@@ -885,7 +886,7 @@ function SettingsForm({ household, busy, error, onSubmit }: { household: Househo
   const currencyLocked = household.expenses.length > 0 || household.settlements.length > 0 || household.bills.length > 0
   return <Form onSubmit={() => { const amount = parseMoney(budget); if (!amount) { setLocalError('Enter a positive budget with up to two decimal places.'); return }; setLocalError(''); onSubmit({ name, budget: amount, currency }) }}>
     <label className="field">Kitchen name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} disabled={busy} /></label>
-    <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<select value={currency} onChange={(event) => setCurrency(event.target.value)} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label></div>
+    <div className="field-row"><label className="field">Monthly budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<Dropdown label="Currency" value={currency} onValueChange={setCurrency} disabled={busy || currencyLocked}>{currencies.map((currency) => <option key={currency}>{currency}</option>)}</Dropdown></label></div>
     <p className="field-hint">The monthly grocery target applies to every month. {currencyLocked && 'Currency stays fixed after adding expenses or monthly bills.'}</p>
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
   </Form>

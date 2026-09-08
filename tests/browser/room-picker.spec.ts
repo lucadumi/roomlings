@@ -15,6 +15,7 @@ test('the Rooms panel shows real previews and switches without creating another 
   await expect(picker.locator('img')).toHaveCount(2)
   await expect.poll(() => picker.locator('img').evaluateAll((images) => images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true)
   const token = await page.evaluate(() => localStorage.getItem('roomlings.sample-session'))
+  expect(token).not.toBeNull()
   await picker.getByRole('button', { name: 'Open Bathroom', exact: true }).click()
   await expect(picker).toHaveCount(0)
   await expect(page).toHaveURL(new RegExp(`${samplePath('bathroom')}$`))

@@ -8,6 +8,7 @@ import { choreAreaSchema, choreLocationLabel, roomCatalog, roomIds, roomIdSchema
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { Avatar, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
+import { Dropdown } from './Dropdown.tsx'
 import { dateTitle } from './format.ts'
 import './chores.css'
 
@@ -60,8 +61,7 @@ export function ChoresPanel({
       <button type="button" disabled={busy} aria-pressed={view === 'archived'} onClick={() => onView('archived')}>Archived</button>
     </nav>
     <div className="chore-filters">
-      <label className="field">Chore room<select value={filter.room} disabled={busy} onChange={(event) => {
-        const value = event.target.value
+      <label className="field">Chore room<Dropdown label="Chore room" value={filter.room} disabled={busy} onValueChange={(value) => {
         if (value === 'all' || value === 'home') onFilter({ room: value, area: null })
         else {
           const parsed = roomIdSchema.safeParse(value)
@@ -72,18 +72,18 @@ export function ChoresPanel({
       }}>
         <option value="all">All rooms</option><option value="home">Whole home</option>
         {roomIds.map((id) => <option key={id} value={id}>{roomCatalog[id].name}</option>)}
-      </select></label>
-      {room && <label className="field">Chore area<select value={filter.area ?? ''} disabled={busy} onChange={(event) => {
-        if (!event.target.value) onFilter({ ...filter, area: null })
+      </Dropdown></label>
+      {room && <label className="field">Chore area<Dropdown label="Chore area" value={filter.area ?? ''} disabled={busy} onValueChange={(value) => {
+        if (!value) onFilter({ ...filter, area: null })
         else {
-          const parsed = choreAreaSchema.safeParse(event.target.value)
+          const parsed = choreAreaSchema.safeParse(value)
           if (!parsed.success || !room.areas.some((area) => area.id === parsed.data)) { setFilterError('Choose an area in this room.'); return }
           onFilter({ ...filter, area: parsed.data })
         }
         setFilterError('')
       }}>
         <option value="">All areas</option>{room.areas.map((area) => <option key={area.id} value={area.id}>{area.label}</option>)}
-      </select></label>}
+      </Dropdown></label>}
     </div>
     <label className="chore-mine"><input type="checkbox" checked={mine} disabled={busy} onChange={(event) => setMine(event.target.checked)} />{view === 'history' ? 'My turns and completions' : 'My turn only'}</label>
     <button className="text-button chore-supplies" disabled={busy} onClick={onRestock}>Restock room supplies</button>
@@ -183,23 +183,23 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
   }}>
     <label className="field">Chore name<input required maxLength={80} value={title} disabled={busy} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Clean the sink" /></label>
     <div className="field-row">
-      <label className="field">Room<select value={roomId ?? ''} disabled={busy} onChange={(event) => {
-        const parsed = event.target.value ? roomIdSchema.safeParse(event.target.value) : null
+      <label className="field">Room<Dropdown label="Room" value={roomId ?? ''} disabled={busy} onValueChange={(value) => {
+        const parsed = value ? roomIdSchema.safeParse(value) : null
         if (parsed && !parsed.success) { setLocalError('Choose an available room.'); return }
         setRoomId(parsed?.data ?? null); setArea(null); setLocalError('')
-      }}><option value="">Whole home</option>{roomIds.map((id) => <option key={id} value={id}>{roomCatalog[id].name}</option>)}</select></label>
-      {roomId && <label className="field">Area<select value={area ?? ''} disabled={busy} onChange={(event) => {
-        const parsed = event.target.value ? choreAreaSchema.safeParse(event.target.value) : null
+      }}><option value="">Whole home</option>{roomIds.map((id) => <option key={id} value={id}>{roomCatalog[id].name}</option>)}</Dropdown></label>
+      {roomId && <label className="field">Area<Dropdown label="Area" value={area ?? ''} disabled={busy} onValueChange={(value) => {
+        const parsed = value ? choreAreaSchema.safeParse(value) : null
         if (parsed && !parsed.success) { setLocalError('Choose an area in this room.'); return }
         setArea(parsed?.data ?? null); setLocalError('')
-      }}><option value="">Whole room</option>{roomCatalog[roomId].areas.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
+      }}><option value="">Whole room</option>{roomCatalog[roomId].areas.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</Dropdown></label>}
     </div>
     <label className="field">Notes<textarea rows={2} maxLength={240} value={notes} disabled={busy} onChange={(event) => setNotes(event.target.value)} /></label>
     <div className="field-row">
       <label className="field">Due date<input type="date" min="1900-01-01" required value={dueDate} disabled={busy} onChange={(event) => setDueDate(event.target.value)} /></label>
-      <label className="field">Repeat<select value={repeat} disabled={busy} onChange={(event) => setRepeat(event.target.value)}>
+      <label className="field">Repeat<Dropdown label="Repeat" value={repeat} disabled={busy} onValueChange={setRepeat}>
         <option value="">One-off</option><option value="1">Daily</option><option value="7">Weekly</option><option value="14">Every 2 weeks</option><option value="custom">Custom interval</option>
-      </select></label>
+      </Dropdown></label>
     </div>
     {repeat === 'custom' && <label className="field">Repeat every (days)<input type="number" min={1} max={365} required value={customDays} disabled={busy} onChange={(event) => setCustomDays(event.target.value)} /></label>}
     <fieldset className="split-fieldset"><legend>Who takes turns?</legend>
@@ -216,10 +216,10 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
       <button className="icon-button" type="button" aria-label={`Move ${household.members.find((member) => member.id === id)?.name ?? 'roommate'} earlier`} disabled={busy || index === 0} onClick={() => move(index, -1)}><ArrowUp size={15} /></button>
       <button className="icon-button" type="button" aria-label={`Move ${household.members.find((member) => member.id === id)?.name ?? 'roommate'} later`} disabled={busy || index === rotation.length - 1} onClick={() => move(index, 1)}><ArrowDown size={15} /></button>
     </li>)}</ol>}
-    <label className="field">Next turn<select required value={nextMember} disabled={busy || !rotation.length} onChange={(event) => setNextMember(event.target.value)}>
+    <label className="field">Next turn<Dropdown label="Next turn" required value={nextMember} disabled={busy || !rotation.length} onValueChange={setNextMember}>
       {!rotation.length && <option value="">Choose a roommate</option>}
       {rotation.map((id) => <option key={id} value={id}>{household.members.find((member) => member.id === id)?.name ?? 'Former roommate'}</option>)}
-    </select></label>
+    </Dropdown></label>
     <p className="field-hint">One person keeps the assignment. Multiple people rotate in the order above after each completion. Dates use {household.billingTimeZone}.</p>
     {blocked && <p className="form-error" role="alert">This chore is unavailable or archived. Close the form and review the chore list.</p>}
     {!blocked && changed && latest && <div className="shopping-conflict"><p role="alert">This chore changed. Review the latest schedule before saving your draft.</p><div className="button-row">

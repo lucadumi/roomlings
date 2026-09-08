@@ -3,7 +3,7 @@ import type { APIRequestContext, Page } from '@playwright/test'
 import { householdSchema } from '../../shared/domain.ts'
 import type { Session, ShoppingItem } from '../../shared/domain.ts'
 import { sessionSchema } from '../../src/api.ts'
-import { createHousehold, openShoppingBag, savedKitchen } from './fixtures.ts'
+import { chooseOption, createHousehold, openShoppingBag, savedKitchen } from './fixtures.ts'
 
 async function current(request: APIRequestContext, token: string) {
   const response = await request.get('/api/household', { headers: { Authorization: `Bearer ${token}` } })
@@ -83,8 +83,8 @@ test.describe('shared shopping', () => {
     await page.locator('.checkout-item').filter({ hasText: 'Bread' }).getByRole('checkbox').uncheck()
     await page.getByLabel('What did you pick up?', { exact: true }).fill('Saturday basket')
     await page.getByLabel('Total (EUR)', { exact: true }).fill('7.03')
-    await page.getByRole('combobox', { name: 'Paid by', exact: true }).selectOption({ label: 'Jules' })
-    await page.getByRole('combobox', { name: 'On which shelf?', exact: true }).selectOption('dairy')
+    await chooseOption(page.getByRole('combobox', { name: 'Paid by', exact: true }), { label: 'Jules' })
+    await chooseOption(page.getByRole('combobox', { name: 'On which shelf?', exact: true }), 'dairy')
     await page.getByRole('button', { name: 'Record shopping run', exact: true }).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(page.getByRole('region', { name: 'The shopping bag.', exact: true })).toHaveCount(0)
