@@ -1,41 +1,10 @@
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
-
-async function trackDrawing(page: Page) {
-  await page.addInitScript(() => {
-    let draws = 0
-    let shadowDraws = 0
-    const framebuffers = new WeakMap<WebGL2RenderingContext, WebGLFramebuffer | null>()
-    const bindFramebuffer = WebGL2RenderingContext.prototype.bindFramebuffer
-    Object.defineProperty(WebGL2RenderingContext.prototype, 'bindFramebuffer', {
-      value(this: WebGL2RenderingContext, target: number, framebuffer: WebGLFramebuffer | null) {
-        if (target === this.FRAMEBUFFER || target === this.DRAW_FRAMEBUFFER) framebuffers.set(this, framebuffer)
-        return Reflect.apply(bindFramebuffer, this, [target, framebuffer])
-      },
-    })
-    for (const method of ['drawElements', 'drawArrays'] as const) {
-      const original = WebGL2RenderingContext.prototype[method]
-      Object.defineProperty(WebGL2RenderingContext.prototype, method, {
-        value(this: WebGL2RenderingContext, ...args: number[]) {
-          draws++
-          if (framebuffers.get(this)) shadowDraws++
-          return Reflect.apply(original, this, args)
-        },
-      })
-    }
-    Object.defineProperty(window, 'roomlingsFrameDrawCalls', { get: () => draws })
-    Object.defineProperty(window, 'roomlingsShadowDrawCalls', { get: () => shadowDraws })
-  })
-  return () => page.evaluate(() => ({
-    draws: Number(Reflect.get(window, 'roomlingsFrameDrawCalls')),
-    shadows: Number(Reflect.get(window, 'roomlingsShadowDrawCalls')),
-  }))
-}
+import { trackDrawing } from './fixtures.ts'
 
 test('the full-size kitchen stays within its static-geometry draw-call budget', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await trackDrawing(page)
-  await page.goto('/')
+  await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const draws = await page.evaluate(() => new Promise<number[]>((resolve) => {
@@ -60,7 +29,7 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
-  await page.goto('/')
+  await page.goto('/kitchen')
   const room = page.locator('.kitchen-world')
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   const idle = await drawing()

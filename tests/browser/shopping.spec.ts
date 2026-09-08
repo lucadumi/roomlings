@@ -64,7 +64,7 @@ test.describe('shared shopping', () => {
   test.use({ reducedMotion: 'reduce' })
 
   test('plans without debts, checks out selected items once and keeps an archive after receipt removal', async ({ page, request }) => {
-    await page.goto('/')
+    await page.goto('/kitchen')
     const pot = page.locator('.fund-trigger strong')
     const share = page.locator('.game-balance strong')
     const beforePot = await pot.innerText()
@@ -133,7 +133,7 @@ test.describe('shared shopping', () => {
     const roommate = sessionSchema.parse(await joined.json())
     const item = await seedItem(request, owner)
     await restore(page, owner)
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openShoppingBag(page)
     await page.route(`**/api/shopping/items/${item.id}/claim`, async (route) => {
       await change(request, roommate, `/shopping/items/${item.id}/claim`, { claimed: true, itemVersion: item.version })
@@ -168,7 +168,7 @@ test.describe('shared shopping', () => {
     const owner = await createHousehold(request, 'The retry basket', 'Charlie')
     await seedItem(request, owner, true)
     await restore(page, owner)
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openShoppingBag(page)
     await openCheckout(page)
     await page.getByLabel('Total (EUR)', { exact: true }).fill('12.47')
@@ -199,7 +199,7 @@ test.describe('shared shopping', () => {
     const owner = await createHousehold(request, 'A receipt saved once', 'Charlie')
     await seedItem(request, owner, true)
     await restore(page, owner)
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openShoppingBag(page)
     await openCheckout(page)
     await page.getByLabel('Total (EUR)', { exact: true }).fill('12.49')
@@ -224,7 +224,7 @@ test.describe('shared shopping', () => {
     const owner = await createHousehold(request, 'The updated basket', 'Charlie')
     const item = await seedItem(request, owner, true)
     await restore(page, owner)
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openShoppingBag(page)
     await openCheckout(page)
     await page.getByLabel('Total (EUR)', { exact: true }).fill('20')
@@ -253,7 +253,7 @@ test.describe('shared shopping', () => {
         },
       })
     })
-    await page.goto('/')
+    await page.goto('/kitchen')
     await openShoppingBag(page)
     await expect(page.getByRole('button', { name: 'Add item', exact: true })).toBeInViewport({ ratio: 1 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

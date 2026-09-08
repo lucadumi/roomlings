@@ -42,7 +42,7 @@ test.describe('verified accounts and household membership', () => {
     let received!: (route: Route) => void
     const pending = new Promise<Route>((resolve) => { received = resolve })
     await page.route('**/api/demo', received)
-    await page.goto('/#account')
+    await page.goto('/kitchen#account')
     const demo = await pending
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Email address', { exact: true }).fill('ada@example.com')

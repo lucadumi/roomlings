@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowRight, Check, CheckCheck,
@@ -33,6 +33,14 @@ import { GameHome } from './GameHome.tsx'
 import { RoomStyleForm } from './RoomStyle.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
+import { defaultRoom, resolveEntry, roomPath } from './roomNavigation.ts'
+import { rememberSample, restoreSample } from './sampleAccess.ts'
+
+const Welcome = lazy(() => import('./landing/Welcome.tsx'))
+const entryRoute = resolveEntry(location.pathname, location.hash)
+const currentRoom = 'roomId' in entryRoute ? entryRoute.roomId : defaultRoom
+const sampleEntry = entryRoute.kind === 'sample'
+const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget'
 type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'help'
@@ -45,16 +53,39 @@ const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ??
 const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
 const initialAccountInvite = new URLSearchParams(location.hash.slice(1)).get('account-invite') ?? ''
 const initialAccount = new URLSearchParams(location.hash.slice(1)).has('account')
-let initialSession: Promise<KitchenSession | null> | undefined
+const initialAccountIntent = new URLSearchParams(location.hash.slice(1)).get('account')
+type InitialAccess = { session: KitchenSession | null; expiredBrowser?: true; renewedSample?: boolean }
+let initialSession: Promise<InitialAccess> | undefined
 
-function loadSession(account: AccountState): Promise<KitchenSession | null> {
+function rememberActiveKitchen(session: KitchenSession): SavedKitchen[] {
+  if (sampleEntry && session.household.demo && session.token !== null) {
+    rememberSample(session)
+    return []
+  }
+  return rememberKitchen(session)
+}
+
+function loadSession(account: AccountState | null): Promise<InitialAccess> {
   if (!initialSession) {
-    const pending: Promise<KitchenSession | null> = (async () => {
+    const pending: Promise<InitialAccess> = (async (): Promise<InitialAccess> => {
+      if (sampleEntry) {
+        const sample = await restoreSample()
+        return { session: sample.session, renewedSample: sample.renewed }
+      }
+      if (!account) throw new Error('Account access must be loaded before opening a personal room.')
       const mode = readAccessMode()
-      if (mode === 'account' || (account.account && mode !== 'browser')) return account.session
+      if (mode === 'account' || (account.account && mode !== 'browser')) return { session: account.session }
       const token = readToken()
-      if (token) return { token, ...await getHousehold(token) }
-      return createDemo()
+      if (token) {
+        try {
+          const saved = { token, ...await getHousehold(token) }
+          return { session: isRoomEntry() && saved.household.demo ? account.session : saved }
+        } catch (failure) {
+          if (!(failure instanceof RequestError) || failure.status !== 401 || !account.account) throw failure
+          return { session: account.session, expiredBrowser: true }
+        }
+      }
+      return { session: /^\/kitchen\/?$/.test(location.pathname) || initialInvite || initialRecovery ? await createDemo() : null }
     })().catch((error: unknown) => {
       if (initialSession === pending) initialSession = undefined
       throw error
@@ -65,6 +96,7 @@ function loadSession(account: AccountState): Promise<KitchenSession | null> {
 }
 
 export function App() {
+  const enteringRoom = useRef(isRoomEntry())
   const [session, setSession] = useState<KitchenSession | null>(null)
   const sessionRef = useRef(session)
   sessionRef.current = session
@@ -75,7 +107,8 @@ export function App() {
   const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
   const [dialog, setDialog] = useState<Dialog>(initialAccountInvite ? { account: 'join' }
-    : initialAccount ? { account: 'manage' } : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
+    : initialAccount ? { account: initialAccountIntent === 'create' || initialAccountIntent === 'join' ? initialAccountIntent : 'manage' }
+      : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
   const [invitation, setInvitation] = useState(initialInvite)
   const [accountInvitation, setAccountInvitation] = useState(initialAccountInvite)
   const [accessRouteVersion, setAccessRouteVersion] = useState(0)
@@ -99,29 +132,51 @@ export function App() {
     setLoading(true)
     setError('')
     void (async () => {
-      const accountState = await getAccountState()
+      const accountState = sampleEntry ? null : await getAccountState()
       if (startupAttempt.current !== attempt) return
       accountRef.current = accountState
       setAccount(accountState)
-      const next = await loadSession(accountState)
+      const restored = await loadSession(accountState)
       if (startupAttempt.current !== attempt) return
+      const next = restored.session
       sessionEpoch.current++
       sessionRef.current = next
       setSession(next)
       if (!next) {
         setSaved(savedKitchens())
-        setError(accountState.account ? 'Choose, create or link a kitchen from your account.' : 'Sign in to return to your account.')
-        setDialog((previous) => previous ?? { account: 'manage' })
+        if (accountState?.account) {
+          if (restored.expiredBrowser) preferAccountAccess()
+          setError(restored.expiredBrowser
+            ? 'Your older browser-only access ended. Choose, create or link a kitchen from your signed-in account.'
+            : 'Choose, create or link a kitchen from your account.')
+          setDialog((previous) => previous ?? { account: 'manage' })
+        } else if (isRoomEntry()) {
+          setDialog((previous) => previous ?? { account: 'manage' })
+        }
         return
       }
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
       setShoppingView('list')
-      try { setSaved(rememberKitchen(next)) } catch {
+      if (restored.expiredBrowser) setNotice(`Your older browser-only access ended. Opened ${next.household.name} through your signed-in account.`)
+      if (restored.renewedSample) setNotice('The previous sample is no longer available. A new private sample is ready.')
+      if (enteringRoom.current && !initialAccount && !initialAccountInvite && !initialInvite && !initialRecovery) {
+        enteringRoom.current = false
+        setDialog(null)
+      }
+      try { setSaved(rememberActiveKitchen(next)) } catch {
         setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
       }
     })().catch((failure: unknown) => {
       if (startupAttempt.current !== attempt) return
       setError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
+      if (isRoomEntry() && failure instanceof RequestError && failure.status === 401) {
+        enteringRoom.current = true
+        setDialog({ account: 'manage' })
+        setError('Your browser access is no longer active. Sign in or recover your existing identity to reopen the room.')
+        try { setSaved(savedKitchens()) } catch {
+          setError('Sign in to reopen your home. This browser also could not read its saved kitchen shortcuts.')
+        }
+      }
       if (failure instanceof RequestError && failure.code === 'ACCOUNT_DELETION_PENDING') {
         setDialog({ account: 'manage' })
         try { setSaved(savedKitchens()) } catch {
@@ -140,7 +195,10 @@ export function App() {
       const accountInvite = params.get('account-invite') ?? ''
       const invite = params.get('join') ?? ''
       if (accountInvite) setDialog({ account: 'join' })
-      else if (params.has('account')) setDialog({ account: 'manage' })
+      else if (params.has('account')) {
+        const intent = params.get('account')
+        setDialog({ account: intent === 'create' || intent === 'join' ? intent : 'manage' })
+      }
       else if (invite) setDialog('join')
       else if (params.has('recover')) setDialog('recover')
       else return
@@ -152,6 +210,9 @@ export function App() {
     window.addEventListener('hashchange', navigateAccess)
     return () => window.removeEventListener('hashchange', navigateAccess)
   }, [])
+  useEffect(() => {
+    if (session?.household.id) window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [session?.household.id])
   useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(''), 6500)
@@ -168,11 +229,12 @@ export function App() {
     setSession(null)
     setLoading(false)
     setBusy(false)
-    setDialog(expected.token === null ? { account: 'manage' } : null)
+    enteringRoom.current = isRoomEntry()
+    setDialog(expected.token === null || isRoomEntry() ? { account: 'manage' } : null)
     setPage('overview')
     setStockEvent(null)
     setFormError('')
-    setError(message)
+    setError(sampleEntry ? 'The sample is no longer available. Try again to start a fresh sample.' : message)
     setSyncState('offline')
   }, [])
 
@@ -229,9 +291,9 @@ export function App() {
     setBusy(false)
     sessionRef.current = next
     setSession(next)
-    initialSession = Promise.resolve(next)
+    initialSession = Promise.resolve({ session: next })
     setError('')
-    try { setSaved(rememberKitchen(next)) } catch {
+    try { setSaved(rememberActiveKitchen(next)) } catch {
       setError('Your browser could not remember this kitchen. Keep this tab open until browser storage is available.')
     }
     if (!keepDialog) history.replaceState(null, '', `${location.pathname}${location.search}`)
@@ -244,6 +306,8 @@ export function App() {
     setSyncState('saved')
     setStockEvent(null)
     setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
+    if (sampleEntry && !next.household.demo) location.assign(roomPath(currentRoom))
+    else if (location.pathname === '/' && !keepDialog && !next.household.demo) history.replaceState(history.state, '', roomPath(currentRoom))
   }
 
   const action = async (path: string, body: Record<string, unknown>, success: string, method?: string, inline = false) => {
@@ -300,15 +364,16 @@ export function App() {
     if (preserveLegacy) {
       startupAttempt.current++
       sessionEpoch.current++
-      initialSession = Promise.resolve(current)
+      initialSession = Promise.resolve({ session: current })
       setLoading(false)
       setBusy(false)
       setError('')
     } else if (kind === 'signed-out' || kind === 'deleting' || (current?.token === null && !next.account)) {
       startupAttempt.current++
       sessionEpoch.current++
-      initialSession = Promise.resolve(null)
+      initialSession = Promise.resolve({ session: null })
       sessionRef.current = null
+      enteringRoom.current = isRoomEntry()
       setSession(null)
       setLoading(false)
       setBusy(false)
@@ -320,7 +385,7 @@ export function App() {
       else {
         startupAttempt.current++
         sessionEpoch.current++
-        initialSession = Promise.resolve(null)
+        initialSession = Promise.resolve({ session: null })
         sessionRef.current = null
         setSession(null)
         setLoading(false)
@@ -337,7 +402,7 @@ export function App() {
         || (next.account !== null && previous.account?.id === next.account.id
           && !next.memberships.some((saved) => saved.householdId === membership.householdId && saved.memberId === membership.memberId))) ?? []
       if (removed.length) setSaved(forgetAccountKitchens(removed))
-      if (preserveLegacy && current) setSaved(rememberKitchen(current))
+      if (preserveLegacy && current) setSaved(rememberActiveKitchen(current))
       else if (kind === 'signed-out' || kind === 'deleting' || kind === 'select' || (next.account && identityChanged)) preferAccountAccess()
     } catch {
       setError('Account access changed, but this browser could not update its saved kitchen shortcuts. Check browser storage before closing the tab.')
@@ -345,6 +410,10 @@ export function App() {
   }
   const openDialog = (next: Dialog) => {
     setFormError('')
+    if (sampleEntry && (next === 'create' || next === 'join' || next === 'invite')) {
+      location.assign(`${roomPath(currentRoom)}#account=${next === 'join' ? 'join' : 'create'}`)
+      return
+    }
     if ((account?.configured || account?.account) && (next === 'create' || next === 'join' || next === 'invite')) {
       setDialog({ account: next === 'create' ? 'create' : next === 'join' ? 'join' : 'manage' })
     } else if (next === 'access' && session?.token === null) setDialog({ account: 'manage' })
@@ -426,12 +495,28 @@ export function App() {
 
   const renderDialog = () => {
     if (!dialog) return null
-    const close = () => setDialog(null)
+    const close = () => {
+      if (enteringRoom.current && !sessionRef.current) {
+        location.assign(`/#${typeof dialog === 'object' && 'account' in dialog && dialog.account === 'create' ? 'home-start' : 'home-sign-in'}`)
+        return
+      }
+      enteringRoom.current = false
+      if (location.pathname === '/') {
+        const current = sessionRef.current
+        if (current && !current.household.demo) history.replaceState(history.state, '', roomPath(currentRoom))
+        else { location.replace('/'); return }
+      }
+      const params = new URLSearchParams(location.hash.slice(1))
+      if (['account', 'account-invite', 'join', 'recover'].some((key) => params.has(key))) {
+        history.replaceState(history.state, '', `${location.pathname}${location.search}`)
+      }
+      setDialog(null)
+    }
     const footerError = formError && <p className="form-error" role="alert">{formError}</p>
     const accountIntent = typeof dialog === 'object' && 'account' in dialog ? dialog.account
       : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
         ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
-    if (accountIntent) return <AccountDialog key={`account:${accessRouteVersion}`}
+    if (accountIntent) return <AccountDialog key={`account:${accessRouteVersion}`} autoEnter={enteringRoom.current}
       intent={accountIntent} initialState={account} initialInvite={accountInvitation || invitation} legacySession={session && session.token !== null ? session : null}
       savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
       onOpenLegacy={(kitchen) => switchKitchen(kitchen, true)} />
@@ -547,10 +632,13 @@ export function App() {
     return null
   }
 
-  if (!household || !session) return <div className="welcome-screen">
-    <div className="brand"><span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span></div>
-    <div className="welcome-content"><span className="eyebrow">A HAPPIER SHARED KITCHEN</span><h1>A full fridge.<br /><em>A fair share.</em></h1>
-      {loading ? <p className="inline"><LoaderCircle className="spin" size={19} /> Opening the kitchen...</p> : <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button primary" onClick={initialize}>Try again</button><button className="button secondary" onClick={() => openDialog('recover')}>Recover access</button><button className="button secondary" onClick={() => openDialog('join')}>Join a kitchen</button><button className="text-button" onClick={() => openDialog('create')}>Create a kitchen</button></div></>}
+  if (!household || !session) return <div className="entry-shell">
+    <div inert={!!dialog}>
+      <Suspense fallback={<div className="scene-loading" role="status">Putting the kettle on...</div>}>
+        <Welcome paused={!!dialog} accessNotice={loading
+          ? <p className="inline" role="status"><LoaderCircle className="spin" size={17} />Checking saved access...</p>
+          : error ? <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button secondary" onClick={initialize}>Try again</button><button className="text-button" onClick={() => openDialog('recover')}>Recover access</button></div></> : null} />
+      </Suspense>
     </div>{renderDialog()}
   </div>
 
@@ -596,7 +684,7 @@ export function App() {
   </section>
 
   return <div className="game-app">
-    <GameHome
+    <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       expenseCount={expenses.length} receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}

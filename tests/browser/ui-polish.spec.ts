@@ -25,7 +25,7 @@ test.describe('UI polish', () => {
   test.use({ reducedMotion: 'reduce' })
 
   test('the room backdrop blends lighting changes and honors reduced motion', { tag: '@room' }, async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/kitchen')
     const home = page.locator('.game-home')
     const world = page.locator('.kitchen-world')
     const opacity = () => home.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
@@ -52,7 +52,7 @@ test.describe('UI polish', () => {
 
   test('shared controls keep their surfaces, selection and keyboard focus', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
-    await page.goto('/')
+    await page.goto('/kitchen')
     const rules = page.getByRole('button', { name: 'House rules', exact: true })
     await expect(rules).toBeVisible()
     await expect(page.locator('.game-hud')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -110,7 +110,7 @@ test.describe('UI polish', () => {
   for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }, { width: 320, height: 568 }]) {
     test(`panels and forms stay usable at ${viewport.width}px`, async ({ page }) => {
       await page.setViewportSize(viewport)
-      await page.goto('/')
+      await page.goto('/kitchen')
       await expect(page.locator('.world-camera-controls')).toBeVisible()
       await expectNoOverflow(page.locator('html'))
       expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true)
@@ -198,7 +198,7 @@ test.describe('UI polish', () => {
 
   test('busy and rejected saves keep disabled controls and focus honest', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto('/kitchen')
     await page.getByRole('button', { name: 'House rules', exact: true }).click()
     await page.getByLabel('Kitchen name', { exact: true }).fill('A kitchen draft to keep')
     const save = page.getByRole('button', { name: 'Save the house rules', exact: true })
@@ -236,4 +236,21 @@ test.describe('UI polish', () => {
       releaseSave()
     }
   })
+})
+test('the landing and room share the dot texture while forms keep plain surfaces', { tag: '@room' }, async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('.welcome')).toBeVisible()
+  const texture = await page.locator('.welcome').evaluate((element) => getComputedStyle(element).backgroundImage)
+  expect(texture).toContain('radial-gradient')
+  await expect(page.locator('body')).toHaveCSS('background-image', texture)
+  await page.locator('.welcome-hero').getByRole('link', { name: 'Try the sample', exact: true }).click()
+  await expect(page.locator('.game-house')).toBeVisible()
+  const room = await page.locator('.game-home').evaluate((element) => ({
+    texture: getComputedStyle(element, '::before').backgroundImage,
+    mask: getComputedStyle(element, '::before').maskImage,
+  }))
+  expect(room).toEqual({ texture, mask: 'none' })
+  await page.getByRole('button', { name: 'House rules', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCSS('background-image', 'none')
+  await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('background-image', 'none')
 })
