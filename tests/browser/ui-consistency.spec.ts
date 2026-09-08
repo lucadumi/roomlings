@@ -217,15 +217,22 @@ test.describe('UI consistency', () => {
       expect(stack.backFromForm!.top - stack.forms[1].bottom).toBeGreaterThanOrEqual(12)
       expect(stack.backFromSection!.top - stack.section!.bottom).toBeGreaterThanOrEqual(12)
       expect(stack.resendRow!.top - stack.verify!.bottom).toBeGreaterThanOrEqual(12)
-      for (const row of await fixture.locator('.button-row').all()) {
-        const buttons = row.getByRole('button')
-        const first = await buttons.first().boundingBox()
-        const second = await buttons.last().boundingBox()
-        expect(first).not.toBeNull()
-        expect(second).not.toBeNull()
-        expect(second!.x - first!.x - first!.width).toBeGreaterThanOrEqual(10)
-        expect(Math.abs(first!.y + first!.height / 2 - second!.y - second!.height / 2)).toBeLessThan(1)
-        await expect(buttons.last()).toHaveCSS('margin-top', '0px')
+      const rows = await fixture.locator('.button-row').evaluateAll((rows) => rows.map((row) => {
+        const buttons = [...row.querySelectorAll('button')]
+        const first = buttons[0]?.getBoundingClientRect()
+        const last = buttons.at(-1)
+        if (!first || !last) throw new Error('The inline row needs both fixture buttons.')
+        const second = last.getBoundingClientRect()
+        return {
+          gap: second.left - first.right,
+          alignment: Math.abs(first.top + first.height / 2 - second.top - second.height / 2),
+          marginTop: getComputedStyle(last).marginTop,
+        }
+      }))
+      for (const row of rows) {
+        expect(row.gap).toBeGreaterThanOrEqual(10)
+        expect(row.alignment).toBeLessThan(1)
+        expect(row.marginTop).toBe('0px')
       }
     }
   })

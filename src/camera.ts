@@ -1,3 +1,5 @@
+import { Vector3 } from 'three'
+import type { Box3 } from 'three'
 import type { KitchenAction, KitchenUtility } from './room.ts'
 
 export type SceneFocus = KitchenAction | KitchenUtility | 'room' | 'fridge' | 'brew'
@@ -37,14 +39,34 @@ const views: Record<SceneFocus, { center: [number, number, number]; halfHeight: 
   floor: { center: [0, 0.6, 0], halfHeight: 4.25, width: 9.4 },
 }
 
-export function cameraFraming(width: number, height: number, focus: SceneFocus, wholeRoom: boolean): {
+export function cameraFraming(width: number, height: number, focus: SceneFocus, wholeRoom: boolean, wholeRoomView: {
+  bounds?: Box3; rotation?: number; pitch?: number
+} = {}): {
   center: [number, number, number]; halfHeight: number
 } {
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error('Camera framing needs a positive viewport width and height.')
   }
   const aspect = width / height
-  if (wholeRoom) return { center: views.room.center, halfHeight: Math.max(4.65, 6.8 / aspect) }
+  if (wholeRoom) {
+    const { bounds, rotation = 0, pitch = 0 } = wholeRoomView
+    const min = bounds?.min.toArray() ?? [-5.4, -0.4, -3.5]
+    const max = bounds?.max.toArray() ?? [5.4, 5.1, 3.5]
+    if (![...min, ...max, rotation, pitch].every(Number.isFinite) || bounds?.isEmpty()) {
+      throw new Error('Whole-room framing needs finite bounds and camera angles.')
+    }
+    const center = new Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2)
+    const axis = new Vector3(0, 1, 0)
+    const backward = new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).normalize()
+    const right = new Vector3().crossVectors(axis, backward).normalize()
+    const up = new Vector3().crossVectors(backward, right).normalize()
+    let halfHeight = Math.max(4.65, 6.8 / aspect)
+    for (const x of [min[0], max[0]]) for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) {
+      const corner = new Vector3(x, y, z).sub(center).applyAxisAngle(axis, rotation)
+      halfHeight = Math.max(halfHeight, Math.abs(corner.dot(up)) + 0.18, (Math.abs(corner.dot(right)) + 0.18) / aspect)
+    }
+    return { center: [center.x, center.y, center.z], halfHeight }
+  }
   if (focus === 'room') {
     return aspect < 0.9
       ? { center: [-0.7, 1.6, -0.9], halfHeight: 4.6 }

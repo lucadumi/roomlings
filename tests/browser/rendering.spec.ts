@@ -1,5 +1,39 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
+import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
+import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
+import { buildKitchenModel } from '../../src/kitchenModel.ts'
+import { samplePath } from '../../src/roomNavigation.ts'
 import { trackDrawing } from './fixtures.ts'
+
+async function frameKitchenBag(page: Page) {
+  const world = page.locator('.kitchen-world')
+  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await expect(world).toHaveAttribute('data-framing', 'whole')
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await expect(world).toHaveAttribute('data-camera-moving', 'false')
+  const layout = await world.locator('.world-canvas').evaluate((element) => {
+    const { x, y, width, height } = element.getBoundingClientRect()
+    return { x, y, width, height }
+  })
+  const room = new Group()
+  const model = buildKitchenModel(room)
+  try {
+    model.doors.forEach((door, index) => { door.rotation.y = index ? -1.72 : -1.97 })
+    const framing = cameraFraming(layout.width, layout.height, 'room', true, { bounds: new Box3().setFromObject(room) })
+    const halfWidth = framing.halfHeight * layout.width / layout.height
+    const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)
+    const center = new Vector3(...framing.center)
+    camera.position.copy(center).add(new Vector3(...baseCameraOffset))
+    camera.lookAt(center)
+    camera.updateMatrixWorld(true)
+    const bag = new Vector3(-0.4, 1.87, 1.3).project(camera)
+    return { x: layout.x + (bag.x * 0.5 + 0.5) * layout.width, y: layout.y + (-bag.y * 0.5 + 0.5) * layout.height }
+  } finally {
+    room.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
+    model.materials.forEach((material) => material.dispose())
+  }
+}
 
 test('the full-size kitchen stays within its static-geometry draw-call budget', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
@@ -65,4 +99,151 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   await expect.poll(async () => (await drawing()).shadows).toBeGreaterThan(idle.shadows)
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   await expect(page.getByRole('button', { name: 'Peek inside', exact: true })).toBeVisible()
+})
+
+test('kitchen picking ignores secondary clicks and releases abandoned pointer captures', { tag: '@room' }, async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.goto(samplePath())
+  const world = page.locator('.kitchen-world')
+  const canvas = world.locator('canvas')
+  await expect(canvas).toBeVisible()
+  await expect(world.getByRole('img')).toHaveAccessibleName(/The shopping bag opens the shared shopping list.*the house pot shows the grocery budget.*The cleaning caddy opens room chores and the shelf opens kitchen supplies/)
+  const sink = world.locator('.hotspot-sink')
+  expect(await sink.getAttribute('aria-label')).toBe(await sink.locator('.hotspot-label').textContent())
+  await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+  let bag = await frameKitchenBag(page)
+  await page.mouse.click(bag.x, bag.y, { button: 'right' })
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+  await page.mouse.click(bag.x, bag.y)
+  await expect(page.locator('.room-panel')).toBeVisible()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  bag = await frameKitchenBag(page)
+  await canvas.evaluate((element) => {
+    element.addEventListener('gotpointercapture', (event) => {
+      element.setAttribute('data-captured-pointer', String((event as PointerEvent).pointerId))
+    }, { once: true })
+  })
+  await page.mouse.move(bag.x, bag.y)
+  await page.mouse.down()
+  await page.mouse.move(bag.x + 1, bag.y)
+  await expect(canvas).toHaveAttribute('data-captured-pointer', /^\d+$/)
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  const placement = await world.locator('.hotspot-stock').getAttribute('style')
+  await canvas.evaluate((element) => {
+    const pointerId = Number(element.getAttribute('data-captured-pointer'))
+    if (!element.hasPointerCapture(pointerId)) throw new Error('The kitchen must first capture the pressed pointer.')
+    element.addEventListener('lostpointercapture', () => element.setAttribute('data-lost-capture', 'true'), { once: true })
+    element.releasePointerCapture(pointerId)
+  })
+  await page.mouse.move(bag.x + 40, bag.y + 20)
+  await page.mouse.up()
+  await expect(canvas).toHaveAttribute('data-lost-capture', 'true')
+  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  await expect(world.locator('.hotspot-stock')).toHaveAttribute('style', placement!)
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+  await page.mouse.click(bag.x, bag.y)
+  await expect(page.locator('.room-panel')).toBeVisible()
+})
+
+for (const room of ['kitchen', 'bathroom'] as const) {
+  test(`${room} pinch zoom stays continuous when one of three contacts is lifted`, { tag: '@room' }, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(samplePath(room))
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+    await page.locator('.world-canvas canvas').evaluate((element) => {
+      if (!(element instanceof HTMLCanvasElement)) throw new Error('The room canvas is missing.')
+      const capture = element.setPointerCapture
+      // Synthetic contacts have no native pointer capture to acquire.
+      element.setPointerCapture = () => {}
+      const pointer = (type: string, pointerId: number, clientX: number) => element.dispatchEvent(new PointerEvent(type, {
+        pointerId, pointerType: 'touch', button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX, clientY: 430, bubbles: true,
+      }))
+      try {
+        pointer('pointerdown', 40, 100)
+        pointer('pointerdown', 41, 180)
+        pointer('pointerdown', 42, 290)
+        pointer('pointermove', 40, 80)
+        pointer('pointerup', 40, 80)
+        pointer('pointermove', 41, 185)
+        pointer('pointermove', 42, 295)
+        pointer('pointerup', 41, 185)
+        pointer('pointerup', 42, 295)
+      } finally {
+        element.setPointerCapture = capture
+      }
+    })
+    await expect(page.locator('.world-camera-controls')).toContainText('125%')
+    await expect(page.locator('.room-panel')).toHaveCount(0)
+  })
+}
+
+for (const room of ['kitchen', 'bathroom'] as const) {
+  test(`${room} hotspots stay inside the unobscured scene while a panel is open`, { tag: '@room' }, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.goto(samplePath(room))
+    await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+    await expect(page.locator('.room-panel')).toBeVisible()
+    const labelToggle = page.getByRole('button', { name: 'Hide object labels', exact: true, includeHidden: true })
+    await labelToggle.click()
+    await expect(page.locator('.world-hotspots')).toBeHidden()
+    await page.getByRole('button', { name: 'Show object labels', exact: true }).click()
+    for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }, { width: 1440, height: 960 }]) {
+      await page.setViewportSize(viewport)
+      if (viewport.width === 390) await expect(labelToggle).toBeHidden()
+      else await expect(labelToggle).toBeVisible()
+      await expect(page.locator('.world-hotspots')).toBeVisible()
+      await expect.poll(() => page.locator('.kitchen-world').evaluate((world) => {
+        const area = world.getBoundingClientRect()
+        const visible = [...world.querySelectorAll('.world-hotspot')].filter((button) => getComputedStyle(button).visibility === 'visible')
+        return visible.length > 0 && visible.every((button) => {
+          const bounds = button.getBoundingClientRect()
+          return bounds.left >= area.left && bounds.right <= area.right && bounds.top >= area.top && bounds.bottom <= area.bottom
+        })
+      })).toBe(true)
+    }
+  })
+}
+
+test('changing to reduced motion refreshes shadows for leaves that return to rest', { tag: '@room' }, async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.clock.setFixedTime(new Date())
+  const drawing = await trackDrawing(page)
+  await page.goto(samplePath())
+  const world = page.locator('.kitchen-world')
+  await expect(world.locator('canvas')).toBeVisible()
+  await page.getByRole('button', { name: 'House rules', exact: true }).click()
+  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  const before = await drawing()
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await expect.poll(async () => (await drawing()).shadows).toBeGreaterThan(before.shadows)
+  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  const resting = await drawing()
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  expect(await drawing()).toEqual(resting)
+})
+
+test('kitchen context loss stops its renderer and retains the ordinary household tools', { tag: '@room' }, async ({ page }) => {
+  await page.goto(samplePath())
+  const world = page.locator('.kitchen-world')
+  const canvas = world.locator('canvas')
+  await expect(canvas).toBeVisible()
+  await canvas.evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) throw new Error('The kitchen canvas is missing.')
+    const loss = element.getContext('webgl2')?.getExtension('WEBGL_lose_context')
+    if (!loss) throw new Error('The browser cannot simulate a lost context.')
+    loss.loseContext()
+  })
+  await expect(page.getByRole('status').filter({ hasText: 'Your kitchen, minus the 3D.' })).toBeVisible()
+  await expect(world.getByRole('status')).toContainText('All household tools still work.')
+  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  await expect(canvas).toBeHidden()
+  await expect(world.getByRole('img')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'The receipt book.', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  await page.getByRole('button', { name: 'Chores', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Household chores.', exact: true })).toBeVisible()
 })

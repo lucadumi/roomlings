@@ -256,12 +256,14 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
         anchor.getWorldPosition(projected).project(camera)
         const x = (projected.x * 0.5 + 0.5) * viewport.width
         const y = (-projected.y * 0.5 + 0.5) * viewport.height
+        const insetX = Math.max(18, button.offsetWidth / 2)
+        const insetY = Math.max(18, button.offsetHeight / 2)
         button.style.left = `${x}px`
         button.style.top = `${y}px`
         button.style.transform = 'translate(-50%, -50%)'
         button.style.visibility = projected.z > -1 && projected.z < 1
-          && x > area.x + 18 && x < area.x + area.width - 18
-          && y > area.y + 18 && y < area.y + area.height - 18 ? 'visible' : 'hidden'
+          && x > area.x + insetX && x < area.x + area.width - insetX
+          && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
       }
       const moving = room.rotation.y !== targetRotation || pitch !== targetPitch
         || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== currentControls.zoom
@@ -294,7 +296,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
       wake()
     }
     const down = (event: PointerEvent) => {
-      if (event.pointerType === 'mouse' && event.button !== 0) return
+      if (event.button !== 0 || contextLost) return
       pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
       if (pointers.size === 1) {
         startX = previousX = event.clientX
@@ -337,7 +339,12 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
         previousX = remaining.x
         previousY = remaining.y
         moved = true
-      } else if (!cancelled && !moved && Math.hypot(event.clientX - startX, event.clientY - startY) < 5) {
+        if (pointers.size > 1) {
+          const [a, b] = [...pointers.values()]
+          pinchDistance = a.distanceTo(b)
+          pinchZoom = currentControls.zoom
+        }
+      } else if (!cancelled && event.button === 0 && !moved && Math.hypot(event.clientX - startX, event.clientY - startY) < 5) {
         const target = hitTarget(event)
         if (target) activate(target)
       }
@@ -403,7 +410,7 @@ export default function BathroomWorld({ roomStyle, paused, panelOpen, focusReque
     }
   }, [])
 
-  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id])
+  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels])
 
   const changeZoom = (direction: number) => {
     const current = controls.current

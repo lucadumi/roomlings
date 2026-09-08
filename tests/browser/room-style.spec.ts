@@ -74,7 +74,7 @@ test('presets require confirmation and sync to another roommate without WebGL', 
     await picker.getByRole('radio', { name: 'Sage', exact: true }).check()
     await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     await expect(picker).toHaveCount(0)
-    await expect(page.getByRole('status')).toContainText('Room style saved for everyone.')
+    await expect(page.getByRole('status').filter({ hasText: 'Room style saved for everyone.' })).toBeVisible()
     await page.reload()
     await openPicker(page)
     await expect(picker.getByRole('radio', { name: 'Sage', exact: true })).toBeChecked()

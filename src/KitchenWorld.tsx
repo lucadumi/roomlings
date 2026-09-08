@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Coffee, Eye, EyeOff, Maximize, Minus, Moon, Move, Plus, Snowflake, Sun } from 'lucide-react'
 import {
-  ACESFilmicToneMapping, BoxGeometry, Color, CylinderGeometry,
+  ACESFilmicToneMapping, Box3, BoxGeometry, Color, CylinderGeometry,
   DodecahedronGeometry, Group, MathUtils,
   Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFShadowMap,
   PlaneGeometry, Raycaster, Scene, SRGBColorSpace,
@@ -77,6 +77,7 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     } catch (error) {
       console.warn('The 3D fridge could not start:', error instanceof Error ? error.message : error)
       setUnavailable(true)
+      setRenderingPaused(true)
       return
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -136,7 +137,6 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     scene.add(shadow)
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let targetRotation = 0
-    let dragging = false
     let moved = false
     let startX = 0
     let startY = 0
@@ -147,6 +147,8 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     let pinchDistance = 0
     let pinchZoom = 1
     let visible = true
+    let contextLost = false
+    let initialized = false
     let needsFrame = true
     let needsResize = true
     let frame = 0
@@ -183,10 +185,11 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     const desiredCamera = new Vector3()
     const actorsY = new Map([...scenery.actors].map(([action, actor]) => [action, actor.position.y]))
     const wake = (duration = 900) => {
+      if (contextLost) return
       needsFrame = true
       activeUntil = Math.max(activeUntil, performance.now() + (reducedMotion.matches ? 0 : duration))
     }
-    const motionPreferenceChanged = () => { activeUntil = performance.now(); wake() }
+    const motionPreferenceChanged = () => { shadowsDirty = true; activeUntil = performance.now(); wake() }
     reducedMotion.addEventListener('change', motionPreferenceChanged)
     const focusOn = (target: SceneFocus) => {
       currentControls.focus = target
@@ -216,6 +219,7 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     }
     controls.current = currentControls
     doors.forEach((door, index) => { door.rotation.y = index ? -1.72 : -1.97 })
+    const roomBounds = new Box3().setFromObject(room)
 
     const resize = () => {
       const width = element.clientWidth
@@ -240,6 +244,7 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     visibility.observe(element)
     const hitTarget = (event: PointerEvent): Target | null => {
       const rect = element.getBoundingClientRect()
+      if (!initialized || contextLost || !rect.width || !rect.height) return null
       pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
       raycaster.setFromCamera(pointer, camera)
       const intersections = raycaster.intersectObjects(room.children, true)
@@ -262,57 +267,66 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       return null
     }
     const down = (event: PointerEvent) => {
+      if (event.button !== 0 || contextLost) return
       pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
-      dragging = true
-      startX = previousX = event.clientX
-      startY = previousY = event.clientY
-      moved = pointers.size > 1
-      if (pointers.size === 2) {
+      if (pointers.size === 1) {
+        startX = previousX = event.clientX
+        startY = previousY = event.clientY
+        moved = false
+      } else {
         const [a, b] = [...pointers.values()]
         pinchDistance = a.distanceTo(b)
         pinchZoom = currentControls.zoom
+        moved = true
       }
       wake()
       renderer.domElement.setPointerCapture(event.pointerId)
     }
     const move = (event: PointerEvent) => {
-      if (pointers.has(event.pointerId)) pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
-      if (pointers.size === 2 && pinchDistance > 0) {
-        const [a, b] = [...pointers.values()]
-        currentControls.zoom = MathUtils.clamp(pinchZoom * a.distanceTo(b) / pinchDistance, 0.65, 1.9)
-        setZoom(currentControls.zoom)
-        moved = true
-        wake()
-        return
-      }
-      if (dragging) {
+      if (contextLost) return
+      if (pointers.has(event.pointerId)) {
+        pointers.set(event.pointerId, new Vector2(event.clientX, event.clientY))
+        if (pointers.size > 1) {
+          const [a, b] = [...pointers.values()]
+          if (pinchDistance > 0) {
+            currentControls.zoom = MathUtils.clamp(pinchZoom * a.distanceTo(b) / pinchDistance, 0.65, 1.9)
+            setZoom(currentControls.zoom)
+            wake()
+          }
+          return
+        }
         const dx = event.clientX - previousX
         const dy = event.clientY - previousY
-        if (Math.abs(event.clientX - startX) > 4 || Math.abs(event.clientY - startY) > 4) moved = true
+        moved ||= Math.hypot(event.clientX - startX, event.clientY - startY) > 4
         targetRotation = MathUtils.clamp(targetRotation + dx * 0.004, -0.75, 0.75)
         targetPitch = MathUtils.clamp(targetPitch + dy * 0.015, -1.7, 3)
         previousX = event.clientX
         previousY = event.clientY
         wake()
-      } else {
+      } else if (!pointers.size) {
         const target = hitTarget(event)
         setHovered((previous) => JSON.stringify(previous) === JSON.stringify(target) ? previous : target)
         element.style.cursor = target ? 'pointer' : 'grab'
         if (JSON.stringify(hoverRef.current) !== JSON.stringify(target)) wake()
       }
     }
-    const up = (event: PointerEvent) => {
-      if (!dragging) return
+    const finishPointer = (event: PointerEvent, cancelled: boolean) => {
+      if (!pointers.has(event.pointerId)) return
       pointers.delete(event.pointerId)
-      dragging = pointers.size > 0
-      if (dragging) {
+      if (renderer.domElement.hasPointerCapture(event.pointerId)) renderer.domElement.releasePointerCapture(event.pointerId)
+      if (pointers.size) {
         const pointer = [...pointers.values()][0]
         previousX = pointer.x
         previousY = pointer.y
         moved = true
+        if (pointers.size > 1) {
+          const [a, b] = [...pointers.values()]
+          pinchDistance = a.distanceTo(b)
+          pinchZoom = currentControls.zoom
+        }
         return
       }
-      if (!moved && Math.abs(event.clientX - startX) < 5) {
+      if (!cancelled && event.button === 0 && !moved && Math.hypot(event.clientX - startX, event.clientY - startY) < 5) {
         const target = hitTarget(event)
         if (target && 'category' in target) state.current.onSelect(target.category)
         else if (target && 'utility' in target) {
@@ -332,9 +346,11 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
         } else if (target) state.current.onAction(target.action)
       }
     }
-    const leave = () => { setHovered(null); wake() }
-    const cancel = () => { pointers.clear(); dragging = false; setHovered(null); wake() }
+    const up = (event: PointerEvent) => finishPointer(event, false)
+    const leave = () => { setHovered(null); element.style.cursor = 'grab'; wake() }
+    const cancel = (event: PointerEvent) => { finishPointer(event, true); leave() }
     const wheel = (event: WheelEvent) => {
+      if (contextLost) return
       event.preventDefault()
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.height : 1
       currentControls.zoom = MathUtils.clamp(currentControls.zoom * Math.exp(-event.deltaY * units * 0.0015), 0.65, 1.9)
@@ -346,13 +362,23 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
     renderer.domElement.addEventListener('pointerup', up)
     renderer.domElement.addEventListener('pointerleave', leave)
     renderer.domElement.addEventListener('pointercancel', cancel)
+    renderer.domElement.addEventListener('lostpointercapture', cancel)
     renderer.domElement.addEventListener('wheel', wheel, { passive: false })
     const onContextLost = (event: Event) => {
       event.preventDefault()
+      contextLost = true
+      cancelAnimationFrame(frame)
+      controls.current = null
+      pointers.clear()
+      setHovered(null)
+      setCameraMoving(false)
+      setBrewing(false)
+      setRenderingPaused(true)
       setUnavailable(true)
     }
     renderer.domElement.addEventListener('webglcontextlost', onContextLost)
     const animate = (now: number) => {
+      if (contextLost) return
       frame = requestAnimationFrame(animate)
       const delta = frameSeconds(last, now)
       last = now
@@ -410,13 +436,15 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       shadowsMoving ||= room.rotation.y !== rotation
       room.rotation.y = rotation
       room.updateMatrixWorld(true)
+      cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
       const area = latest.panelOpen ? framingArea : { x: 0, y: 0, width: viewport.width, height: viewport.height }
-      const framing = cameraFraming(area.width, area.height, currentControls.focus, currentControls.wholeRoom)
+      const framing = cameraFraming(area.width, area.height, currentControls.focus, currentControls.wholeRoom, {
+        bounds: roomBounds, rotation: room.rotation.y, pitch: cameraPitch,
+      })
       desiredCenter.set(...framing.center).applyMatrix4(room.matrixWorld)
       if (reducedMotion.matches) cameraCenter.copy(desiredCenter)
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
-      cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
       desiredCamera.copy(cameraCenter).add(vector.set(baseCameraOffset[0], baseCameraOffset[1] + cameraPitch, baseCameraOffset[2]))
       camera.position.copy(desiredCamera)
       camera.lookAt(cameraCenter)
@@ -533,14 +561,19 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       sunlight.shadow.needsUpdate = shadowsDirty || shadowsMoving || (!reducedMotion.matches && now - lastShadowFrame >= 250)
       if (sunlight.shadow.needsUpdate) { lastShadowFrame = now; shadowsDirty = false }
       renderer.render(scene, camera)
+      initialized = true
       for (const anchor of sceneAnchors) {
         const label = labels.current.get(anchor.action)
         if (!label) continue
         projected.set(...anchor.position).applyMatrix4(room.matrixWorld).project(camera)
         const x = (projected.x * 0.5 + 0.5) * viewport.width
         const y = (-projected.y * 0.5 + 0.5) * viewport.height
+        const insetX = Math.max(18, label.offsetWidth / 2)
+        const insetY = Math.max(18, label.offsetHeight / 2)
         label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
-        label.style.visibility = x < 18 || x > viewport.width - 18 || y < 18 || y > viewport.height - 18 ? 'hidden' : 'visible'
+        label.style.visibility = projected.z > -1 && projected.z < 1
+          && x > area.x + insetX && x < area.x + area.width - insetX
+          && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
       }
       for (const anchor of kitchenUtilityAnchors) {
         const label = utilityLabels.current.get(anchor.utility)
@@ -548,8 +581,12 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
         projected.set(...anchor.position).applyMatrix4(room.matrixWorld).project(camera)
         const x = (projected.x * 0.5 + 0.5) * viewport.width
         const y = (-projected.y * 0.5 + 0.5) * viewport.height
+        const insetX = Math.max(24, label.offsetWidth / 2)
+        const insetY = Math.max(24, label.offsetHeight / 2)
         label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
-        label.style.visibility = x < 24 || x > viewport.width - 24 || y < 24 || y > viewport.height - 24 ? 'hidden' : 'visible'
+        label.style.visibility = projected.z > -1 && projected.z < 1
+          && x > area.x + insetX && x < area.x + area.width - insetX
+          && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
       }
     }
     resize()
@@ -564,6 +601,7 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       renderer.domElement.removeEventListener('pointerup', up)
       renderer.domElement.removeEventListener('pointerleave', leave)
       renderer.domElement.removeEventListener('pointercancel', cancel)
+      renderer.domElement.removeEventListener('lostpointercapture', cancel)
       renderer.domElement.removeEventListener('wheel', wheel)
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost)
       const geometries = new Set<BufferGeometry>([...Object.values(flyingShapes), contacts.geometry])
@@ -580,6 +618,8 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
       controls.current = null
     }
   }, [])
+
+  useEffect(() => { controls.current?.wake(0) }, [showLabels])
 
   const toggle = () => {
     const next = !(controls.current?.open ?? open)
@@ -607,14 +647,17 @@ export default function KitchenWorld({ roomStyle, paused, panelOpen, focusReques
 
   return (
     <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={focused} data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
-      <div className="world-canvas" ref={host} role="img" aria-label="Interactive low-poly shared kitchen. Select objects to move closer. The bag stocks the fridge, the book opens expenses, the jar shows the budget, and the noticeboard holds your roommates. Drag to turn the room, scroll or pinch to zoom." />
-      {unavailable && <div className="fridge-unavailable"><Snowflake size={42} /><strong>Your kitchen, minus the 3D.</strong><p>This browser could not display the fridge. All expenses and balances still work.</p></div>}
+      <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable} aria-label="Interactive low-poly shared kitchen. Select objects to move closer. The shopping bag opens the shared shopping list, the receipt book opens grocery runs, the house pot shows the grocery budget, and the noticeboard holds your roommates. The cleaning caddy opens room chores and the shelf opens kitchen supplies. Drag to turn the room, scroll or pinch to zoom." />
+      {unavailable && <div className="fridge-unavailable" role="status"><Snowflake size={42} /><strong>Your kitchen, minus the 3D.</strong><p>This browser could not display the kitchen. All household tools still work.</p></div>}
       {!unavailable && <>
         <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label="Objects in your kitchen">
           {sceneAnchors.map((anchor) => <button key={anchor.action} ref={(element) => { if (element) labels.current.set(anchor.action, element); else labels.current.delete(anchor.action) }} className={`world-hotspot hotspot-${anchor.action}`} aria-label={anchor.label} data-selected={focused === anchor.action} onClick={() => { if (anchor.action === 'brew') controls.current?.brew(); else onAction(anchor.action) }} onMouseEnter={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onMouseLeave={() => { setHovered(null); controls.current?.wake() }} onFocus={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onBlur={() => { setHovered(null); controls.current?.wake() }}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{anchor.label}</span></button>)}
-          {kitchenUtilityAnchors.map((anchor) => <button key={anchor.utility} ref={(element) => { if (element) utilityLabels.current.set(anchor.utility, element); else utilityLabels.current.delete(anchor.utility) }}
-            className={`world-hotspot hotspot-${anchor.utility}`} aria-label={anchor.label} data-selected={focused === anchor.utility}
-            onClick={() => openUtility(anchor.utility)}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{anchor.label}{anchor.utility === 'sink' && dueChores.sink ? ` (${dueChores.sink} due)` : ''}</span></button>)}
+          {kitchenUtilityAnchors.map((anchor) => {
+            const label = `${anchor.label}${anchor.utility === 'sink' && dueChores.sink ? ` (${dueChores.sink} due)` : ''}`
+            return <button key={anchor.utility} ref={(element) => { if (element) utilityLabels.current.set(anchor.utility, element); else utilityLabels.current.delete(anchor.utility) }}
+              className={`world-hotspot hotspot-${anchor.utility}`} aria-label={label} data-selected={focused === anchor.utility}
+              onClick={() => openUtility(anchor.utility)}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span></button>
+          })}
         </div>
         <div className="world-view-label"><span className="view-label-dot" />{focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.9} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.65} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Frame the whole room" title="Whole room" aria-pressed={fittingRoom}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels} title="Object labels">{showLabels ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
