@@ -56,4 +56,5 @@ Existing browser identities and `coldshare.*` storage remain supported. Linking 
 - [Using Roomlings](docs/usage.md)
 - [Accounts and email setup](docs/accounts.md)
 - [Storage, migration and deployment](docs/storage.md)
+- [Branding, logo sources and the 2D loader](docs/branding.md)
 - [Contributor rules](AGENTS.md)

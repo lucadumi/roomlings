@@ -4,6 +4,7 @@ import { ArrowDown, ArrowRight, CheckCheck, Home, Pause, Play, ReceiptText, Shop
 import { scrollProgress, tourChapters } from './tour.ts'
 import type { TourLayout } from './tour.ts'
 import { TourFallback } from './TourFallback.tsx'
+import { LoadingIcon } from '../Branding.tsx'
 import type { TourStatus } from './TourScene.tsx'
 import { samplePath } from '../roomNavigation.ts'
 
@@ -160,7 +161,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
           </button>
         </div>
         <div className="welcome-scene-status" role="status">
-          {mounted && status === 'loading' && 'Loading the kitchen preview...'}
+          {mounted && status === 'loading' && <span className="loading-status"><LoadingIcon reducedMotion={reducedMotion || paused} />Loading the kitchen preview...</span>}
           {status === 'unavailable' && '3D is unavailable. You can still explore the illustration and use every kitchen tool.'}
         </div>
       </div>

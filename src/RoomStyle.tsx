@@ -1,9 +1,10 @@
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Check, LoaderCircle } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { roomStyleSchema } from '../shared/domain.ts'
 import type { RoomStyle } from '../shared/domain.ts'
 import { Form } from './components.tsx'
+import { LoadingIcon } from './Branding.tsx'
 import { roomPresets } from './roomStyles.ts'
 import './roomStyles.css'
 
@@ -49,7 +50,7 @@ export function RoomStyleForm({ current, busy, error, onSubmit, onClose }: {
     <div className="button-row room-style-actions">
       <button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button>
       <button className="button primary" disabled={busy || selected === current}>
-        {busy ? <LoaderCircle size={17} className="spin" /> : <Check size={17} />}
+        {busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}
         {busy ? 'Saving...' : 'Apply for everyone'}
       </button>
     </div>

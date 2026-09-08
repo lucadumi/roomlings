@@ -14,7 +14,6 @@
 .welcome section, .welcome main, .welcome-tour-stop { scroll-margin-top: 24px; }
 .welcome-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 28px; min-height: 100px; padding-block: 20px; border-bottom: 2px solid var(--welcome-green); }
 .welcome-header .brand { min-height: 44px; font-size: 31px; }
-.welcome .brand-period { display: block; }
 .welcome-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 24px; }
 .welcome-navigation a, .welcome-sign-in { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13px; font-weight: 550; }
 .welcome-navigation a:hover, .welcome-sign-in:hover { color: var(--red-dark); }
@@ -117,7 +116,6 @@
 .welcome-invitation > a { flex-shrink: 0; }
 .welcome-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 24px; margin-top: 65px; padding-block: 30px; border-top: 1px solid var(--welcome-rule); }
 .welcome-footer .brand { min-height: 44px; font-size: 25px; }
-.welcome-footer .brand-mark { width: 26px; height: 29px; }
 .welcome-footer p { margin: 0; color: #5e6c53; font-size: 12px; line-height: 1.8; }
 .welcome-footer .welcome-text-link { font-size: 12px; }
 .welcome-access-notice { padding: 16px 0 0; color: #5b6851; font-size: 13px; line-height: 1.7; }

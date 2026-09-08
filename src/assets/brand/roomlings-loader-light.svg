@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128.000 128.000" role="img" aria-labelledby="title">
+<title id="title">Roomlings loading mark</title>
+<style>
+.threshold { animation: threshold-pulse 2s cubic-bezier(.37,0,.63,1) infinite; }
+@keyframes threshold-pulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@media (prefers-reduced-motion: reduce) { .threshold { animation: none; } }
+</style>
+<path fill="#f8f7f2" d="M28.000,107.300 L51.310,107.300 L51.310,51.430 L55.010,43.660 L62.040,38.110 L71.290,35.890 L80.540,37.740 L86.830,42.550 L98.670,22.940 L89.050,16.280 L76.840,12.950 L64.815,13.690 L56.120,17.760 L51.310,22.940 L51.310,14.800 L28.000,14.800 Z"/>
+<rect class="threshold" x="57" y="102" width="31" height="5.3" rx="1.2" fill="#f8f7f2"/>
+</svg>

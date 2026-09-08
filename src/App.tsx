@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowRight, Check, CheckCheck,
-  ChevronLeft, ChevronRight, CircleHelp, Download, Home, KeyRound, Leaf, Link, LoaderCircle,
+  ChevronLeft, ChevronRight, CircleHelp, Download, Home, KeyRound, Leaf, Link,
   Plus, ReceiptText, RefreshCw, Search, Settings2, Snowflake, Trash2, Users, Wallet, X,
 } from 'lucide-react'
 import {
@@ -20,6 +20,7 @@ import {
 } from './api.ts'
 import type { SavedKitchen } from './api.ts'
 import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel } from './components.tsx'
+import { LoadingIcon, SceneLoading } from './Branding.tsx'
 import { AccessDialog, RecoveryForm } from './Access.tsx'
 import { AccountDialog } from './Accounts.tsx'
 import type { AccountChange, AccountIntent } from './Accounts.tsx'
@@ -618,7 +619,7 @@ export function App() {
       const { transfer } = dialog
       return <Modal title="Call it even." subtitle="Only record this after the money has actually been paid. Roomlings calculates repayments; it does not move money." onClose={close} busy={busy}>
         <div className="payment-summary"><span>{memberName(transfer.from)} <ArrowRight size={16} /> {memberName(transfer.to)}</span><strong>{money(transfer.amount, household.currency)}</strong></div>
-        {footerError}<button className="button primary full" disabled={busy} onClick={() => { void action('/settlements', { ...transfer }, 'Payment recorded. A little less owing, a little more sharing.') }}>{busy ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}Yes, record payment</button>
+        {footerError}<button className="button primary full" disabled={busy} onClick={() => { void action('/settlements', { ...transfer }, 'Payment recorded. A little less owing, a little more sharing.') }}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}Yes, record payment</button>
       </Modal>
     }
     if (typeof dialog === 'object' && 'remove' in dialog) return <Modal title={dialog.remove.bill ? 'Undo this bill payment record?' : 'Remove this grocery run?'}
@@ -634,9 +635,9 @@ export function App() {
 
   if (!household || !session) return <div className="entry-shell">
     <div inert={!!dialog}>
-      <Suspense fallback={<div className="scene-loading" role="status">Putting the kettle on...</div>}>
+      <Suspense fallback={<SceneLoading />}>
         <Welcome paused={!!dialog} accessNotice={loading
-          ? <p className="inline" role="status"><LoaderCircle className="spin" size={17} />Checking saved access...</p>
+          ? <p className="inline loading-status" role="status"><LoadingIcon size={20} />Checking saved access...</p>
           : error ? <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button secondary" onClick={initialize}>Try again</button><button className="text-button" onClick={() => openDialog('recover')}>Recover access</button></div></> : null} />
       </Suspense>
     </div>{renderDialog()}
@@ -755,7 +756,7 @@ function JoinForm({ initialInvite, busy, error, onSubmit }: { initialInvite: str
   }}>
     <label className="field">Invitation link or code<input required value={invite} onChange={(event) => setInvite(event.target.value)} placeholder="Paste your invitation" disabled={busy} /></label>
     <label className="field">Your name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} placeholder="A name your roommates know" disabled={busy} /></label>
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? <LoaderCircle size={17} className="spin" /> : <ArrowRight size={17} />}Join the kitchen</button>
+    {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <ArrowRight size={17} />}Join the kitchen</button>
   </Form>
 }
 

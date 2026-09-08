@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useSyncExternalStore } from 'react'
 import ReactDOM from 'react-dom/client'
+import { SceneLoading } from './Branding.tsx'
 import '@fontsource-variable/dm-sans'
 import '@fontsource-variable/fraunces'
 import '@fontsource-variable/fraunces/wght-italic.css'
@@ -21,7 +22,7 @@ function subscribeLocation(change: () => void) {
 function Entry() {
   const url = new URL(useSyncExternalStore(subscribeLocation, () => location.href))
   const entry = resolveEntry(url.pathname, url.hash)
-  return <Suspense fallback={<div className="scene-loading" role="status">Putting the kettle on...</div>}>
+  return <Suspense fallback={<SceneLoading />}>
     {entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
       ? <Welcome accessNotice={<p className="form-error" role="alert">That room is not available. Choose the kitchen to continue.</p>} />
       : <App />}

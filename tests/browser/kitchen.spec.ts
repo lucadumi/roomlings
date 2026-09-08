@@ -33,7 +33,7 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   const pageErrors: string[] = []
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.goto('/kitchen')
-  await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
+  await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Close the fridge' }).click()
   await expect(page.getByRole('button', { name: 'Peek inside' })).toBeVisible()
@@ -151,7 +151,7 @@ test('saved households restore the original roommate and shared expenses after s
 test('mobile layout has no horizontal overflow and supports keyboard dialogs', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
-  await expect(page.locator('.game-hud .brand')).toHaveText('roomlings.')
+  await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await openGroceryForm(page)

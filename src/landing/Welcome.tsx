@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus, Snowflake } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus } from 'lucide-react'
+import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
 import { roomPath, samplePath } from '../roomNavigation.ts'
@@ -60,7 +61,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
     <a className="welcome-skip" href="#welcome-content">Skip to content</a>
     <header className="welcome-header welcome-container">
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning">
-        <span className="brand-mark"><Snowflake size={23} /></span>roomlings<span className="brand-period">.</span>
+        <Brand variant="featured" decorative />
       </a>
       <nav className="welcome-navigation" aria-label="On this page">
         <a href="#how-it-works">How it works</a>
@@ -120,7 +121,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       </section>
     </main>
     <footer className="welcome-footer welcome-container">
-      <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning"><span className="brand-mark"><Snowflake size={18} /></span>roomlings<span className="brand-period">.</span></a>
+      <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning"><Brand decorative /></a>
       <p>Roomlings records payments. It never moves money.</p>
       <a className="welcome-text-link" href="#welcome-top">Back to the top <ArrowDown size={15} className="welcome-up" /></a>
     </footer>
