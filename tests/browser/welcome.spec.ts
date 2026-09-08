@@ -251,7 +251,13 @@ test('longer copy and orientation changes use measured scene areas without clipp
   await page.goto('/welcome')
   await openTour(page)
   await page.locator('.welcome-tour-copy p').first().evaluate((element) => {
-    element.textContent += ' Extra details about sharing a home should remain readable, even with larger type.'.repeat(6)
+    const card = element.closest('.welcome-tour-pin')
+    if (!card) throw new Error('The tour card is missing.')
+    // Force measured overflow rather than relying on platform-specific font metrics.
+    for (let count = 0; count < 20 && card.getBoundingClientRect().height <= innerHeight; count++) {
+      element.textContent += ' Extra details about sharing a home should remain readable, even with larger type.'
+    }
+    if (card.getBoundingClientRect().height <= innerHeight) throw new Error('The long-copy fixture must exceed the viewport.')
   })
   await expect(page.locator('.welcome-tour-track')).toHaveAttribute('data-flow', 'true')
   for (const [width, height] of [[390, 844], [1200, 800], [640, 360]]) {

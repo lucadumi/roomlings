@@ -206,7 +206,7 @@ test('expired samples restart explicitly without reading or replacing personal c
   })
   await page.goto(samplePath())
   await expect(page.locator('.game-house')).toContainText('The Sunday House')
-  await expect(page.getByRole('status')).toContainText('new private sample')
+  await expect(page.locator('.toast[role="status"]')).toContainText('new private sample')
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe('personal-access-that-must-be-kept')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.access-mode'))).toBe('account')
   expect(accountRequests).toEqual([])
