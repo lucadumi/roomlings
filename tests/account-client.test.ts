@@ -7,6 +7,7 @@ import type { AccountKitchenSession, AccountMembership } from '../shared/account
 import {
   forgetAccountKitchens, getAccountState, readAccessMode, readToken, rememberKitchen,
   request, RequestError, sameKitchenSession, savedKitchens,
+  updateSavedKitchen,
 } from '../src/api.ts'
 import type { SavedKitchen } from '../src/api.ts'
 import { rememberSample, restoreSample } from '../src/sampleAccess.ts'
@@ -159,6 +160,63 @@ describe('account-aware client access', () => {
     assert.equal(readToken(), legacy.token)
     assert.deepEqual(savedKitchens(), [shortcut(legacy)])
     assert.equal(storage.getItem('coldshare.session'), legacy.token)
+  })
+
+  it('retains expired shortcuts in both storage generations without revoking unrelated browser access', () => {
+    const expired = legacySession()
+    const other = legacySession()
+    const records = [shortcut(expired), shortcut(other)]
+    for (const key of ['roomlings.kitchens', 'coldshare.kitchens']) storage.setItem(key, JSON.stringify(records))
+    storage.setItem('roomlings.session', other.token)
+    storage.setItem('coldshare.session', expired.token)
+    storage.setItem('roomlings.access-mode', 'account')
+    const expected = [{ ...shortcut(expired), expired: true }, shortcut(other)]
+    assert.deepEqual(updateSavedKitchen(expired.token, { expired: true }), expected)
+    assert.deepEqual(JSON.parse(storage.getItem('coldshare.kitchens') ?? ''), expected)
+    assert.equal(readToken(), other.token)
+    assert.equal(storage.getItem('coldshare.session'), expired.token)
+    assert.equal(readAccessMode(), 'account')
+    assert.deepEqual(rememberKitchen(expired), [shortcut(expired), shortcut(other)])
+    assert.equal(savedKitchens()[0].expired, undefined)
+  })
+
+  it('records confirmed samples without guessing from a household name or changing personal access', () => {
+    const sample = legacySession()
+    sample.household.demo = true
+    sample.household.name = 'The Sunday House'
+    const personal = legacySession()
+    personal.household.name = 'The Sunday House'
+    rememberKitchen(personal)
+    storage.setItem('coldshare.kitchens', JSON.stringify([shortcut(sample), shortcut(personal)]))
+    storage.setItem('roomlings.kitchens', JSON.stringify([shortcut(sample), shortcut(personal)]))
+    assert.deepEqual(updateSavedKitchen(sample.token, { demo: true }), [
+      { ...shortcut(sample), demo: true }, shortcut(personal),
+    ])
+    assert.equal(readToken(), personal.token)
+    assert.equal(readAccessMode(), 'browser')
+    assert.equal(savedKitchens()[1].demo, undefined)
+    assert.equal(rememberKitchen(sample)[0].demo, true)
+  })
+
+  it('does not invent missing shortcuts or silently discard unreadable saved access', () => {
+    const session = legacySession()
+    storage.setItem('roomlings.kitchens', JSON.stringify([shortcut(session)]))
+    const before = storage.getItem('roomlings.kitchens')
+    assert.deepEqual(updateSavedKitchen('missing-browser-token', { expired: true }), [shortcut(session)])
+    assert.equal(storage.getItem('roomlings.kitchens'), before)
+    storage.setItem('coldshare.kitchens', 'unreadable saved access')
+    assert.throws(() => updateSavedKitchen(session.token, { expired: true }))
+    assert.equal(storage.getItem('roomlings.kitchens'), before)
+    assert.equal(storage.getItem('coldshare.kitchens'), 'unreadable saved access')
+  })
+
+  it('surfaces storage failures rather than claiming shortcut changes were saved', () => {
+    const session = legacySession()
+    storage.setItem('coldshare.kitchens', JSON.stringify([shortcut(session)]))
+    const before = storage.getItem('coldshare.kitchens')
+    mock.method(storage, 'setItem', () => { throw new DOMException('Browser storage is full.', 'QuotaExceededError') })
+    assert.throws(() => updateSavedKitchen(session.token, { expired: true }), /Browser storage is full/)
+    assert.equal(storage.getItem('coldshare.kitchens'), before)
   })
 
   it('removes only linked shortcuts after explicit account sign-out or membership removal', () => {

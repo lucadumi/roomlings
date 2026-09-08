@@ -9,7 +9,7 @@ import {
   balances, billingDate, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
   money, monthlyGroceries, parseMoney, splitAmount, suggestedTransfers,
 } from '../shared/domain.ts'
-import type { Bill, Category, Expense, Household, Settlement, ShoppingItem, Transfer } from '../shared/domain.ts'
+import type { Bill, Category, Expense, Household, Session, Settlement, ShoppingItem, Transfer } from '../shared/domain.ts'
 import type { AccountState, KitchenSession } from '../shared/accounts.ts'
 import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
@@ -17,8 +17,9 @@ import { canEditShoppingItem, inBasket } from '../shared/shopping.ts'
 import {
   createDemo, forgetAccountKitchens, getAccountState, getHousehold, preferAccountAccess, readAccessMode,
   readToken, rememberKitchen, request, RequestError, sameKitchenSession, savedKitchens, sessionSchema,
+  updateSavedKitchen,
 } from './api.ts'
-import type { SavedKitchen } from './api.ts'
+import type { SavedKitchen, SavedKitchenChange } from './api.ts'
 import { Avatar, CategoryIcon, CopyField, Form, Modal, RoomPanel } from './components.tsx'
 import { LoadingIcon, SceneLoading } from './Branding.tsx'
 import { AccessDialog, RecoveryForm } from './Access.tsx'
@@ -34,7 +35,7 @@ import { GameHome } from './GameHome.tsx'
 import { RoomStyleForm } from './RoomStyle.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
-import { defaultRoom, resolveEntry, roomPath } from './roomNavigation.ts'
+import { defaultRoom, resolveEntry, roomPath, samplePath } from './roomNavigation.ts'
 import { rememberSample, restoreSample } from './sampleAccess.ts'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
@@ -55,13 +56,15 @@ const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover
 const initialAccountInvite = new URLSearchParams(location.hash.slice(1)).get('account-invite') ?? ''
 const initialAccount = new URLSearchParams(location.hash.slice(1)).has('account')
 const initialAccountIntent = new URLSearchParams(location.hash.slice(1)).get('account')
-type InitialAccess = { session: KitchenSession | null; expiredBrowser?: true; renewedSample?: boolean }
+type InitialAccess = {
+  session: KitchenSession | null; expiredBrowser?: string; legacySample?: Session; renewedSample?: boolean
+}
 let initialSession: Promise<InitialAccess> | undefined
 
 function rememberActiveKitchen(session: KitchenSession): SavedKitchen[] {
-  if (sampleEntry && session.household.demo && session.token !== null) {
+  if (session.household.demo && session.token !== null) {
     rememberSample(session)
-    return []
+    if (sampleEntry) return []
   }
   return rememberKitchen(session)
 }
@@ -80,10 +83,11 @@ function loadSession(account: AccountState | null): Promise<InitialAccess> {
       if (token) {
         try {
           const saved = { token, ...await getHousehold(token) }
-          return { session: isRoomEntry() && saved.household.demo ? account.session : saved }
+          return isRoomEntry() && saved.household.demo
+            ? { session: account.session, legacySample: saved } : { session: saved }
         } catch (failure) {
-          if (!(failure instanceof RequestError) || failure.status !== 401 || !account.account) throw failure
-          return { session: account.session, expiredBrowser: true }
+          if (!(failure instanceof RequestError) || failure.status !== 401) throw failure
+          return { session: account.session, expiredBrowser: token }
         }
       }
       return { session: /^\/kitchen\/?$/.test(location.pathname) || initialInvite || initialRecovery ? await createDemo() : null }
@@ -128,6 +132,13 @@ export function App() {
   const [stockEvent, setStockEvent] = useState<{ id: string; category: Category } | null>(null)
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ target: 'room', id: 0 })
 
+  const changeSavedKitchen = useCallback((token: string, change: SavedKitchenChange) => {
+    setSaved((previous) => previous.map((kitchen) => kitchen.token === token ? { ...kitchen, ...change } : kitchen))
+    try { setSaved(updateSavedKitchen(token, change)) } catch {
+      setError('Browser access changed, but this browser could not save the updated kitchen shortcut. Keep this tab open until browser storage is available.')
+    }
+  }, [])
+
   const initialize = useCallback(() => {
     const attempt = ++startupAttempt.current
     setLoading(true)
@@ -137,22 +148,35 @@ export function App() {
       if (startupAttempt.current !== attempt) return
       accountRef.current = accountState
       setAccount(accountState)
+      if (!sampleEntry) {
+        try { setSaved(savedKitchens()) } catch {
+          setError('This browser could not read its saved kitchen shortcuts. Account sign-in and recovery remain available.')
+        }
+      }
       const restored = await loadSession(accountState)
       if (startupAttempt.current !== attempt) return
+      if (restored.expiredBrowser) initialSession = undefined
       const next = restored.session
       sessionEpoch.current++
       sessionRef.current = next
       setSession(next)
+      if (restored.expiredBrowser) changeSavedKitchen(restored.expiredBrowser, { expired: true })
+      if (restored.legacySample) {
+        changeSavedKitchen(restored.legacySample.token, { demo: true, expired: undefined })
+        try { rememberSample(restored.legacySample) } catch {
+          setError('This browser could not save its existing sample access. Keep this tab open until browser storage is available.')
+        }
+      }
       if (!next) {
-        setSaved(savedKitchens())
         if (accountState?.account) {
           if (restored.expiredBrowser) preferAccountAccess()
-          setError(restored.expiredBrowser
+          setError((previous) => previous || (restored.expiredBrowser
             ? 'Your older browser-only access ended. Choose, create or link a kitchen from your signed-in account.'
-            : 'Choose, create or link a kitchen from your account.')
+            : 'Choose, create or link a kitchen from your account.'))
           setDialog((previous) => previous ?? { account: 'manage' })
-        } else if (isRoomEntry()) {
-          setDialog((previous) => previous ?? { account: 'manage' })
+        } else {
+          if (restored.expiredBrowser) setError((previous) => previous || 'Your browser access is no longer active. Sign in or recover your existing identity to reopen the room.')
+          if (isRoomEntry()) setDialog((previous) => previous ?? { account: 'manage' })
         }
         return
       }
@@ -188,7 +212,7 @@ export function App() {
       if (startupAttempt.current === attempt) setLoading(false)
     })
     return () => { startupAttempt.current++ }
-  }, [])
+  }, [changeSavedKitchen])
   useEffect(initialize, [initialize])
   useEffect(() => {
     const navigateAccess = () => {
@@ -237,7 +261,8 @@ export function App() {
     setFormError('')
     setError(sampleEntry ? 'The sample is no longer available. Try again to start a fresh sample.' : message)
     setSyncState('offline')
-  }, [])
+    if (expected.token !== null && !sampleEntry) changeSavedKitchen(expected.token, { expired: true })
+  }, [changeSavedKitchen])
 
   const refresh = useCallback(async (refreshAccess = false) => {
     const current = sessionRef.current
@@ -421,6 +446,7 @@ export function App() {
     else setDialog(next)
   }
   const household = session?.household
+  const otherKitchens = saved.filter((kitchen) => !kitchen.demo && kitchen.token !== session?.token)
   const memberName = (id: string) => household?.members.find((member) => member.id === id)?.name ?? 'Unknown roommate'
   const exportLedger = () => {
     if (!household) return
@@ -446,16 +472,21 @@ export function App() {
   }
 
   const newSession = async (endpoint: string, body: Record<string, unknown>) => {
+    if (busy) return
+    // A newer access choice wins, but finishing startup must not cancel recovery.
+    const attempt = startupAttempt.current
     setBusy(true)
     setFormError('')
     try {
       const next = sessionSchema.parse(await request(endpoint, { body }))
+      if (startupAttempt.current !== attempt) return
       adoptSession(next)
       setNotice(endpoint === '/recover' ? 'Welcome back. Your original roommate identity has been restored.'
         : endpoint === '/join' ? 'You are in. Welcome to the kitchen!' : 'A fresh start for your shared kitchen.')
     } catch (failure) {
+      if (startupAttempt.current !== attempt) return
       setFormError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
-    } finally { setBusy(false) }
+    } finally { if (startupAttempt.current === attempt) setBusy(false) }
   }
 
   const switchKitchen = async (kitchen: SavedKitchen, surfaceInDialog = false): Promise<boolean> => {
@@ -464,11 +495,18 @@ export function App() {
     try {
       const next = await getHousehold(kitchen.token)
       if (sessionEpoch.current !== epoch) return false
+      if (next.household.demo) {
+        rememberSample({ token: kitchen.token, ...next })
+        changeSavedKitchen(kitchen.token, { demo: true, expired: undefined })
+        location.assign(samplePath(currentRoom))
+        return false
+      }
       adoptSession({ token: kitchen.token, ...next })
       setNotice(`Welcome back to ${next.household.name}.`)
       return true
     } catch (failure) {
       if (sessionEpoch.current !== epoch) return false
+      if (failure instanceof RequestError && failure.status === 401) changeSavedKitchen(kitchen.token, { expired: true })
       if (surfaceInDialog) throw failure
       setError(failure instanceof Error ? failure.message : 'That kitchen could not be opened.')
       return false
@@ -520,6 +558,7 @@ export function App() {
     if (accountIntent) return <AccountDialog key={`account:${accessRouteVersion}`} autoEnter={enteringRoom.current}
       intent={accountIntent} initialState={account} initialInvite={accountInvitation || invitation} legacySession={session && session.token !== null ? session : null}
       savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
+      onLegacyChange={changeSavedKitchen}
       onOpenLegacy={(kitchen) => switchKitchen(kitchen, true)} />
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
       <div className="game-guide">
@@ -733,7 +772,14 @@ export function App() {
           {!transfers.length && <div className="empty-state"><CheckCheck size={42} className="sage-text" /><h3>All settled up.</h3><p>No repayments are needed.</p></div>}
           <div className="info-note"><CircleHelp size={17} /><p>Roomlings does not send money. Pay your roommate first, then record the payment here.</p></div></section>
           <section className="payment-history"><div className="section-heading"><h2>Payment history</h2></div>{household.settlements.length ? household.settlements.map((settlement) => <div className="history-row" key={settlement.id}><span className="history-check"><Check size={17} /></span><div><strong>{memberName(settlement.from)} paid {memberName(settlement.to)}</strong><span>{dateTitle(settlement.createdAt.slice(0, 10))}</span></div><strong>{money(settlement.amount, household.currency)}</strong><button className="text-button" onClick={() => openDialog({ undo: settlement })}>Undo</button></div>) : <p className="muted-paragraph">No repayments recorded yet.</p>}</section></div><section className="household-panel settle-balances"><div className="card-topline"><span className="eyebrow">WHERE EVERYONE STANDS</span></div>{balanceList}<div className="handwritten-note">Fair shares.<br />Full plates.</div></section></div>}
-        {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.filter((member) => !member.inactive).length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.inactive ? 'Former roommate' : member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => !expense.bill && expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>{saved.filter((kitchen) => kitchen.token !== session.token).length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{saved.filter((kitchen) => kitchen.token !== session.token).map((kitchen) => <button key={kitchen.token} disabled={busy} onClick={() => { void switchKitchen(kitchen) }}><Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></span><ArrowRight size={14} /></button>)}</div>}<p className="small-muted">{session.token === null ? 'Sign in with your account on any device. Account and membership manages your kitchens and sessions.' : 'Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.'}</p></section></div>}
+        {page === 'kitchen' && <div className="kitchen-layout"><section><div className="section-heading"><div><span className="eyebrow">WELCOME TO {household.name.toUpperCase()}</span><h2>A seat at the table.</h2></div><span className="count-pill">{household.members.filter((member) => !member.inactive).length} / 12</span></div><div className="roommate-grid">{household.members.map((member) => <div className="roommate-card" key={member.id}><Avatar member={member} /><h3>{member.name}</h3><span>{member.inactive ? 'Former roommate' : member.id === session.memberId ? 'That is you' : 'Fellow fridge explorer'}</span><div><ReceiptText size={15} />{household.expenses.filter((expense) => !expense.bill && expense.paidBy === member.id).length} grocery runs</div></div>)}<button className="roommate-card add-roommate" onClick={() => openDialog('invite')}><span className="add-circle"><Plus size={24} /></span><h3>One more?</h3><span>Invite a roommate</span></button></div></section><section className="kitchen-settings"><span className="eyebrow">THE HOUSE RULES</span><h2>Simple is good.</h2><div className="setting-row"><span>Monthly grocery pot</span><strong>{money(household.budget, household.currency)}</strong></div><div className="setting-row"><span>Currency</span><strong>{household.currency}</strong></div><div className="setting-row"><span>Split style</span><strong>Equally, with your people</strong></div><p className="muted-paragraph">Choose who shares each grocery run. Expenses are saved to this kitchen's server and synced with your roommates.</p><button className="button secondary full" onClick={() => openDialog('settings')}><Settings2 size={16} />Edit house rules</button><button className="text-button" onClick={exportLedger}><Download size={16} />Export the complete ledger</button><hr /><button className="text-button" onClick={() => openDialog('create')}><Plus size={16} />Create another kitchen</button><button className="text-button" onClick={() => openDialog('join')}><Link size={16} />Join a different kitchen</button>
+          {otherKitchens.length > 0 && <div className="saved-kitchens"><span className="eyebrow">ALSO SAVED IN THIS BROWSER</span>{otherKitchens.map((kitchen) => <button key={kitchen.token} disabled={busy}
+            aria-label={kitchen.expired ? `Recover access to ${kitchen.name}` : undefined}
+            onClick={() => { if (kitchen.expired) openDialog('recover'); else void switchKitchen(kitchen) }}>
+            <Home size={15} /><span><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small>{kitchen.expired && <small>Access expired. Recover access</small>}</span>
+            {kitchen.expired ? <KeyRound size={14} /> : <ArrowRight size={14} />}
+          </button>)}</div>}
+          <p className="small-muted">{session.token === null ? 'Sign in with your account on any device. Account and membership manages your kitchens and sessions.' : 'Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.'}</p></section></div>}
     </div></RoomPanel>}
     {notice && <div className="toast" role="status"><Check size={17} /><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {renderDialog()}

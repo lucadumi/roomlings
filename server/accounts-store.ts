@@ -256,8 +256,9 @@ export class AccountStore {
         : (await this.db.prepare('SELECT household_id, member_id FROM recovery_codes WHERE hash = ?').get(hash(proof.recoveryCode!)))
       const household = row ? (await this.store.get(String(row.household_id))) : null
       const member = household?.members.find((member) => member.id === row?.member_id && !member.inactive)
-      if (!household || !member) throw new ApiError(401, 'That browser access or recovery code is invalid or revoked.')
-      if (household.demo) throw new ApiError(400, 'Practice kitchens cannot be linked to accounts. Create a real kitchen instead.')
+      if (!household || !member) throw new ApiError(401, 'That browser access or recovery code is invalid or revoked.',
+        proof.token ? 'BROWSER_ACCESS_EXPIRED' : 'INVALID_RECOVERY_CODE')
+      if (household.demo) throw new ApiError(400, 'Practice kitchens cannot be linked to accounts. Create a real kitchen instead.', 'SAMPLE_KITCHEN')
       const existing = (await this.db.prepare('SELECT account_id FROM account_memberships WHERE household_id = ? AND member_id = ?').get(household.id, member.id))
       if (existing && existing.account_id !== session.accountId) throw new ApiError(409, 'This roommate identity is already linked to another account.')
       const other = (await this.db.prepare('SELECT member_id FROM account_memberships WHERE household_id = ? AND account_id = ?').get(household.id, session.accountId))

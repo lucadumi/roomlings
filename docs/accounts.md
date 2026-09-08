@@ -27,13 +27,19 @@ References: [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwor
 
 **Account and membership > Link existing kitchen access** links a saved browser identity or recovery code to the same member ID. It does not duplicate roommates or rewrite expenses, bills, shopping history or balances. Matching a name never claims an identity.
 
+Saved browser kitchens are shortcuts, not proof of current access. When the server rejects a shortcut as expired or revoked, it stays visible as **Access expired**, with **Recover access** instead of another failed Open action. Temporary network or server failures leave Open available for retry. The status is retained in existing Roomlings and Coldshare storage without deleting the saved identity or its ledger.
+
+Recovery requires the private code saved before browser access was lost. An email sign-in restores that identity only if it was already linked to the account. Neither a matching name nor a kitchen invitation proves ownership of an old browser identity.
+
+Older sample shortcuts are identified only after the server confirms that the household is a sample, never by its name. Confirmed samples are excluded from personal-kitchen and account-linking lists. Opening an older sample uses its existing access on the sample route without replacing a personal session or account preference.
+
 The original creator remains owner; linking an account does not transfer ownership. One account can join several kitchens, but cannot claim two members in the same kitchen.
 
 Account-managed invitations last seven days and reveal their secret only when created. Owners can revoke them. Recipients sign in before accepting; reopening an accepted invitation does not add another roommate. Old browser invitation codes cannot bypass account-managed access.
 
 ## Sessions and membership
 
-- Sessions expire after 30 days, or seven days without use. Account settings support device labels, revocation and sign-out on one or all devices.
+- Account sessions expire after 30 days, or seven days without use. Account settings support device labels, revocation and sign-out on one or all devices.
 - Returning to the public home page or trying a sample does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
 - Signing out all devices also revokes linked browser sessions. Unrelated saved browser identities stay separate.
 - Owners manage invitations, remove access and transfer ownership. All active roommates can edit the shared ledger.

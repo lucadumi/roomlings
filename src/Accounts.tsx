@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { Check, Home, KeyRound, LogOut, Mail, Plus, RefreshCw, Users } from 'lucide-react'
 import { z } from 'zod'
 import {
@@ -10,7 +11,7 @@ import type { AccountState, HouseholdAccess } from '../shared/accounts.ts'
 import type { Session } from '../shared/domain.ts'
 import { nameSchema } from '../shared/domain.ts'
 import { getAccountState, request, RequestError } from './api.ts'
-import type { SavedKitchen } from './api.ts'
+import type { SavedKitchen, SavedKitchenChange } from './api.ts'
 import { CopyField, Form, Modal } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { CreateKitchenForm } from './CreateKitchenForm.tsx'
@@ -34,17 +35,19 @@ function browserKitchens(session: Session | null, saved: SavedKitchen[]): SavedK
     name: session.household.name,
     memberName: session.household.members.find((member) => member.id === session.memberId)?.name ?? 'Saved roommate',
   }] : []
-  return [...current, ...saved.filter((kitchen) => kitchen.householdId !== session?.household.id)]
+  return [...current, ...saved.filter((kitchen) => kitchen.token !== session?.token
+    && (kitchen.householdId !== session?.household.id || kitchen.memberId !== session?.memberId))]
 }
 
 export function AccountDialog({
-  intent = 'manage', initialInvite = '', initialState, legacySession, savedLegacy, onChange, onClose, onRecover, onOpenLegacy, autoEnter = false,
+  intent = 'manage', initialInvite = '', initialState, legacySession, savedLegacy, onChange, onClose, onRecover, onOpenLegacy, onLegacyChange, autoEnter = false,
 }: {
   intent?: AccountIntent; initialInvite?: string; legacySession: Session | null; savedLegacy: SavedKitchen[]
   autoEnter?: boolean
   initialState: AccountState | null
   onChange: (state: AccountState, change: AccountChange) => void; onClose: () => void; onRecover: () => void
   onOpenLegacy: (kitchen: SavedKitchen) => Promise<boolean>
+  onLegacyChange: (token: string, change: SavedKitchenChange) => void
 }) {
   const [state, setState] = useState<AccountState | null>(initialState)
   const [view, setView] = useState<AccountView>(intent)
@@ -68,6 +71,7 @@ export function AccountDialog({
   const latest = useRef(state)
   const change = useRef(onChange)
   const content = useRef<HTMLDivElement>(null)
+  const recoveryInput = useRef<HTMLInputElement>(null)
   latest.current = state
   pending.current = pendingDeletion
   change.current = onChange
@@ -229,8 +233,25 @@ export function AccountDialog({
       setNotice(all ? 'Your account and linked browser sessions have been signed out.' : 'Your account is signed out on this browser.')
     }
   }
+  const linkBrowserKitchen = async (kitchen: SavedKitchen) => {
+    const epoch = contextEpoch.current
+    try {
+      await accountAction('/account/link', { token: kitchen.token }, 'POST', 'select')
+      if (mounted.current) { navigate('manage'); setNotice('Your existing roommate identity is linked. Its history is unchanged.') }
+    } catch (failure) {
+      if (mounted.current && contextEpoch.current === epoch && failure instanceof RequestError
+        && (failure.code === 'BROWSER_ACCESS_EXPIRED' || failure.code === 'SAMPLE_KITCHEN')) {
+        const change: SavedKitchenChange = failure.code === 'SAMPLE_KITCHEN' ? { demo: true } : { expired: true }
+        setLegacy((previous) => previous.map((saved) => saved.token === kitchen.token ? { ...saved, ...change } : saved))
+        onLegacyChange(kitchen.token, change)
+        setConfirmation(null)
+      }
+      throw failure
+    }
+  }
 
   const account = state?.account
+  const browserLegacy = legacy.filter((kitchen) => !kitchen.demo)
   const disabled = loading || busy
   const title = pendingDeletion ? 'Account deletion is pending.' : confirmation?.title ?? (reauthenticate || !account ? 'Your place, on every device.'
     : view === 'household' ? 'Who shares this kitchen?' : view === 'create' ? 'Make room for your people.'
@@ -254,7 +275,7 @@ export function AccountDialog({
         Your existing browser access and recovery codes still work.
       </p>}
       {!pendingDeletion && state?.configured && (!account || reauthenticate) && !confirmation && <EmailSignIn
-        busy={disabled} initialEmail={account?.email ?? ''} initialName={account?.name ?? legacy[0]?.memberName ?? ''}
+        busy={disabled} initialEmail={account?.email ?? ''} initialName={account?.name ?? browserLegacy[0]?.memberName ?? ''}
         fixedEmail={!!account && reauthenticate}
         onSend={(email) => run(async () => {
           z.object({ sent: z.literal(true) }).parse(await accountRequest('/account/code', { body: { email } }))
@@ -368,19 +389,18 @@ export function AccountDialog({
         }} />}
         {view === 'link' && <>
           <p className="field-hint">Link only your own roommate identity. Your existing member ID, expenses and balances stay unchanged. Other saved browser sessions continue to work.</p>
-          <ul className="device-list">{legacy.filter((kitchen) => !state.memberships.some((membership) =>
-            membership.householdId === kitchen.householdId && membership.memberId === kitchen.memberId)).map((kitchen) => <li className="device-row" key={kitchen.token}>
-              <div><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></div>
-              <button className="button secondary small-button" disabled={disabled} aria-label={`Link ${kitchen.memberName} in ${kitchen.name}`} onClick={() => confirm({
+          <ul className="device-list">{browserLegacy.filter((kitchen) => !state.memberships.some((membership) =>
+            membership.householdId === kitchen.householdId)).map((kitchen) => <li className="device-row" key={kitchen.token}>
+              <div><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small>{kitchen.expired && <small>Access expired</small>}</div>
+              {kitchen.expired ? <button className="button secondary small-button" disabled={disabled} aria-label={`Recover access to ${kitchen.name}`}
+                onClick={() => recoveryInput.current?.focus()}>Recover access</button>
+                : <button className="button secondary small-button" disabled={disabled} aria-label={`Link ${kitchen.memberName} in ${kitchen.name}`} onClick={() => confirm({
                 title: 'Link this roommate to your account?',
                 description: `Link ${kitchen.memberName} in ${kitchen.name} to ${account.email}? This does not create a new roommate or merge different identities.`,
-                button: 'Link this identity', action: async () => {
-                  await accountAction('/account/link', { token: kitchen.token }, 'POST', 'select')
-                  if (mounted.current) { navigate('manage'); setNotice('Your existing roommate identity is linked. Its history is unchanged.') }
-                },
-              })}>Link identity</button>
+                button: 'Link this identity', action: () => linkBrowserKitchen(kitchen),
+              })}>Link identity</button>}
             </li>)}</ul>
-          <LinkRecoveryForm busy={disabled} onSubmit={(body) => run(async () => {
+          <LinkRecoveryForm inputRef={recoveryInput} busy={disabled} onSubmit={(body) => run(async () => {
             await accountAction('/account/link', body, 'POST', 'select')
             if (mounted.current) { navigate('manage'); setNotice('Your recovery identity is linked to this account.') }
           })} />
@@ -438,15 +458,17 @@ export function AccountDialog({
         {view !== 'manage' && <button className="text-button" disabled={disabled} onClick={() => navigate('manage')}>Back to account</button>}
       </>}
       {reauthenticate && account && !confirmation && <button className="text-button" disabled={disabled} onClick={() => { setReauthenticate(false); setError('') }}>Back to account</button>}
-      {(!account || pendingDeletion) && !loading && !confirmation && legacy.length > 0 && <section className="access-section">
+      {(!account || pendingDeletion) && !loading && !confirmation && browserLegacy.length > 0 && <section className="access-section">
         <h3>Saved browser kitchens</h3>
         <p className="field-hint">These browser-only identities are separate from an account. Opening one does not sign you into an account or merge memberships.</p>
-        <ul className="device-list">{legacy.map((kitchen) => <li className="device-row" key={kitchen.token}>
-          <div><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small></div>
-          <button className="button secondary small-button" disabled={disabled} aria-label={`Open saved ${kitchen.name}`} onClick={() => { void run(async () => {
+        <ul className="device-list">{browserLegacy.map((kitchen) => <li className="device-row" key={kitchen.token}>
+          <div><strong>{kitchen.name}</strong><small>Return as {kitchen.memberName}</small>{kitchen.expired && <small>Access expired</small>}</div>
+          {kitchen.expired ? <button className="button secondary small-button" disabled={disabled} aria-label={`Recover access to ${kitchen.name}`}
+            onClick={onRecover}>Recover access</button>
+            : <button className="button secondary small-button" disabled={disabled} aria-label={`Open saved ${kitchen.name}`} onClick={() => { void run(async () => {
             const opened = await onOpenLegacy(kitchen)
             if (opened && mounted.current) onClose()
-          }) }}>Open saved kitchen</button>
+          }) }}>Open saved kitchen</button>}
         </li>)}</ul>
       </section>}
       {!account && !confirmation && <button className="text-button" disabled={disabled} onClick={onRecover}>Use existing browser recovery</button>}
@@ -545,8 +567,9 @@ function AccountJoinForm({ initialInvite, name, busy, onSubmit }: {
   </Form>
 }
 
-function LinkRecoveryForm({ busy, onSubmit }: {
+function LinkRecoveryForm({ busy, onSubmit, inputRef }: {
   busy: boolean; onSubmit: (body: z.infer<typeof linkAccountSchema>) => Promise<boolean>
+  inputRef: RefObject<HTMLInputElement | null>
 }) {
   const [recoveryCode, setRecoveryCode] = useState('')
   const [error, setError] = useState('')
@@ -556,7 +579,7 @@ function LinkRecoveryForm({ busy, onSubmit }: {
     setError('')
     void onSubmit(input.data).then((success) => { if (success) setRecoveryCode('') })
   }}>
-    <label className="field">Existing roommate recovery code<input type="password" required autoComplete="off" autoCapitalize="none" spellCheck={false} value={recoveryCode} disabled={busy} onChange={(event) => setRecoveryCode(event.target.value)} /></label>
+    <label className="field">Existing roommate recovery code<input ref={inputRef} type="password" required autoComplete="off" autoCapitalize="none" spellCheck={false} value={recoveryCode} disabled={busy} onChange={(event) => setRecoveryCode(event.target.value)} /></label>
     <p className="field-hint">This proves access to an existing roommate. It is not an invitation and will not create another person.</p>
     {error && <p className="form-error" role="alert">{error}</p>}
     <button className="button primary full" disabled={busy}>Link recovery identity to my account</button>
