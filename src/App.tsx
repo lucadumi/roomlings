@@ -245,13 +245,20 @@ export function App() {
   }, [notice])
   useEffect(() => { setFormError('') }, [dialog])
 
-  const expireSession = useCallback((expected: KitchenSession, message: string) => {
+  const expireSession = useCallback((expected: KitchenSession, message: string, accountExpired = false) => {
     if (!sameKitchenSession(sessionRef.current, expected)) return
     startupAttempt.current++
     sessionEpoch.current++
     initialSession = undefined
     sessionRef.current = null
     setSession(null)
+    if (accountExpired && expected.token === null && accountRef.current) {
+      const next: AccountState = {
+        configured: accountRef.current.configured, account: null, memberships: [], devices: [], csrfToken: null, session: null,
+      }
+      accountRef.current = next
+      setAccount(next)
+    }
     setLoading(false)
     setBusy(false)
     enteringRoom.current = isRoomEntry()
@@ -298,7 +305,7 @@ export function App() {
       if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, current)) return
       setSyncState('offline')
       if (failure instanceof RequestError && (failure.status === 401 || (failure.status === 403 && current.token === null))) {
-        expireSession(current, failure.message)
+        expireSession(current, failure.message, failure.status === 401)
       }
     }
   }, [expireSession])
@@ -364,7 +371,7 @@ export function App() {
     } catch (failure) {
       if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return
       if (failure instanceof RequestError && failure.status === 401) {
-        expireSession(session, failure.message)
+        expireSession(session, failure.message, true)
         return
       }
       const message = failure instanceof Error ? failure.message : 'The change could not be saved.'

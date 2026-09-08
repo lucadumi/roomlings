@@ -80,6 +80,33 @@ export const linkAccountSchema = z.object({
 }).refine((input) => Number(input.token !== undefined) + Number(input.recoveryCode !== undefined) === 1,
   'Use either your existing browser access or your recovery code to link a roommate identity.')
 export const accountVersionSchema = z.object({ version: z.number().int().nonnegative() })
+export const accountRecoveryCodeCount = 10
+export const accountRecoveryCodePrefix = 'roomlings-account-'
+export const accountRecoveryCodeSchema = z.string().trim().toLowerCase().regex(
+  /^roomlings-account-[a-f0-9]{4}(?:-[a-f0-9]{4}){7}$/,
+  'Enter one unused account recovery code, not an email code or a kitchen recovery code.',
+)
+export const accountRecoverySignInSchema = z.object({
+  email: accountEmailSchema,
+  code: accountRecoveryCodeSchema,
+  label: nameSchema.default('Saved browser'),
+})
+export const accountRecoveryStateSchema = accountVersionSchema.extend({
+  remaining: z.number().int().min(0).max(accountRecoveryCodeCount),
+  updatedAt: timestamp.nullable(),
+}).superRefine((state, context) => {
+  if ((state.version === 0) !== (state.updatedAt === null) || (state.version === 0 && state.remaining !== 0)) {
+    context.addIssue({ code: 'custom', message: 'Recovery-code status must describe the current saved set.' })
+  }
+})
+export const accountRecoveryResultSchema = z.object({
+  codes: z.array(accountRecoveryCodeSchema).length(accountRecoveryCodeCount),
+  recovery: accountRecoveryStateSchema,
+}).superRefine((result, context) => {
+  if (new Set(result.codes).size !== accountRecoveryCodeCount || result.recovery.remaining !== accountRecoveryCodeCount) {
+    context.addIssue({ code: 'custom', message: 'A new recovery-code set must contain ten distinct unused codes.' })
+  }
+})
 export const createAccountInvitationSchema = accountVersionSchema.extend({
   expiresInDays: z.number().int().min(1).max(30).default(7),
 })
@@ -95,3 +122,6 @@ export type HouseholdAccess = z.infer<typeof householdAccessSchema>
 export type AccountInvitationResult = z.infer<typeof accountInvitationResultSchema>
 export type AccountKitchenSession = z.infer<typeof accountKitchenSessionSchema>
 export type KitchenSession = Session | AccountKitchenSession
+export type AccountRecoverySignIn = z.infer<typeof accountRecoverySignInSchema>
+export type AccountRecoveryState = z.infer<typeof accountRecoveryStateSchema>
+export type AccountRecoveryResult = z.infer<typeof accountRecoveryResultSchema>

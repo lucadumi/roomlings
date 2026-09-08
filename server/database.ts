@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import type { PoolClient, PoolConfig } from 'pg'
 import { z } from 'zod'
-import { sqliteSchema } from './schema.ts'
+import { applicationSchemaVersion, sqliteSchema } from './schema.ts'
 
 export type Value = string | number | null
 export type Row = Record<string, Value>
@@ -196,10 +196,30 @@ export class PostgresDatabase implements Database {
     this.pool.on('error', () => console.error('An idle PostgreSQL connection failed.'))
   }
 
-  async verifySchema() {
+  async schemaVersion(): Promise<number> {
+    return this.transaction(async () => {
+      const registry = await this.prepare(`SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = ? AND c.relname = 'schema_migrations' AND c.relkind = 'r'`).get(this.schema)
+      if (!registry) {
+        throw new Error(`Application schema "${this.schema}" is not initialized. See docs/storage.md for the explicit database migration; startup never creates tables.`)
+      }
+      const row = await this.prepare(`SELECT MAX(version) AS version FROM "${this.schema}".schema_migrations`).get()
+      const version = Number(row?.version)
+      if (!Number.isSafeInteger(version) || version < 1) {
+        throw new Error(`Application schema "${this.schema}" has an unsupported schema version. Review its migration history and docs/storage.md before changing it.`)
+      }
+      return version
+    })
+  }
+
+  async verifySchema(): Promise<void> {
     await this.transaction(async () => {
-      const row = await this.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
-      if (Number(row?.version) !== 1) throw new Error('Apply the supported application schema migration before starting Roomlings.')
+      const version = await this.schemaVersion()
+      if (version === applicationSchemaVersion) return
+      if (version === 1) {
+        throw new Error(`Application schema "${this.schema}" is version 1; this build requires version ${applicationSchemaVersion}. Back up Postgres, run npm run database:migrate -- --upgrade for a dry run, then repeat with --apply --confirm-schema ${this.schema}. See docs/storage.md before restarting shared applications.`)
+      }
+      throw new Error(`Application schema "${this.schema}" is version ${version}; this build only supports version ${applicationSchemaVersion}. Use a compatible application build and review docs/storage.md; do not downgrade migration records.`)
     })
   }
 

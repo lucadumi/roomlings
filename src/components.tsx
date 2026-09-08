@@ -112,9 +112,10 @@ export function Form({ children, onSubmit }: { children: ReactNode; onSubmit: ()
   return <form onSubmit={(event: FormEvent) => { event.preventDefault(); onSubmit() }}>{children}</form>
 }
 
-export function CopyField({ label, value, buttonLabel, copiedLabel }: {
-  label: string; value: string; buttonLabel: string; copiedLabel: string
+export function CopyField({ label, value, buttonLabel, copiedLabel, multiline = false }: {
+  label: string; value: string; buttonLabel: string; copiedLabel: string; multiline?: boolean
 }) {
+  const fieldId = useId()
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
   const currentValue = useRef(value)
@@ -127,7 +128,9 @@ export function CopyField({ label, value, buttonLabel, copiedLabel }: {
     return () => { copyAttempt.current++ }
   }, [value])
   return <>
-    <label className="field">{label}<input readOnly value={value} autoComplete="off" spellCheck={false} onFocus={(event) => event.target.select()} /></label>
+    <div className="field"><label htmlFor={fieldId}>{label}</label>{multiline
+      ? <textarea id={fieldId} readOnly rows={10} value={value} autoComplete="off" spellCheck={false} onFocus={(event) => event.target.select()} />
+      : <input id={fieldId} readOnly value={value} autoComplete="off" spellCheck={false} onFocus={(event) => event.target.select()} />}</div>
     <button type="button" className="button primary full" onClick={() => {
       const attempt = ++copyAttempt.current
       setCopied(false)

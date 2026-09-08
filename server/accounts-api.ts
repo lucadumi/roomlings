@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Express, Request, RequestHandler, Response } from 'express'
 import { z } from 'zod'
 import {
-  acceptAccountInvitationSchema, accountVersionSchema, createAccountInvitationSchema,
+  acceptAccountInvitationSchema, accountRecoverySignInSchema, accountVersionSchema, createAccountInvitationSchema,
   deleteAccountSchema, linkAccountSchema, sendAccountCodeSchema, transferOwnershipSchema, verifyAccountCodeSchema,
 } from '../shared/accounts.ts'
 import { centsSchema, currencies, nameSchema } from '../shared/domain.ts'
@@ -21,7 +21,7 @@ export type AccountOptions = {
 export const accountCookieName = 'roomlings_session'
 const isMutation = (req: Request) => !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
 const unavailable = () => new ApiError(503, 'Account sign-in is not configured. The server owner must configure Supabase verified-email codes.', 'AUTH_NOT_CONFIGURED')
-const noSession = () => new ApiError(401, 'Sign in with your email code to continue.', 'ACCOUNT_SESSION_REQUIRED')
+const noSession = () => new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
 
 function limit(maximum: number, duration: number, key: (req: Request) => string): RequestHandler {
   const attempts = new Map<string, { count: number; expires: number }>()
@@ -55,6 +55,11 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
   const signedOut = (): AccountState => ({
     configured: !!provider, account: null, memberships: [], devices: [], csrfToken: null, session: null,
   })
+  const respondSignedIn = async (res: Response, issued: { token: string; session: AccountSession }) => {
+    const state = await store.accounts.state(issued.session)
+    res.cookie(accountCookieName, issued.token, { ...cookieOptions, maxAge: accountAbsoluteLifetime })
+    res.json(state)
+  }
   const browserRequest = (req: Request) => {
     const requestOrigin = req.get('origin')
     if (req.get('X-Roomlings-Request') !== '1'
@@ -120,10 +125,25 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       const input = verifyAccountCodeSchema.parse(req.body)
       const identity = await invokeProvider(() => provider!.verifyCode(input.email, input.code))
       if (!identity.providerId || identity.email !== input.email) throw new ApiError(401, 'The verified email did not match the requested account.')
-      const { token, session } = (await store.accounts.signIn(identity, input.name, input.label))
-      res.cookie(accountCookieName, token, { ...cookieOptions, maxAge: accountAbsoluteLifetime })
-      res.json((await store.accounts.state(session)))
+      await respondSignedIn(res, await store.accounts.signIn(identity, input.name, input.label))
     })
+  app.post('/api/account/recover',
+    limit(30, 10 * 60_000, ip), limit(10, 10 * 60_000, email), async (req, res) => {
+      await respondSignedIn(res, await store.accounts.recoverAccount(accountRecoverySignInSchema.parse(req.body)))
+    })
+  app.get('/api/account/recovery', async (req, res) => {
+    res.json(await store.accounts.recoveryState(await authenticated(req, res)))
+  })
+  app.post('/api/account/recovery', async (req, res) => {
+    const session = await authenticated(req, res)
+    const { version } = accountVersionSchema.parse(req.body)
+    res.json(await store.accounts.generateRecoveryCodes(session, version))
+  })
+  app.delete('/api/account/recovery', async (req, res) => {
+    const session = await authenticated(req, res)
+    const { version } = accountVersionSchema.parse(req.body)
+    res.json(await store.accounts.revokeRecoveryCodes(session, version))
+  })
   app.patch('/api/account', async (req, res) => {
     const session = (await authenticated(req, res))
     const { name } = z.object({ name: nameSchema }).parse(req.body)

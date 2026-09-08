@@ -1,8 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { Database } from './database.ts'
 import { transactional } from './database.ts'
-import { accountStateSchema, householdAccessSchema } from '../shared/accounts.ts'
-import type { AccountInvitationResult, AccountState, HouseholdAccess } from '../shared/accounts.ts'
+import {
+  accountRecoveryCodeCount, accountRecoveryCodePrefix, accountRecoveryResultSchema, accountRecoverySignInSchema,
+  accountRecoveryStateSchema, accountStateSchema, householdAccessSchema,
+} from '../shared/accounts.ts'
+import type {
+  AccountInvitationResult, AccountRecoveryResult, AccountRecoverySignIn, AccountRecoveryState, AccountState, HouseholdAccess,
+} from '../shared/accounts.ts'
 import { activeMemberLimit, householdSchema, memberColors, retainedMemberLimit } from '../shared/domain.ts'
 import type { Household } from '../shared/domain.ts'
 import type { Store } from './store.ts'
@@ -11,7 +16,7 @@ import { ApiError } from './errors.ts'
 
 export const accountAbsoluteLifetime = 30 * 24 * 60 * 60_000
 export const accountIdleLifetime = 7 * 24 * 60 * 60_000
-export const deletionReauthLifetime = 10 * 60_000
+export const accountReauthLifetime = 10 * 60_000
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const forbidden = () => new ApiError(403, 'You do not have active access to this kitchen.')
 const conflict = () => new ApiError(409, 'A roommate just changed the kitchen. Refresh it and try again.')
@@ -38,6 +43,7 @@ export class AccountStore {
     this.isManaged = transactional(db, this.isManaged.bind(this))
     this.authenticate = transactional(db, this.authenticate.bind(this))
     this.signIn = transactional(db, this.signIn.bind(this))
+    this.recoverAccount = transactional(db, this.recoverAccount.bind(this))
     this.pendingDeletions = transactional(db, this.pendingDeletions.bind(this))
     this.finishDeletion = transactional(db, this.finishDeletion.bind(this))
     this.state = guarded(this.state.bind(this))
@@ -45,6 +51,9 @@ export class AccountStore {
     this.select = guarded(this.select.bind(this))
     this.profile = guarded(this.profile.bind(this))
     this.renameDevice = guarded(this.renameDevice.bind(this))
+    this.recoveryState = guarded(this.recoveryState.bind(this))
+    this.generateRecoveryCodes = guarded(this.generateRecoveryCodes.bind(this))
+    this.revokeRecoveryCodes = guarded(this.revokeRecoveryCodes.bind(this))
     this.logout = guarded(this.logout.bind(this), true)
     this.revokeDevice = guarded(this.revokeDevice.bind(this))
     this.access = guarded(this.access.bind(this))
@@ -63,7 +72,7 @@ export class AccountStore {
     await this.purgeSessions()
     const current = await this.db.prepare(`SELECT a.deleting FROM account_sessions s
       JOIN accounts a ON a.id = s.account_id WHERE s.id = ? AND s.account_id = ?`).get(session.id, session.accountId)
-    if (!current) throw new ApiError(401, 'Sign in with your email code to continue.', 'ACCOUNT_SESSION_REQUIRED')
+    if (!current) throw new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
     if (current.deleting && !allowDeleting) {
       throw new ApiError(409, 'Account deletion is pending. Access remains disabled.', 'ACCOUNT_DELETION_PENDING')
     }
@@ -114,17 +123,87 @@ export class AccountStore {
       } else {
         await this.db.prepare('UPDATE accounts SET email = ? WHERE id = ?').run(identity.email, row.id)
       }
-      const count = (await this.db.prepare('SELECT COUNT(*) AS count FROM account_sessions WHERE account_id = ?').get(row.id))
-      if (Number(count?.count) >= 50) throw new ApiError(409, 'This account has 50 saved browsers. Sign out an existing browser before adding another.')
-      const token = randomBytes(32).toString('base64url')
-      const selected = (await this.memberships(String(row.id)))[0]?.householdId ?? null
-      await this.db.prepare(`INSERT INTO account_sessions
-        (id, hash, account_id, label, created_at, last_used_at, expires_at, selected_household_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(randomUUID(), hash(token), row.id, label, now, now, new Date(this.now() + accountAbsoluteLifetime).toISOString(), selected)
-      const session = (await this.authenticate(token))!
-      return { token, session }
+      return this.issueSession(String(row.id), label)
     }))
+  }
+
+  private async issueSession(accountId: string, label: string) {
+    const count = await this.db.prepare('SELECT COUNT(*) AS count FROM account_sessions WHERE account_id = ?').get(accountId)
+    if (Number(count?.count) >= 50) throw new ApiError(409, 'This account has 50 saved browsers. Sign out an existing browser before adding another.')
+    const token = randomBytes(32).toString('base64url')
+    const now = new Date(this.now()).toISOString()
+    const selected = (await this.memberships(accountId))[0]?.householdId ?? null
+    await this.db.prepare(`INSERT INTO account_sessions
+      (id, hash, account_id, label, created_at, last_used_at, expires_at, selected_household_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(randomUUID(), hash(token), accountId, label, now, now, new Date(this.now() + accountAbsoluteLifetime).toISOString(), selected)
+    const session = await this.authenticate(token)
+    if (!session) throw new Error('The new account session could not be restored.')
+    return { token, session }
+  }
+
+  private requireRecentSignIn(session: AccountSession, action: string) {
+    if (this.now() - Date.parse(session.createdAt) > accountReauthLifetime) {
+      throw new ApiError(401, `Sign in again, then ${action} within 10 minutes.`, 'REAUTHENTICATION_REQUIRED')
+    }
+  }
+
+  async recoveryState(session: AccountSession): Promise<AccountRecoveryState> {
+    const settings = await this.db.prepare('SELECT version, updated_at FROM account_recovery_settings WHERE account_id = ?').get(session.accountId)
+    const codes = await this.db.prepare('SELECT COUNT(*) AS count FROM account_recovery_codes WHERE account_id = ?').get(session.accountId)
+    return accountRecoveryStateSchema.parse({
+      version: settings ? Number(settings.version) : 0,
+      remaining: Number(codes?.count ?? 0),
+      updatedAt: settings ? String(settings.updated_at) : null,
+    })
+  }
+
+  private async replaceRecoveryCodes(session: AccountSession, version: number, codes: string[]) {
+    this.requireRecentSignIn(session, 'change your recovery codes')
+    const current = await this.recoveryState(session)
+    if (current.version !== version) {
+      throw new ApiError(409, 'Your recovery codes changed in another browser. Refresh their status and try again.')
+    }
+    if (!codes.length && !current.remaining) throw new ApiError(409, 'There are no unused account recovery codes to revoke.')
+    await this.db.prepare(`INSERT INTO account_recovery_settings (account_id, version, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(account_id) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at`)
+      .run(session.accountId, current.version + 1, new Date(this.now()).toISOString())
+    await this.db.prepare('DELETE FROM account_recovery_codes WHERE account_id = ?').run(session.accountId)
+    for (const code of codes) {
+      await this.db.prepare('INSERT INTO account_recovery_codes (hash, account_id) VALUES (?, ?)').run(hash(code), session.accountId)
+    }
+    return this.recoveryState(session)
+  }
+
+  async generateRecoveryCodes(session: AccountSession, version: number): Promise<AccountRecoveryResult> {
+    return this.transaction(async () => {
+      const codes = Array.from({ length: accountRecoveryCodeCount }, () => {
+        const secret = randomBytes(16).toString('hex')
+        return accountRecoveryCodePrefix + Array.from({ length: 8 }, (_, index) => secret.slice(index * 4, index * 4 + 4)).join('-')
+      })
+      return accountRecoveryResultSchema.parse({ codes, recovery: await this.replaceRecoveryCodes(session, version, codes) })
+    })
+  }
+
+  async revokeRecoveryCodes(session: AccountSession, version: number): Promise<AccountRecoveryState> {
+    return this.transaction(() => this.replaceRecoveryCodes(session, version, []))
+  }
+
+  async recoverAccount(input: AccountRecoverySignIn) {
+    const { code, email, label } = accountRecoverySignInSchema.parse(input)
+    return this.transaction(async () => {
+      await this.purgeSessions()
+      const codeHash = hash(code)
+      const row = await this.db.prepare(`SELECT c.account_id FROM account_recovery_codes c
+        JOIN accounts a ON a.id = c.account_id WHERE c.hash = ? AND a.email = ? AND a.deleting = 0`).get(codeHash, email)
+      const invalid = () => new ApiError(401, 'That account recovery code is invalid, already used or revoked.', 'INVALID_ACCOUNT_RECOVERY_CODE')
+      if (!row) throw invalid()
+      const accountId = String(row.account_id)
+      const issued = await this.issueSession(accountId, label)
+      const consumed = await this.db.prepare('DELETE FROM account_recovery_codes WHERE hash = ? AND account_id = ?').run(codeHash, accountId)
+      if (consumed.changes !== 1) throw invalid()
+      return issued
+    })
   }
 
   private async memberships(accountId: string): Promise<AccountState['memberships']> {
@@ -148,7 +227,7 @@ export class AccountStore {
     const memberships = (await this.memberships(session.accountId))
     const rows = await this.db.prepare('SELECT * FROM account_sessions WHERE account_id = ? ORDER BY last_used_at DESC, id').all(session.accountId)
     const current = rows.find((row) => row.id === session.id)
-    if (!current) throw new ApiError(401, 'Sign in with your email code to continue.', 'ACCOUNT_SESSION_REQUIRED')
+    if (!current) throw new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
     const selected = memberships.find((membership) => membership.householdId === current.selected_household_id)
     const devices = rows.map((row) => ({
         id: String(row.id), label: String(row.label), createdAt: String(row.created_at),
@@ -428,13 +507,12 @@ export class AccountStore {
       if (!account) throw new ApiError(401, 'Sign in before deleting your account.')
       if (confirmation !== account.email) throw new ApiError(400, 'Enter your exact account email to confirm deletion.')
       if (account.deleting) return String(account.provider_id)
-      if (this.now() - Date.parse(session.createdAt) > deletionReauthLifetime) {
-        throw new ApiError(401, 'Sign in again with a fresh email code, then delete your account within 10 minutes.', 'REAUTHENTICATION_REQUIRED')
-      }
+      this.requireRecentSignIn(session, 'delete your account')
       const memberships = (await this.db.prepare('SELECT household_id, member_id FROM account_memberships WHERE account_id = ?').all(session.accountId))
       for (const membership of memberships) await this.canLeave((await this.store.get(String(membership.household_id)))!, String(membership.member_id))
       // Persist a deletion barrier before contacting the provider. Retries cannot regain kitchen access.
       await this.db.prepare('UPDATE accounts SET deleting = 1 WHERE id = ?').run(session.accountId)
+      await this.db.prepare('DELETE FROM account_recovery_codes WHERE account_id = ?').run(session.accountId)
       await this.db.prepare('DELETE FROM account_sessions WHERE account_id = ? AND id <> ?').run(session.accountId, session.id)
       for (const membership of memberships) await this.deactivate((await this.store.get(String(membership.household_id)))!, String(membership.member_id))
       session.deleting = true
