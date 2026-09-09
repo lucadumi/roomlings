@@ -56,7 +56,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await expect(world).toHaveAttribute('data-framing', 'whole')
     await expect(world).not.toHaveAttribute('data-selected-component', /.+/)
     await expect(world).toHaveAttribute('data-camera-moving', 'false')
-    expect((await world.boundingBox())!.width).toBeGreaterThan(before!.width)
+    await expect.poll(() => world.evaluate((element) => element.getBoundingClientRect().width)).toBeGreaterThan(before!.width)
     await palette.getByRole('button', { name: 'Close dialog', exact: true }).click()
     await expect(editor.getByLabel('Object name', { exact: true })).toHaveValue('Keep this draft')
     await expect(world).toHaveAttribute('data-selected-component', id)

@@ -494,5 +494,5 @@
   .game-panel-content .roommate-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .game-home::after { transition: none; }
+  .game-home::after, .kitchen-world { transition: none; }
 }
