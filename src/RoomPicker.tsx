@@ -9,8 +9,7 @@ import { householdRoomPreviews } from './roomPreviews.ts'
 import type { RoomPreviewLedger } from './householdRoomPreview.ts'
 import './roomPicker.css'
 
-function menuPosition(anchor: HTMLButtonElement) {
-  const bounds = anchor.getBoundingClientRect()
+function menuPosition(bounds: DOMRect) {
   const width = Math.min(320, window.innerWidth - 24)
   const top = bounds.bottom + 8
   return {
@@ -31,27 +30,40 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, components,
   const close = useRef(onClose)
   const restoreFocus = useRef(true)
   const [focusedRoom, setFocusedRoom] = useState(currentRoom)
-  const [position, setPosition] = useState(() => menuPosition(anchor))
+  const [position, setPosition] = useState(() => menuPosition(anchor.getBoundingClientRect()))
+  const lastPosition = useRef(position)
   const [images, setImages] = useState<Partial<Record<RoomId, string>>>({})
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
   const appearance = JSON.stringify([components, roomStyles, ledger])
   close.current = onClose
 
   useLayoutEffect(() => {
+    let frame = 0
+    let disposed = false
     const measure = () => {
+      if (disposed) return false
       const bounds = anchor.getBoundingClientRect()
-      if (!anchor.isConnected || !bounds.width || !bounds.height) { restoreFocus.current = false; close.current(); return }
-      const next = menuPosition(anchor)
-      setPosition((previous) => Object.keys(next).every((key) =>
-        Reflect.get(previous, key) === Reflect.get(next, key)) ? previous : next)
+      if (!anchor.isConnected || !bounds.width || !bounds.height) { restoreFocus.current = false; close.current(); return false }
+      const next = menuPosition(bounds)
+      if (!Object.keys(next).every((key) => Reflect.get(lastPosition.current, key) === Reflect.get(next, key))) {
+        lastPosition.current = next
+        setPosition(next)
+      }
+      return true
+    }
+    const followAnchor = () => {
+      // Grid reflow can move the trigger without changing its observed size.
+      if (measure()) frame = requestAnimationFrame(followAnchor)
     }
     const observer = new ResizeObserver(measure)
     observer.observe(anchor)
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
     window.visualViewport?.addEventListener('resize', measure)
-    measure()
+    followAnchor()
     return () => {
+      disposed = true
+      cancelAnimationFrame(frame)
       observer.disconnect()
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)

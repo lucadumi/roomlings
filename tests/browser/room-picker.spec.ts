@@ -108,6 +108,35 @@ test('an open room menu follows its button when the viewport changes', async ({ 
   await expect(trigger).toBeFocused()
 })
 
+test('an open room menu follows position-only header reflow', async ({ page, populatedHousehold: _household }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(roomPath())
+  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  await trigger.click()
+  const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
+  const original = await trigger.boundingBox()
+  expect(original).not.toBeNull()
+  await page.locator('.game-hud').evaluate((element) => { element.style.paddingBottom = '44px' })
+  await expect.poll(() => trigger.evaluate((element) => element.getBoundingClientRect().top)).toBeGreaterThan(original!.y)
+  expect((await trigger.boundingBox())!.height).toBe(original!.height)
+  await expect.poll(async () => {
+    const anchor = await trigger.boundingBox()
+    const bounds = await menu.boundingBox()
+    if (!anchor || !bounds) throw new Error('The room trigger and menu must remain visible.')
+    return Math.abs(bounds.y - anchor.y - anchor.height - 8)
+  }).toBeLessThan(1)
+  await page.locator('.game-hud').evaluate((element) => element.style.removeProperty('padding-bottom'))
+  await expect.poll(async () => {
+    const anchor = await trigger.boundingBox()
+    const bounds = await menu.boundingBox()
+    if (!anchor || !bounds) throw new Error('The room trigger and menu must remain visible.')
+    return Math.abs(bounds.y - anchor.y - anchor.height - 8)
+  }).toBeLessThan(1)
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+})
+
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
   test(`room previews fit on ${viewport.width}x${viewport.height} screens`, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
