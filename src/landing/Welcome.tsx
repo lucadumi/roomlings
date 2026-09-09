@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
@@ -112,10 +112,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           <h2 id="features-title">Your home, shared.</h2>
         </div>
         <div className="welcome-journal">
-          {features.map(({ number, title, description }, index) => <article className={`welcome-feature welcome-feature-${number}`} key={number}>
+          {features.map(({ number, title, description }) => <article className={`welcome-feature welcome-feature-${number}`} key={number}>
             <span className="welcome-feature-number" aria-hidden="true">{number}</span>
             <div className="welcome-feature-copy"><h3>{title}</h3><p>{description}</p></div>
-            <div className="welcome-feature-art" aria-hidden="true">{index === 0 ? <ShoppingNote /> : index === 1 ? <LedgerNote /> : <EnvelopeNote />}</div>
           </article>)}
         </div>
       </section>
@@ -144,44 +143,5 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       <p>Roomlings records payments. It never moves money.</p>
       <a className="welcome-text-link" href="#welcome-top">Back to the top <ArrowDown size={15} className="welcome-up" /></a>
     </footer>
-  </div>
-}
-
-function ShoppingNote() {
-  return <div className="journal-shopping">
-    <div className="journal-list"><strong>Room supplies</strong>
-      <span className="journal-list-item"><Check size={14} />Dish soap</span>
-      <span className="journal-list-item"><Check size={14} />Toilet paper</span>
-      <span className="journal-list-item"><span className="journal-checkbox" />Sponges</span>
-    </div>
-    <span className="journal-pencil" />
-  </div>
-}
-
-function LedgerNote() {
-  return <svg className="journal-ledger" viewBox="0 0 260 150" aria-hidden="true" focusable="false">
-    <rect className="journal-ledger-shadow" x="25" y="16" width="217" height="129" rx="3" />
-    <rect className="journal-ledger-page journal-ledger-back" x="23" y="12" width="217" height="128" rx="3" />
-    <rect className="journal-ledger-page" x="16" y="6" width="218" height="128" rx="3" />
-    <path className="journal-ledger-accent" d="M30 20V34" />
-    <text className="journal-ledger-title" x="41" y="29">SHARED LEDGER</text>
-    <path className="journal-ledger-rule" d="M30 41H220M157 49V116" />
-    <text className="journal-ledger-column" x="30" y="54">ENTRY</text>
-    <text className="journal-ledger-column" x="173" y="54">SHARED</text>
-    <text className="journal-ledger-entry" x="30" y="72">Groceries</text>
-    <text className="journal-ledger-entry" x="30" y="90">House bills</text>
-    <text className="journal-ledger-entry" x="30" y="108">Repayments</text>
-    {[77, 95, 113].map((y) => <g key={y}>
-      <path className="journal-ledger-rule" d={`M30 ${y}H220`} />
-      <path className="journal-ledger-value" d={`M177 ${y - 8}H205M211 ${y - 8}H220`} />
-    </g>)}
-  </svg>
-}
-
-function EnvelopeNote() {
-  return <div className="journal-envelope">
-    <div className="journal-letter"><span>Your share</span><CheckCheck size={20} strokeWidth={1.4} /></div>
-    <div className="journal-envelope-front" />
-    <span className="journal-envelope-seal"><Check size={14} /></span>
   </div>
 }

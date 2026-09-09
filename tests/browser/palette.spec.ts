@@ -91,9 +91,7 @@ test('the Coolors landing palette keeps uniform copy and a transparent hero', { 
   await expect(page.locator('.welcome-hero h1')).toHaveCSS('text-shadow', 'none')
   const featureColors = await page.locator('.welcome-feature h3').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color))
   expect(new Set(featureColors)).toEqual(new Set(['rgb(61, 64, 91)']))
-  await expect(page.locator('.journal-ledger')).toHaveCount(1)
-  await expect(page.locator('.journal-ledger')).toHaveAttribute('aria-hidden', 'true')
-  await expect(page.locator('.journal-ledger-page')).toHaveCount(2)
+  await expect(page.locator('.welcome-features .welcome-feature-art, .welcome-features svg, .welcome-features img')).toHaveCount(0)
   await page.evaluate(() => document.fonts.ready)
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 960 })
