@@ -57,7 +57,7 @@ export const roomPresets: Record<RoomStyle, {
     name: 'Clay',
     description: 'Burnt-clay cabinets, a tomato fridge and bold sand-and-clay tiles.',
     colors: {
-      wall: '#f7e8dc', trim: '#dfb49a', floor: '#f7e3c5', floorAlternate: '#ca9676',
+      wall: '#e0af89', trim: '#c28f6e', floor: '#f7e3c5', floorAlternate: '#ca9676',
       fridge: '#cb7057', fridgeDoor: '#e49376', fridgeEdge: '#a75b46',
       cabinet: '#c78a69', cabinetPanel: '#e0ae88', counter: '#fffaf0',
       wood: '#af815b', lightWood: '#dcba87', woodGrain: '#8e6848',

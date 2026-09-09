@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowDown, ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
@@ -138,10 +138,21 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
       </section>
     </main>
-    <footer className="welcome-footer welcome-container">
+    <footer className="welcome-footer welcome-container" id="welcome-footer">
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning"><Brand decorative /></a>
-      <p>Roomlings records payments. It never moves money.</p>
-      <a className="welcome-text-link" href="#welcome-top">Back to the top <ArrowDown size={15} className="welcome-up" /></a>
+      <nav className="welcome-footer-links" aria-label="Footer">
+        <a className="welcome-text-link" href="#how-it-works">Your home</a>
+        <a className="welcome-text-link" href="#tour">Explore rooms</a>
+        <a className="welcome-text-link" href="#questions">Questions</a>
+      </nav>
+      <p>&copy; {new Date().getFullYear()} Roomlings</p>
+      <div className="welcome-footer-planned" role="group" aria-label="Planned pages">
+        <span>Coming soon:</span>
+        <span>About</span>
+        <span>Privacy</span>
+        <span>Terms</span>
+        <span>Contact</span>
+      </div>
     </footer>
   </div>
 }

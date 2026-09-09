@@ -20,7 +20,7 @@ async function layoutProblems(page: Page) {
   return page.evaluate(() => {
     const problems: string[] = []
     if (document.documentElement.scrollWidth > document.documentElement.clientWidth) problems.push('Horizontal overflow')
-    for (const group of document.querySelectorAll('.welcome-header, .welcome-navigation, .welcome-header-actions, .welcome-tour-controls, .welcome-actions')) {
+    for (const group of document.querySelectorAll('.welcome-header, .welcome-navigation, .welcome-header-actions, .welcome-tour-controls, .welcome-actions, .welcome-footer, .welcome-footer-links')) {
       const controls = [...group.children].filter((child) => child.matches('a, button') && child.getClientRects().length)
       const boxes = controls.map((control) => {
         const box = control.getBoundingClientRect()

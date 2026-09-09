@@ -175,7 +175,7 @@ test('the normal header and centered hero fill the first screen with clear secti
       expect(Math.abs(layout.copyCenter - layout.artCenter)).toBeLessThan(1)
     }
     expect(await page.locator('html').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
-    await page.getByRole('link', { name: 'Your home', exact: true }).click()
+    await page.locator('.welcome-header').getByRole('link', { name: 'Your home', exact: true }).click()
     await expect.poll(() => page.evaluate(() => {
       const header = document.querySelector('.welcome-header')!.getBoundingClientRect()
       const heading = document.querySelector('#features-title')!.getBoundingClientRect()
