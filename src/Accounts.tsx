@@ -22,6 +22,7 @@ export type AccountIntent = 'manage' | 'create' | 'join'
 export type AccountChange = 'refresh' | 'select' | 'signed-out' | 'deleting'
 type AccountView = AccountIntent | 'link' | 'household' | 'recovery'
 const accessIntent = (view: AccountView): AccountView => view === 'create' || view === 'join' ? view : 'manage'
+const roleLabels = { owner: 'Owner', admin: 'Admin', member: 'Member' }
 type Confirmation = {
   title: string; description: string; button: string; email?: boolean
   action: (confirmation: string) => Promise<void>
@@ -441,7 +442,7 @@ export function AccountDialog({
             <h3>Your kitchens</h3>
             {!state.memberships.length && <p className="field-hint">Create a kitchen, accept an invitation, or link your existing roommate identity. Linking keeps its original history.</p>}
             <ul className="device-list">{state.memberships.map((membership) => <li className="device-row" key={membership.householdId}>
-              <div><strong>{membership.householdName}</strong><small>{membership.role === 'owner' ? 'Owner' : 'Member'}</small></div>
+              <div><strong>{membership.householdName}</strong><small>{roleLabels[membership.role]}</small></div>
               <button className="button secondary small-button" disabled={disabled} aria-label={`Open ${membership.householdName}`} onClick={() => { void run(async () => {
                 await accountAction(`/account/households/${membership.householdId}/select`, {}, 'POST', 'select')
                 if (mounted.current) {
@@ -562,9 +563,9 @@ export function AccountDialog({
         </>}
         {view === 'household' && access && <>
           <div className="access-heading"><h3>{access.household.name}</h3><button className="icon-button control-surface" aria-label="Refresh membership settings" disabled={disabled} onClick={() => { void openHousehold(access.household.id) }}><RefreshCw size={16} /></button></div>
-          <p className="field-hint">You are {access.role === 'owner' ? 'the owner' : 'a member'}. All active roommates can edit the shared ledger. Former roommates remain in financial history.</p>
+          <p className="field-hint">You are {access.role === 'owner' ? 'the owner' : access.role === 'admin' ? 'an admin' : 'a member'}. Owners and admins can configure rooms and manage admin rights. Only the owner manages invitations, removes roommates or transfers ownership. All active roommates can edit the shared ledger. Former roommates remain in financial history.</p>
           <ul className="device-list">{access.members.map((member) => <li className="device-row" key={member.memberId}>
-            <div><strong>{member.name}</strong><small>{member.active ? `${member.role === 'owner' ? 'Owner' : 'Member'}; ${member.linked ? 'account linked' : 'browser access only'}` : 'Former roommate'}</small></div>
+            <div><strong>{member.name}</strong><small>{member.active ? `${roleLabels[member.role]}; ${member.linked ? 'account linked' : 'browser access only'}` : 'Former roommate'}</small></div>
             {access.role === 'owner' && member.active && member.memberId !== access.memberId && <>
               {member.linked && <button className="text-button" disabled={disabled} aria-label={`Make ${member.name} owner`} onClick={() => confirm({
                 title: 'Transfer kitchen ownership?', description: `${member.name} will manage membership and invitations. You will remain a member and can still edit the ledger.`,

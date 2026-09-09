@@ -1,0 +1,13 @@
+.welcome-garden { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; user-select: none; contain: strict; mask-repeat: no-repeat; }
+.welcome-garden-rail { position: absolute; top: 0; bottom: 0; width: max(0px, calc(var(--welcome-edge) - 12px), calc((100% - 1180px) / 2 - 12px)); overflow: visible; }
+.welcome-garden-left { left: 0; }
+.welcome-garden-right { right: 0; }
+.welcome-garden-still { position: absolute; left: 6px; width: calc(100% - 12px); height: auto; object-fit: contain; }
+.welcome-garden-left .welcome-garden-still { bottom: 4%; }
+.welcome-garden-right .welcome-garden-still { top: 15%; }
+.welcome-garden-canvas { position: absolute; inset: 0; pointer-events: none; }
+.welcome-garden-canvas canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+.welcome-garden[data-scene="ready"] .welcome-garden-still { visibility: hidden; }
+@media print {
+  .welcome-garden { display: none; }
+}

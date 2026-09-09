@@ -1,25 +1,33 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { BoxGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial } from 'three'
-import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
+import { applyRoomStyle, roomAccents, roomPresets } from '../src/roomStyles.ts'
+import { componentFinishes } from '../shared/roomComponents.ts'
 import { buildRoom } from '../src/room.ts'
 import type { Shapes } from '../src/room.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 
 const styles = ['original', 'sage', 'clay', 'linen'] as const
 
-test('every supported room preset has distinct finishes and Original keeps the existing colors', () => {
+test('every supported room preset has distinct finishes and the default uses the softer Garden pop palette', () => {
   assert.deepEqual(Object.keys(roomPresets), styles)
   assert.equal(new Set(Object.values(roomPresets).map((preset) => JSON.stringify(preset.colors))).size, 4)
   for (const preset of Object.values(roomPresets)) {
     for (const color of Object.values(preset.colors)) assert.match(color, /^#[0-9a-f]{6}$/)
   }
   assert.deepEqual(roomPresets.original.colors, {
-    wall: '#efe3c8', trim: '#ded0b0', floor: '#e4e7d9', floorAlternate: '#d3dcc6',
-    fridge: '#9eb399', fridgeDoor: '#b1c4a7', fridgeEdge: '#8b9d82',
-    cabinet: '#879f91', cabinetPanel: '#94ac9b', counter: '#f1e9d7',
-    wood: '#bb895c', lightWood: '#d7ad78', woodGrain: '#c69c6b',
+    wall: '#f4e9d2', trim: '#d8c7a1', floor: '#eef0dc', floorAlternate: '#bed6a5',
+    fridge: '#8ab27a', fridgeDoor: '#acd09a', fridgeEdge: '#6b8b60',
+    cabinet: '#588d74', cabinetPanel: '#7eb48f', counter: '#f8f0dd',
+    wood: '#c9975e', lightWood: '#dfbd7e', woodGrain: '#bd9462',
   })
+})
+
+test('individual object finishes use the same palette as the rooms and garden', () => {
+  assert.equal(componentFinishes.cream.color, roomAccents.cream)
+  assert.equal(componentFinishes.sage.color, roomPresets.original.colors.fridge)
+  assert.equal(componentFinishes.tomato.color, roomAccents.tomato)
+  assert.equal(componentFinishes.clay.color, roomAccents.terracotta)
 })
 
 test('room finishes update batched material references without rebuilding or recoloring other objects', (t) => {

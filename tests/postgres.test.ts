@@ -8,7 +8,7 @@ import { PostgresDatabase, SQLiteDatabase, postgresFromEnvironment, postgresPool
 import type { Database, Row } from '../server/database.ts'
 import { initializePostgres, schemaExists, upgradePostgres } from '../server/postgres-schema.ts'
 import { migrateSqlite } from '../server/migration.ts'
-import { accountRecoveryTables, applicationSchemaVersion, applicationTables, tableColumns } from '../server/schema.ts'
+import { accountRecoveryTables, applicationSchemaVersion, applicationTables, roomAccessTables, tableColumns } from '../server/schema.ts'
 import { Store } from '../server/store.ts'
 import { createApp } from '../server/app.ts'
 import { ApiError } from '../server/errors.ts'
@@ -38,14 +38,14 @@ async function removeTestSchema(db: PostgresDatabase) {
   await db.transaction(async () => { await db.exec(`DROP SCHEMA IF EXISTS "${db.schema}" CASCADE`) })
 }
 
-const recoveryTables = new Set<string>(accountRecoveryTables)
-const originalTables = applicationTables.filter((table) => !recoveryTables.has(table))
+const addedTables = new Set<string>([...accountRecoveryTables, ...roomAccessTables])
+const originalTables = applicationTables.filter((table) => !addedTables.has(table))
 
 async function initializeVersionOne(db: PostgresDatabase) {
   if (!/^roomlings_test_[a-f0-9]{32}$/.test(db.schema)) throw new Error('A version 1 fixture needs a disposable test schema.')
   await initializePostgres(db)
   await db.transaction(async () => {
-    await db.exec('DROP TABLE account_recovery_codes; DROP TABLE account_recovery_settings;')
+    await db.exec('DROP TABLE account_recovery_codes; DROP TABLE account_recovery_settings; DROP TABLE household_room_admins; DROP TABLE household_room_owners;')
     await db.prepare('UPDATE schema_migrations SET version = 1 WHERE version = ?').run(applicationSchemaVersion)
   })
 }
@@ -180,7 +180,7 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
     const db = new PostgresDatabase(configuration())
     const store = new Store(db)
     try {
-      await initializeVersionOne(db)
+      await initializePostgres(db)
       const legacy = await store.create('Existing kitchen', 'Ada', 'EUR', 45000)
       const access = await store.authenticate(legacy.token)
       assert.ok(access)
@@ -202,6 +202,7 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       await store.save(household)
       await db.prepare('INSERT INTO deleted_account_providers (hash) VALUES (?)')
         .run(createHash('sha256').update(randomUUID()).digest('hex'))
+      await initializeVersionOne(db)
       const beforeRows = await applicationRows(db, originalTables)
       for (const table of originalTables) assert.ok(beforeRows[table].length > 0, table)
       const beforeObjects = await schemaObjects(db)
@@ -233,8 +234,12 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       const previousNames = new Set(beforeObjects.map((object) => object.name))
       assert.deepEqual(afterObjects.filter((object) => previousNames.has(object.name)), beforeObjects)
       assert.deepEqual(afterObjects.filter((object) => !previousNames.has(object.name)).map((object) => object.name).sort(),
-        [...accountRecoveryTables, 'account_recovery_settings_pkey', 'account_recovery_codes_pkey', 'account_recovery_codes_account'].sort())
+        [...accountRecoveryTables, ...roomAccessTables, 'account_recovery_settings_pkey', 'account_recovery_codes_pkey',
+          'account_recovery_codes_account', 'household_room_owners_pkey', 'household_room_admins_pkey'].sort())
       assert.deepEqual(await applicationRows(db, accountRecoveryTables), { account_recovery_settings: [], account_recovery_codes: [] })
+      assert.deepEqual(await applicationRows(db, roomAccessTables), {
+        household_room_owners: [{ household_id: household.id, member_id: legacy.memberId }], household_room_admins: [],
+      })
       const upgradedHistory = await db.prepare('SELECT version, applied_at FROM schema_migrations ORDER BY version').all()
       assert.equal(upgradedHistory.length, 2)
       assert.deepEqual(upgradedHistory[0], beforeHistory[0])
@@ -272,13 +277,14 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
     }
   })
 
-  it('rolls back the recovery tables and protections when recording the upgrade fails', async () => {
+  it('rolls back recovery and room-access tables and protections when recording the upgrade fails', async () => {
     const db = new PostgresDatabase(configuration())
     const store = new Store(db)
     try {
-      await initializeVersionOne(db)
+      await initializePostgres(db)
       await store.create('Rollback kitchen', 'Ada', 'EUR', 45000)
       await store.accounts.signIn({ providerId: randomUUID(), email: 'rollback@example.com' }, 'Ada', 'Retained browser')
+      await initializeVersionOne(db)
       await db.exec('ALTER TABLE schema_migrations ADD CONSTRAINT upgrade_rollback_probe CHECK (version = 1)')
       const beforeRows = await applicationRows(db, originalTables)
       const beforeObjects = await schemaObjects(db)
@@ -292,6 +298,54 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       await db.exec('ALTER TABLE schema_migrations DROP CONSTRAINT upgrade_rollback_probe')
       assert.equal((await upgradePostgres(db, { apply: true, confirmSchema: db.schema })).applied, true)
       await db.verifySchema()
+    } finally {
+      if (await schemaExists(db)) await removeTestSchema(db)
+      await store.close()
+    }
+  })
+
+  it('upgrades a populated version 2 schema without resetting current ownership, recovery hashes or existing rows', async () => {
+    const db = new PostgresDatabase(configuration())
+    const store = new Store(db)
+    try {
+      await initializePostgres(db)
+      const original = await store.accounts.signIn({ providerId: randomUUID(), email: 'original@example.com' }, 'Ada', 'Existing browser')
+      const created = await store.accounts.createHousehold(original.session, { name: 'Version two home', memberName: 'Ada', currency: 'EUR', budget: 45000 })
+      const household = created.session!.household
+      const invitation = await store.accounts.invite(original.session, household.id, household.version, 7)
+      const successor = await store.accounts.signIn({ providerId: randomUUID(), email: 'successor@example.com' }, 'Ben', 'Existing phone')
+      const accepted = await store.accounts.accept(successor.session, invitation.code, 'Ben')
+      const transferred = await store.accounts.transfer(original.session, household.id, accepted.session!.memberId, accepted.session!.household.version)
+      const recovery = await store.accounts.generateRecoveryCodes(original.session, 0)
+      const versionTwoTables = applicationTables.filter((table) => !new Set<string>(roomAccessTables).has(table))
+      const before = await applicationRows(db, versionTwoTables)
+      await db.transaction(async () => {
+        await db.exec('DROP TABLE household_room_admins; DROP TABLE household_room_owners;')
+        await db.prepare('UPDATE schema_migrations SET version = 2 WHERE version = ?').run(applicationSchemaVersion)
+      })
+      const objects = await schemaObjects(db)
+      await assert.rejects(db.verifySchema(), /version 2.*--upgrade/)
+      await db.transaction(async () => {
+        assert.deepEqual(await upgradePostgres(db), { applied: false, schema: db.schema, fromVersion: 2, toVersion: applicationSchemaVersion })
+        assert.equal((await db.prepare('SELECT pg_current_xact_id_if_assigned()::text AS id').get())?.id, null)
+      })
+      assert.deepEqual(await schemaObjects(db), objects)
+      assert.deepEqual(await applicationRows(db, versionTwoTables), before)
+      assert.deepEqual(await upgradePostgres(db, { apply: true, confirmSchema: db.schema }), {
+        applied: true, schema: db.schema, fromVersion: 2, toVersion: applicationSchemaVersion,
+      })
+      assert.deepEqual(await applicationRows(db, versionTwoTables), before)
+      assert.deepEqual(await applicationRows(db, roomAccessTables), {
+        household_room_owners: [{ household_id: household.id, member_id: created.session!.memberId }],
+        household_room_admins: [],
+      })
+      assert.equal(await store.accounts.roomRole(transferred.household, created.session!.memberId), 'member')
+      assert.equal(await store.accounts.roomRole(transferred.household, accepted.session!.memberId), 'owner')
+      assert.deepEqual(await store.accounts.recoveryState(original.session), recovery.recovery)
+      assert.equal((await store.accounts.authenticate(original.token))?.id, original.session.id)
+      assert.equal((await store.accounts.authenticate(successor.token))?.id, successor.session.id)
+      await assertPrivateTables(db, [...applicationTables, 'schema_migrations'])
+      assert.equal((await upgradePostgres(db, { apply: true, confirmSchema: db.schema })).applied, false)
     } finally {
       if (await schemaExists(db)) await removeTestSchema(db)
       await store.close()
@@ -457,6 +511,15 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       const account = await source.accounts.signIn({ providerId: randomUUID(), email: 'migration@example.com' }, 'Ada', 'Original browser')
       const linked = await source.accounts.link(account.session, { token: session.token })
       const before = linked.session!.household
+      const adminId = randomUUID()
+      before.members.push({ id: adminId, name: 'Ben', color: '#7d9070' })
+      await source.save(before)
+      const adminBrowser = await source.session(before, adminId)
+      await source.transaction(async () => {
+        await source.accounts.setRoomRole(before, session.memberId, adminId, 'admin')
+        before.version++
+        await source.save(before)
+      })
       const replaced = await source.accounts.generateRecoveryCodes(account.session, 0)
       const recoveryCodes = await source.accounts.generateRecoveryCodes(account.session, replaced.recovery.version)
       await source.accounts.recoverAccount({ email: 'migration@example.com', code: recoveryCodes.codes[0], label: 'Used before migration' })
@@ -468,6 +531,8 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       assert.equal(dry.applied, false)
       assert.equal(dry.counts.account_recovery_settings, 1)
       assert.equal(dry.counts.account_recovery_codes, 9)
+      assert.equal(dry.counts.household_room_owners, 1)
+      assert.equal(dry.counts.household_room_admins, 1)
       assert.equal(await schemaExists(db), false)
       const applied = await migrateSqlite({
         source: filename, backup: join(directory, 'backup.sqlite'), target, apply: true, confirmSchema: target.schema,
@@ -481,6 +546,9 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       const migrated = new Store(db)
       assert.deepEqual(await migrated.get(before.id), before)
       assert.equal((await migrated.authenticate(session.token))?.memberId, session.memberId)
+      assert.equal((await migrated.authenticate(adminBrowser.token))?.memberId, adminId)
+      assert.equal(await migrated.accounts.roomRole(before, session.memberId), 'owner')
+      assert.equal(await migrated.accounts.roomRole(before, adminId), 'admin')
       const accountSession = await migrated.accounts.authenticate(account.token)
       assert.ok(accountSession)
       assert.equal((await migrated.accounts.state(accountSession)).account?.id, account.session.accountId)
@@ -498,7 +566,7 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       }
       assert.equal(Number((await db.prepare('SELECT COUNT(*) AS count FROM account_sessions').get())?.count), 3)
       assert.deepEqual(await migrated.accounts.recoveryState(accountSession), { ...recovery, remaining: 8 })
-      await assertPrivateTables(db, accountRecoveryTables)
+      await assertPrivateTables(db, [...accountRecoveryTables, ...roomAccessTables])
       await assert.rejects(migrateSqlite({
         source: filename, backup: join(directory, 'second.sqlite'), target, apply: true, confirmSchema: target.schema,
       }), /not empty/)

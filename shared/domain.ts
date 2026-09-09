@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { choreAreaSchema, roomCatalog, roomIdSchema } from './rooms.ts'
 import type { ChoreArea, RoomId } from './rooms.ts'
+import {
+  componentChoreArea, componentSourceInputSchema, componentSourceSnapshotSchema, getRoomComponents, roomComponentIdSchema,
+  roomComponentLimit, roomComponentSchema, validateRoomComponents,
+} from './roomComponents.ts'
 
 export const categories = ['produce', 'dairy', 'pantry', 'drinks', 'other'] as const
 export type Category = (typeof categories)[number]
@@ -51,17 +55,22 @@ export const expenseSchema = expenseInputSchema.extend({
 })
 export const shoppingItemLimit = 200
 export const shoppingRunLimit = 20_000
-export const shoppingItemInputSchema = z.object({
+const shoppingItemFields = {
   name: nameSchema,
   quantity: z.string().trim().min(1, 'Enter a quantity.').max(40).default('1'),
   notes: z.string().trim().max(240).default(''),
+}
+export const shoppingItemInputSchema = z.object({
+  ...shoppingItemFields, componentSource: componentSourceInputSchema.optional(),
 })
 export const shoppingItemVersionSchema = z.object({ itemVersion: z.number().int().nonnegative() })
-export const shoppingItemEditSchema = shoppingItemInputSchema.extend(shoppingItemVersionSchema.shape)
+export const shoppingItemEditSchema = z.object({ ...shoppingItemFields, ...shoppingItemVersionSchema.shape })
 export const shoppingClaimSchema = shoppingItemVersionSchema.extend({ claimed: z.boolean() })
 export const shoppingPickSchema = shoppingItemVersionSchema.extend({ pickedUp: z.boolean() })
-export const shoppingItemSnapshotSchema = shoppingItemInputSchema.extend({
+export const shoppingItemSnapshotSchema = z.object({
+  ...shoppingItemFields,
   id, createdBy: id, createdAt: z.string().datetime(),
+  componentSources: z.array(componentSourceSnapshotSchema).max(roomComponentLimit).optional(),
 })
 export const shoppingItemSchema = shoppingItemSnapshotSchema.extend({
   version: z.number().int().nonnegative(),
@@ -88,17 +97,21 @@ const choreFieldsSchema = z.object({
   notes: z.string().trim().max(240).default(''),
   roomId: roomIdSchema.nullable(),
   area: choreAreaSchema.nullable(),
+  componentId: roomComponentIdSchema.nullable().optional(),
   dueDate: choreDateSchema,
   repeatDays: z.number().int().min(1).max(365).nullable(),
   rotation: z.array(id).min(1, 'Choose at least one roommate for this chore.').max(activeMemberLimit)
     .refine((ids) => new Set(ids).size === ids.length, 'Choose each roommate only once in the rotation.'),
   turn: z.number().int().nonnegative().default(0),
 })
-type ChoreLocation = { roomId: RoomId | null; area: ChoreArea | null }
+type ChoreLocation = { roomId: RoomId | null; area: ChoreArea | null; componentId?: string | null }
 function validateChoreLocation(chore: ChoreLocation, context: z.RefinementCtx) {
   if (chore.roomId === null ? chore.area !== null
     : chore.area !== null && !roomCatalog[chore.roomId].areas.some((area) => area.id === chore.area)) {
     context.addIssue({ code: 'custom', message: 'Choose an area in this room, or no area for a whole-home chore.', path: ['area'] })
+  }
+  if (chore.componentId && chore.roomId === null) {
+    context.addIssue({ code: 'custom', message: 'An object chore must belong to its room.', path: ['componentId'] })
   }
 }
 function validateChoreFields(chore: ChoreLocation & { rotation: string[]; turn: number }, context: z.RefinementCtx) {
@@ -117,6 +130,7 @@ export const choreSchema = choreFieldsSchema.extend({
   version: z.number().int().nonnegative(),
   occurrence: z.number().int().nonnegative(),
   archived: z.boolean(),
+  componentName: nameSchema.optional(),
 }).superRefine((chore, context) => {
   validateChoreFields(chore, context)
   if (chore.dueDate === null && chore.repeatDays !== null) {
@@ -132,6 +146,8 @@ export const choreCompletionSchema = z.object({
   title: choreTitleSchema,
   roomId: roomIdSchema.nullable(),
   area: choreAreaSchema.nullable(),
+  componentId: roomComponentIdSchema.nullable().optional(),
+  componentName: nameSchema.optional(),
   dueDate: choreDateSchema,
   turn: z.number().int().nonnegative().max(activeMemberLimit - 1),
   assignedTo: id.nullable(),
@@ -195,6 +211,7 @@ export const householdSchema = z.object({
   currency: z.enum(currencies),
   budget: centsSchema,
   roomStyle: roomStyleSchema.default('original'),
+  roomComponents: z.array(roomComponentSchema).max(roomComponentLimit).optional(),
   inviteCode: z.string(),
   version: z.number().int().nonnegative(),
   mutationReceipts: z.array(mutationReceiptSchema).max(mutationReceiptLimit).optional(),
@@ -217,6 +234,26 @@ export const householdSchema = z.object({
   }
   const bills = new Map(household.bills.map((bill) => [bill.id, bill]))
   const members = new Set(household.members.map((member) => member.id))
+  const components = getRoomComponents(household)
+  const componentError = validateRoomComponents(components)
+  if (componentError) context.addIssue({ code: 'custom', message: componentError, path: ['roomComponents'] })
+  const componentsById = new Map(components.map((component) => [component.id, component]))
+  components.forEach((component, index) => {
+    if (component.stateChangedBy !== null && !members.has(component.stateChangedBy)) {
+      context.addIssue({ code: 'custom', message: 'An object state references an unknown roommate.', path: ['roomComponents', index] })
+    }
+  })
+  const validateSources = (sources: z.infer<typeof componentSourceSnapshotSchema>[] | undefined, path: (string | number)[]) => {
+    const references = new Set<string>()
+    for (const source of sources ?? []) {
+      const component = componentsById.get(source.componentId)
+      const key = `${source.componentId}:${source.supplyId}`
+      if (!component || component.roomId !== source.roomId || references.has(key)) {
+        context.addIssue({ code: 'custom', message: 'Supply sources must reference distinct objects in their original rooms.', path })
+      }
+      references.add(key)
+    }
+  }
   const receiptIds = new Set<string>()
   household.mutationReceipts?.forEach((receipt, index, receipts) => {
     if (receiptIds.has(receipt.id) || !members.has(receipt.memberId) || receipt.version > household.version
@@ -252,6 +289,7 @@ export const householdSchema = z.object({
       context.addIssue({ code: 'custom', message: 'Shopping items need unique identifiers and valid roommates.', path: ['shopping', 'items', index] })
     }
     items.add(item.id)
+    validateSources(item.componentSources, ['shopping', 'items', index, 'componentSources'])
   })
   const runs = new Map(household.shopping.runs.map((run) => [run.id, run]))
   const receipts = new Set<string>()
@@ -265,11 +303,12 @@ export const householdSchema = z.object({
       context.addIssue({ code: 'custom', message: 'A shopping run must have its own grocery receipt and a valid shopper.', path: ['shopping', 'runs', index] })
     }
     receipts.add(run.expenseId)
-    for (const item of run.items) {
+    for (const [itemIndex, item] of run.items.entries()) {
       if (items.has(item.id) || !members.has(item.createdBy)) {
         context.addIssue({ code: 'custom', message: 'A shopping item can only be archived once.', path: ['shopping', 'runs', index, 'items'] })
       }
       items.add(item.id)
+      validateSources(item.componentSources, ['shopping', 'runs', index, 'items', itemIndex, 'componentSources'])
     }
   })
   household.expenses.forEach((expense, index) => {
@@ -288,6 +327,13 @@ export const householdSchema = z.object({
     if (!members.has(chore.createdBy) || chore.rotation.some((member) => !members.has(member))) {
       context.addIssue({ code: 'custom', message: 'A chore references an unknown roommate.', path: ['chores', 'items', index] })
     }
+    if (chore.componentId) {
+      const component = componentsById.get(chore.componentId)
+      if (!component || component.roomId !== chore.roomId || (!component.installed && !chore.archived)
+        || (chore.area !== null && componentChoreArea(component) !== chore.area)) {
+        context.addIssue({ code: 'custom', message: 'An active object chore must reference an installed object in its room.', path: ['chores', 'items', index, 'componentId'] })
+      }
+    }
   })
   const completions = new Set<string>()
   const completedOccurrences = new Set<string>()
@@ -302,6 +348,9 @@ export const householdSchema = z.object({
     if (!members.has(completion.completedBy) || (completion.assignedTo !== null && !members.has(completion.assignedTo))
       || (completion.undoneBy !== null && !members.has(completion.undoneBy))) {
       context.addIssue({ code: 'custom', message: 'A chore completion references an unknown roommate.', path: ['chores', 'history', index] })
+    }
+    if (completion.componentId && componentsById.get(completion.componentId)?.roomId !== completion.roomId) {
+      context.addIssue({ code: 'custom', message: 'A completed object chore must retain its original room reference.', path: ['chores', 'history', index, 'componentId'] })
     }
     completions.add(completion.id)
     if (active) completedOccurrences.add(key)

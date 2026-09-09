@@ -6,13 +6,15 @@ import { fileURLToPath } from 'node:url'
 import { PostgresDatabase } from '../server/database.ts'
 import type { Row, Statement, Value } from '../server/database.ts'
 import { initializePostgres, upgradePostgres } from '../server/postgres-schema.ts'
-import { accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, sqliteSchema } from '../server/schema.ts'
+import {
+  accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, roomAccessSchema, roomAccessTables, sqliteSchema,
+} from '../server/schema.ts'
 
 const schema = 'roomlings_test_00000000000000000000000000000000'
 const url = 'postgresql://migration_test@127.0.0.1:1/roomlings_test'
 
 function fixture(t: TestContext, input: {
-  exists?: boolean; initialized?: boolean; version?: number | null; collision?: boolean
+  exists?: boolean; initialized?: boolean; version?: number | null; collision?: boolean | string; households?: Row[]
 } = {}) {
   const db = new PostgresDatabase({ url, schema, tls: 'disable' })
   t.after(() => db.close())
@@ -35,15 +37,21 @@ function fixture(t: TestContext, input: {
         return input.exists === false || input.initialized === false ? undefined : { exists: 1 }
       }
       if (sql.startsWith('SELECT MAX(version)')) return { version }
-      if (sql.includes('c.relname IN')) return input.collision ? { relname: accountRecoveryTables[0] } : undefined
+      if (sql.includes('c.relname IN')) return input.collision ? { relname: typeof input.collision === 'string' ? input.collision : accountRecoveryTables[0] } : undefined
       if (sql.startsWith('SELECT 1 FROM pg_roles')) return { exists: 1 }
       throw new Error(`Unexpected upgrade test query: ${sql}`)
     },
-    all: async () => { throw new Error(`Unexpected upgrade test query: ${sql}`) },
+    all: async () => {
+      reads.push(sql)
+      if (sql.startsWith('SELECT h.id, h.state FROM households h')) return input.households ?? []
+      throw new Error(`Unexpected upgrade test query: ${sql}`)
+    },
     run: async (...values) => {
-      if (!sql.startsWith('INSERT INTO schema_migrations')) throw new Error(`Unexpected upgrade test write: ${sql}`)
+      if (!sql.startsWith('INSERT INTO schema_migrations') && !sql.startsWith('INSERT INTO household_room_owners')) {
+        throw new Error(`Unexpected upgrade test write: ${sql}`)
+      }
       writes.push({ sql, values, depth })
-      version = Number(values[0])
+      if (sql.startsWith('INSERT INTO schema_migrations')) version = Number(values[0])
       return { changes: 1 }
     },
   }))
@@ -56,7 +64,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     await initializePostgres(f.db)
     assert.equal(f.writes[0].sql, `CREATE SCHEMA "${schema}";`)
     assert.equal(f.writes[1].sql, sqliteSchema)
-    for (const table of accountRecoveryTables) {
+    for (const table of [...accountRecoveryTables, ...roomAccessTables]) {
       assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
     }
     assert.match(f.writes.at(-1)!.sql, /^INSERT INTO schema_migrations/)
@@ -101,7 +109,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     }
   })
 
-  it('runs only shared recovery DDL and private protections before recording the version', async (t) => {
+  it('upgrades version 1 with both additive schemas and private protections before recording the version', async (t) => {
     const f = fixture(t)
     assert.deepEqual(await upgradePostgres(f.db, { apply: true, confirmSchema: schema }), {
       applied: true, schema, fromVersion: 1, toVersion: applicationSchemaVersion,
@@ -116,13 +124,56 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
       assert.ok(sql.includes(`REVOKE ALL ON TABLE ${qualifiedTables} FROM ${role};`))
       assert.ok(sql.includes(`ALTER DEFAULT PRIVILEGES IN SCHEMA "${schema}" REVOKE ALL ON TABLES FROM ${role};`))
     }
-    assert.equal(f.writes.length, 7)
+    assert.equal(f.writes[6].sql, roomAccessSchema)
+    assert.deepEqual(f.writes.slice(7, 9).map((write) => write.sql),
+      roomAccessTables.map((table) => `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
+    const roomTables = roomAccessTables.map((table) => `"${schema}"."${table}"`).join(', ')
+    for (const role of ['PUBLIC', '"anon"', '"authenticated"']) {
+      assert.ok(f.writes.some((write) => write.sql.includes(`REVOKE ALL ON TABLE ${roomTables} FROM ${role};`)))
+    }
+    assert.equal(f.writes.length, 13)
     const recorded = f.writes.at(-1)!
     assert.match(recorded.sql, /^INSERT INTO schema_migrations/)
     assert.equal(recorded.values[0], applicationSchemaVersion)
     assert.ok(Number.isFinite(Date.parse(String(recorded.values[1]))))
     assert.ok(f.writes.every((write) => write.depth > 0))
     assert.equal(await f.db.schemaVersion(), applicationSchemaVersion)
+  })
+
+  it('upgrades version 2 without touching recovery data and preserves original IDs while skipping retired rows', async (t) => {
+    const householdId = '00000000-0000-4000-8000-000000000001'
+    const creatorId = '00000000-0000-4000-8000-000000000002'
+    const f = fixture(t, {
+      version: 2,
+      households: [
+        { id: householdId, state: JSON.stringify({ members: [{ id: creatorId }], demo: false }) },
+        { id: '00000000-0000-4000-8000-000000000003', state: JSON.stringify({ members: [{ id: creatorId }], demo: true }) },
+      ],
+    })
+    assert.deepEqual(await upgradePostgres(f.db), { applied: false, schema, fromVersion: 2, toVersion: applicationSchemaVersion })
+    assert.equal(f.writes.length, 0)
+    assert.ok(!f.reads.some((sql) => sql.includes('SELECT h.id')))
+    assert.deepEqual(await upgradePostgres(f.db, { apply: true, confirmSchema: schema }), {
+      applied: true, schema, fromVersion: 2, toVersion: applicationSchemaVersion,
+    })
+    assert.equal(f.writes[0].sql, roomAccessSchema)
+    assert.ok(!f.writes.some((write) => write.sql.includes('account_recovery')))
+    const ownerWrites = f.writes.filter((write) => write.sql.startsWith('INSERT INTO household_room_owners'))
+    assert.equal(ownerWrites.length, 1)
+    assert.deepEqual(ownerWrites[0].values, [householdId, creatorId])
+    assert.ok(f.writes.every((write) => write.depth > 0))
+    assert.match(f.writes.at(-1)!.sql, /^INSERT INTO schema_migrations/)
+  })
+
+  it('rejects colliding room-access tables in both supported older versions before writing', async (t) => {
+    for (const version of [1, 2]) {
+      for (const collision of [...roomAccessTables, ...roomAccessTables.map((table) => `${table}_pkey`)]) {
+        const f = fixture(t, { version, collision })
+        await assert.rejects(upgradePostgres(f.db), /already contains room access objects/)
+        await assert.rejects(upgradePostgres(f.db, { apply: true, confirmSchema: schema }), /already contains room access objects/)
+        assert.deepEqual(f.writes, [])
+      }
+    }
   })
 
   it('reports no change for an already-current schema, including a confirmed apply', async (t) => {
@@ -142,6 +193,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     assert.deepEqual(current.writes, [])
     for (const [version, message] of [
       [1, /npm run database:migrate -- --upgrade/],
+      [2, /npm run database:migrate -- --upgrade/],
       [applicationSchemaVersion + 1, /compatible application build/],
       [0, /unsupported schema version/],
     ] as const) {

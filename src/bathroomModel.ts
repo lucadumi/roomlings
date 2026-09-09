@@ -7,8 +7,9 @@ import type { RoomStyle } from '../shared/domain.ts'
 import { cameraFraming, fitRoomBounds } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
 import type { ContactShadow } from './lighting.ts'
-import { roomPresets } from './roomStyles.ts'
+import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
+import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
 
 export const bathroomTargets = ['sink', 'mirror', 'toilet', 'bath', 'floor', 'chores', 'supplies'] as const
 export type BathroomTarget = typeof bathroomTargets[number]
@@ -39,15 +40,15 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     cabinet: surface('cabinet'), cabinetPanel: surface('cabinetPanel'), counter: surface('counter'),
     wood: surface('wood'), lightWood: surface('lightWood'), woodGrain: surface('woodGrain'),
   }
-  const porcelain = material('Warm porcelain', '#f7f0dc', 0.55)
-  const water = material('Muted bath water', '#a9c4b9', 0.48)
-  const silver = material('Brushed fittings', '#d9ddcf', 0.36)
+  const porcelain = material('Warm porcelain', roomAccents.cream, 0.55)
+  const water = material('Bath water', roomAccents.water, 0.48)
+  const silver = material('Brushed fittings', roomAccents.metal, 0.36)
   silver.metalness = 0.25
-  const mirrorGlass = material('Opaque mirror', '#a2bfbd', 0.38)
+  const mirrorGlass = material('Opaque mirror', roomAccents.sky, 0.38)
   mirrorGlass.metalness = 0.2
-  const tomato = material('Tomato accessories', '#c7593d', 0.75)
-  const linen = material('Folded linen', '#efe5ce')
-  const dark = material('Fitting recesses', '#626d5c')
+  const tomato = material('Tomato accessories', roomAccents.tomato, 0.75)
+  const linen = material('Folded linen', roomAccents.linen)
+  const dark = material('Fitting recesses', roomAccents.ink)
   const lampMaterial = material('Mirror light', '#fff1ce', 0.65)
   lampMaterial.emissive.set('#ffe5b0')
   lampMaterial.emissiveIntensity = 0.2
@@ -102,6 +103,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     cylinder(group, 0.045, 0.11, [0, height + 0.055, 0], porcelain, 0.045, 8)
     box(group, [0.17, 0.045, 0.055], [0.05, height + 0.11, 0], dark, 0.012)
     box(group, [0.12, height * 0.38, 0.016], [0, height * 0.47, 0.117], linen)
+    return group
   }
 
   room.name = 'Open-corner bathroom'
@@ -142,9 +144,11 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   box(bath, [0.46, 0.075, 0.075], [-0.68, 1.71, -1.24], silver, 0.02)
   cylinder(bath, 0.045, 0.13, [-0.46, 1.65, -1.24], silver)
   box(bath, [0.3, 0.06, 0.08], [-0.89, 1.25, -1.24], silver, 0.015)
-  box(bath, [2.02, 0.085, 0.31], [0, 1.24, 0.5], styleMaterials.wood, 0.025)
-  box(bath, [0.58, 0.035, 0.29], [0.47, 1.302, 0.5], linen, 0.012)
-  box(bath, [0.2, 0.09, 0.15], [-0.49, 1.322, 0.5], tomato, 0.035)
+  const bathTray = new Group()
+  bath.add(bathTray)
+  box(bathTray, [2.02, 0.085, 0.31], [0, 1.24, 0.5], styleMaterials.wood, 0.025)
+  box(bathTray, [0.58, 0.035, 0.29], [0.47, 1.302, 0.5], linen, 0.012)
+  box(bathTray, [0.2, 0.09, 0.15], [-0.49, 1.322, 0.5], tomato, 0.035)
   contacts.push({ position: [-2.85, 0.014, -1.3], size: [2.35, 3.55] })
 
   const sink = actor('sink', [0.15, 0, -2.28], [0, 2.37, 0.42])
@@ -163,7 +167,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   cylinder(sink, 0.036, 0.62, [0, 1.97, -0.53], silver)
   box(sink, [0.075, 0.065, 0.4], [0, 2.27, -0.36], silver, 0.02)
   cylinder(sink, 0.035, 0.11, [0, 2.22, -0.18], silver)
-  bottle(sink, [-0.85, 1.66, 0.09], tomato, 0.26)
+  const sinkSoap = bottle(sink, [-0.85, 1.66, 0.09], tomato, 0.26)
   contacts.push({ position: [0.15, 0.014, -2.28], size: [2.5, 1.65] })
 
   const mirror = actor('mirror', [0.15, 3.06, -3.055], [0, 0.92, 0.11])
@@ -241,7 +245,19 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const actorBounds = new Map([...actors].map(([target, group]) => [
     target, new Box3().setFromObject(group).expandByPoint(anchors.get(target)!.getWorldPosition(new Vector3())),
   ]))
-  return { materials, styleMaterials, actors, anchors, bounds, actorBounds, contacts, lampMaterial }
+  const componentBindings: ComponentBindings = new Map([
+    ['bathroom-sink', { root: sink, finishes: [styleMaterials.cabinet, styleMaterials.cabinetPanel], contacts: contacts.slice(1, 2), anchor: [0.15, 2.37, -1.86] }],
+    ['bathroom-mirror', { root: mirror, finishes: [styleMaterials.wood], anchor: [0.15, 3.98, -2.945] }],
+    ['bathroom-toilet', { root: toilet, finishes: [porcelain], contacts: contacts.slice(2, 3), anchor: [2.2, 2.14, -2.06] }],
+    ['bathroom-bath', { root: bath, finishes: [porcelain], contacts: contacts.slice(0, 1), anchor: [-2.85, 1.45, -0.75] }],
+    ['bathroom-supply-shelf', { root: supplies, finishes: [styleMaterials.wood, styleMaterials.lightWood, styleMaterials.woodGrain], contacts: contacts.slice(3, 4), anchor: [3.92, 3.46, -2.37] }],
+    ['bathroom-cleaning-caddy', { root: chores, finishes: [styleMaterials.fridge, styleMaterials.fridgeEdge], contacts: contacts.slice(4, 5), anchor: [0.93, 1.45, 1.15] }],
+  ])
+  const componentFixtures: ComponentFixtures = new Map([
+    ['bathroom-soap-dispenser', { vacant: [sinkSoap], occupied: [] }],
+    ['bathroom-bath-tray', { vacant: [bathTray], occupied: [] }],
+  ])
+  return { materials, styleMaterials, actors, anchors, bounds, actorBounds, contacts, lampMaterial, componentBindings, componentFixtures }
 }
 
 export function bathroomFraming(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0, options: { closeRoom?: boolean } = {}): {

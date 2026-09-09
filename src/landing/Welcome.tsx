@@ -1,9 +1,10 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
+import { GardenBackdrop } from './GardenBackdrop.tsx'
 import { roomPath } from '../roomNavigation.ts'
 import './welcome.css'
 
@@ -20,6 +21,7 @@ const features = [
 ]
 
 export default function Welcome({ accessNotice, paused = false }: { accessNotice?: ReactNode; paused?: boolean }) {
+  const content = useRef<HTMLElement>(null)
   const systemReduced = useSyncExternalStore(subscribeToMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches, () => false)
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
@@ -59,8 +61,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
   }, [])
 
   return <div className="welcome" data-motion={reducedMotion ? 'reduced' : 'full'} data-edition="journal" id="welcome-top">
+    <GardenBackdrop contentRef={content} reducedMotion={reducedMotion} paused={paused} />
     <a className="welcome-skip" href="#welcome-content">Skip to content</a>
-    <header className="welcome-header welcome-container">
+    <header className="welcome-header welcome-container" ref={content}>
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning">
         <Brand variant="featured" decorative />
       </a>

@@ -6,7 +6,7 @@ import { recoveryCodeSchema } from './access.ts'
 const id = z.string().uuid()
 const timestamp = z.string().datetime()
 export const accountEmailSchema = z.string().trim().toLowerCase().email().max(254)
-export const accountRoleSchema = z.enum(['owner', 'member'])
+export const accountRoleSchema = z.enum(['owner', 'admin', 'member'])
 export const accountSchema = z.object({
   id, email: accountEmailSchema, name: nameSchema, createdAt: timestamp,
 })

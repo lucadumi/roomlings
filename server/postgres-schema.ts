@@ -1,5 +1,9 @@
 import { PostgresDatabase } from './database.ts'
-import { accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, applicationTables, sqliteSchema } from './schema.ts'
+import {
+  accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, applicationTables,
+  roomAccessSchema, roomAccessTables, sqliteSchema,
+} from './schema.ts'
+import { backfillRoomOwners } from './room-access-migration.ts'
 
 export type PostgresUpgradeResult = { applied: boolean; schema: string; fromVersion: number; toVersion: number }
 
@@ -54,18 +58,29 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
     const fromVersion = await db.schemaVersion()
     const result = { applied: false, schema: db.schema, fromVersion, toVersion: applicationSchemaVersion }
     if (fromVersion === applicationSchemaVersion) return result
-    if (fromVersion !== 1) {
-      throw new Error(`Cannot upgrade unsupported application schema version ${fromVersion}; only version 1 to ${applicationSchemaVersion} is supported. Use a compatible build and review docs/storage.md.`)
+    if (fromVersion !== 1 && fromVersion !== 2) {
+      throw new Error(`Cannot upgrade unsupported application schema version ${fromVersion}; only versions 1 and 2 to ${applicationSchemaVersion} are supported. Use a compatible build and review docs/storage.md.`)
     }
+    const objects = [
+      ...(fromVersion === 1 ? [...accountRecoveryTables, 'account_recovery_codes_account'] : []),
+      ...roomAccessTables, ...roomAccessTables.map((table) => `${table}_pkey`),
+    ]
     const collision = await db.prepare(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = ? AND c.relname IN (?, ?, ?)`)
-      .get(db.schema, ...accountRecoveryTables, 'account_recovery_codes_account')
+      WHERE n.nspname = ? AND c.relname IN (${objects.map(() => '?').join(', ')})`)
+      .get(db.schema, ...objects)
     if (collision) {
-      throw new Error('A version 1 schema already contains account recovery objects. Review its migration history before upgrading; no changes were made.')
+      const feature = [...accountRecoveryTables, 'account_recovery_codes_account'].includes(String(collision.relname))
+        ? 'account recovery' : 'room access'
+      throw new Error(`A version ${fromVersion} schema already contains ${feature} objects. Review its migration history before upgrading; no changes were made.`)
     }
     if (!options.apply) return result
-    await db.exec(accountRecoverySchema)
-    await protectPrivateTables(db, accountRecoveryTables)
+    if (fromVersion === 1) {
+      await db.exec(accountRecoverySchema)
+      await protectPrivateTables(db, accountRecoveryTables)
+    }
+    await db.exec(roomAccessSchema)
+    await backfillRoomOwners(db)
+    await protectPrivateTables(db, roomAccessTables)
     await recordSchemaVersion(db)
     return { ...result, applied: true }
   })

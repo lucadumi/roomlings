@@ -147,7 +147,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
 })
 
 test('reduced motion removes the scroll runway and holds a stationary room while the object buttons work', { tag: '@room' }, async ({ page }) => {
-  const drawing = await trackDrawing(page)
+  const drawing = await trackDrawing(page, '.welcome-tour canvas')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/welcome')
   await openTour(page)
@@ -169,7 +169,7 @@ test('reduced motion removes the scroll runway and holds a stationary room while
 })
 
 test('the tour stops drawing off screen instead of running behind the rest of the landing', { tag: '@room' }, async ({ page }) => {
-  const drawing = await trackDrawing(page)
+  const drawing = await trackDrawing(page, '.welcome-tour canvas')
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/welcome')
   await openTour(page)

@@ -7,6 +7,7 @@ import pg from 'pg'
 import type { PoolClient, PoolConfig } from 'pg'
 import { z } from 'zod'
 import { applicationSchemaVersion, sqliteSchema } from './schema.ts'
+import { originalRoomOwner } from './room-access-migration.ts'
 
 export type Value = string | number | null
 export type Row = Record<string, Value>
@@ -84,6 +85,13 @@ export class SQLiteDatabase implements Database {
     try {
       this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE;')
       this.db.exec(sqliteSchema)
+      for (const row of this.db.prepare(`SELECT h.id, h.state FROM households h
+        LEFT JOIN household_room_owners o ON o.household_id = h.id WHERE o.household_id IS NULL`).all()) {
+        const memberId = originalRoomOwner(String(row.state))
+        if (memberId) {
+          this.db.prepare('INSERT INTO household_room_owners (household_id, member_id) VALUES (?, ?)').run(row.id, memberId)
+        }
+      }
       const columns = new Set(this.db.prepare('PRAGMA table_info(sessions)').all().map((row) => row.name))
       if (!columns.has('id')) this.db.exec('ALTER TABLE sessions ADD COLUMN id TEXT')
       if (!columns.has('label')) this.db.exec("ALTER TABLE sessions ADD COLUMN label TEXT NOT NULL DEFAULT 'Saved browser'")
@@ -216,8 +224,8 @@ export class PostgresDatabase implements Database {
     await this.transaction(async () => {
       const version = await this.schemaVersion()
       if (version === applicationSchemaVersion) return
-      if (version === 1) {
-        throw new Error(`Application schema "${this.schema}" is version 1; this build requires version ${applicationSchemaVersion}. Back up Postgres, run npm run database:migrate -- --upgrade for a dry run, then repeat with --apply --confirm-schema ${this.schema}. See docs/storage.md before restarting shared applications.`)
+      if (version === 1 || version === 2) {
+        throw new Error(`Application schema "${this.schema}" is version ${version}; this build requires version ${applicationSchemaVersion}. Back up Postgres, run npm run database:migrate -- --upgrade for a dry run, then repeat with --apply --confirm-schema ${this.schema}. See docs/storage.md before restarting shared applications.`)
       }
       throw new Error(`Application schema "${this.schema}" is version ${version}; this build only supports version ${applicationSchemaVersion}. Use a compatible application build and review docs/storage.md; do not downgrade migration records.`)
     })
@@ -257,6 +265,10 @@ export class PostgresDatabase implements Database {
     const client = await this.pool.connect()
     const scope = { client, active: true }
     let broken = false
+    let connectionError: Error | undefined
+    // Checked-out clients do not have the pool's idle connection error listener.
+    const disconnected = (error: Error) => { broken = true; connectionError = error }
+    client.on('error', disconnected)
     try {
       await client.query('BEGIN')
       await client.query(`SET LOCAL search_path TO "${this.schema}", pg_catalog`)
@@ -264,6 +276,7 @@ export class PostgresDatabase implements Database {
       // Every repository operation takes it, including reads that refresh session timestamps.
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended(current_database() || $1, 0))', [`:${this.schema}`])
       const result = await this.context.run(scope, operation)
+      if (connectionError) throw connectionError
       await client.query('COMMIT')
       return result
     } catch (error) {
@@ -272,6 +285,7 @@ export class PostgresDatabase implements Database {
     } finally {
       scope.active = false
       client.release(broken)
+      client.removeListener('error', disconnected)
     }
   }
 

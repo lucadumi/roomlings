@@ -41,7 +41,7 @@ async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
   }, [before.toString('base64'), after.toString('base64')])
 }
 
-test('presets require confirmation and sync to another roommate without WebGL', async ({ page, accounts, browser, request, baseURL }) => {
+test('presets require admin confirmation and sync to another roommate without WebGL', async ({ page, accounts, browser, request, baseURL }) => {
   const owner = await createHousehold(accounts.store, 'A room of our own', 'Rowan')
   const joined = await request.post('/api/join', { data: { inviteCode: owner.household.inviteCode, name: 'Alex' } })
   await expect(joined).toBeOK()
@@ -66,13 +66,13 @@ test('presets require confirmation and sync to another roommate without WebGL', 
     await page.goto('/kitchen')
     await expect(page.getByText('Your kitchen, minus the 3D.', { exact: true })).toBeVisible()
     const picker = await openPicker(page)
-    await expect(picker.getByRole('radio', { name: 'Original', exact: true })).toBeChecked()
+    await expect(picker.getByRole('radio', { name: 'Roomlings', exact: true })).toBeChecked()
     await expect(picker.getByRole('button', { name: 'Apply for everyone', exact: true })).toBeDisabled()
     await picker.getByRole('radio', { name: 'Clay', exact: true }).check()
     await picker.getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Room style', exact: true })).toBeFocused()
     await openPicker(page)
-    await expect(picker.getByRole('radio', { name: 'Original', exact: true })).toBeChecked()
+    await expect(picker.getByRole('radio', { name: 'Roomlings', exact: true })).toBeChecked()
     await picker.getByRole('radio', { name: 'Sage', exact: true }).check()
     await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     await expect(picker).toHaveCount(0)
@@ -83,8 +83,7 @@ test('presets require confirmation and sync to another roommate without WebGL', 
     await expect(picker.getByRole('radio', { name: 'Sage', exact: true })).toBeFocused()
     await other.evaluate(() => window.dispatchEvent(new Event('focus')))
     await expect(other.locator('.kitchen-world')).toHaveAttribute('data-room-style', 'sage')
-    await openPicker(other)
-    await expect(other.getByRole('radio', { name: 'Sage', exact: true })).toBeChecked()
+    await expect(other.getByRole('button', { name: 'Room style', exact: true })).toHaveCount(0)
     const result = await request.get('/api/household', { headers: { Authorization: `Bearer ${owner.token}` } })
     await expect(result).toBeOK()
     const saved = householdSchema.parse((await result.json()).household)
@@ -210,12 +209,12 @@ test('saved finishes repaint the same scene and restore Original without resetti
   }
   const original = await screenshot()
   const seen = [original]
-  for (const name of ['Sage', 'Clay', 'Linen', 'Original']) {
+  for (const name of ['Sage', 'Clay', 'Linen', 'Roomlings']) {
     const picker = await openPicker(page)
     await picker.getByRole('radio', { name, exact: true }).check()
     await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     await expect(picker).toHaveCount(0)
-    await expect(room).toHaveAttribute('data-room-style', name.toLowerCase())
+    await expect(room).toHaveAttribute('data-room-style', name === 'Roomlings' ? 'original' : name.toLowerCase())
     await expect(room).toHaveAttribute('data-rendering', 'paused')
     await expect(room).toHaveAttribute('data-framing', 'whole')
     await expect(room).toHaveAttribute('data-evening', 'true')
@@ -223,7 +222,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
     await expect(page.getByRole('button', { name: 'Peek inside', exact: true })).toBeVisible()
     expect(await canvas!.evaluate((element) => element.isConnected)).toBe(true)
     const image = await screenshot()
-    if (name === 'Original') {
+    if (name === 'Roomlings') {
       if (!image.equals(original)) {
         await testInfo.attach('original-before', { body: original, contentType: 'image/png' })
         await testInfo.attach('original-restored', { body: image, contentType: 'image/png' })
@@ -240,7 +239,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
 test('room controls stay separate on a narrow tablet', async ({ page, emptyHousehold: _household }) => {
   await page.setViewportSize({ width: 600, height: 900 })
   await page.goto('/kitchen')
-  await expect(page.getByRole('button', { name: 'Room style', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Room objects', exact: true })).toBeVisible()
   const bounds = await page.locator('.house-tools, .room-caption, .game-identity, .game-resources').evaluateAll((elements) =>
     elements.map((element) => {
       const { x, y, width, height } = element.getBoundingClientRect()
@@ -254,7 +253,7 @@ test('room controls stay separate on a narrow tablet', async ({ page, emptyHouse
       `${a.name} must not overlap ${b.name}`).toBe(true)
   }
   await openPicker(page)
-  await expect(page.getByRole('radio', { name: 'Original', exact: true })).toBeFocused()
+  await expect(page.getByRole('radio', { name: 'Roomlings', exact: true })).toBeFocused()
   await page.keyboard.press('Escape')
 })
 
@@ -282,7 +281,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }
     expect(controls!.x >= label!.x + label!.width || controls!.y >= label!.y + label!.height
       || controls!.x + controls!.width <= label!.x || controls!.y + controls!.height <= label!.y).toBe(true)
     const picker = await openPicker(page)
-    await expect(picker.getByRole('radio', { name: 'Original', exact: true })).toBeFocused()
+    await expect(picker.getByRole('radio', { name: 'Roomlings', exact: true })).toBeFocused()
     await page.keyboard.press('ArrowRight')
     const sage = picker.getByRole('radio', { name: 'Sage', exact: true })
     await expect(sage).toBeChecked()

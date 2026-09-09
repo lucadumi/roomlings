@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   ArrowRight, Check, CheckCheck,
@@ -46,17 +46,23 @@ import type { ChoreFilter, ChoreView } from './Chores.tsx'
 import { RestockPanel } from './Restock.tsx'
 import { RoomPicker } from './RoomPicker.tsx'
 import { Dropdown } from './Dropdown.tsx'
+import { componentChoreArea, getRoomComponents } from '../shared/roomComponents.ts'
+import type { ComponentChoreSuggestion, RoomComponent } from '../shared/roomComponents.ts'
+import { roomAccessSchema } from '../shared/roomAccess.ts'
+import type { RoomAccess } from '../shared/roomAccess.ts'
+import { RoomEditor, RoomObjectsPanel } from './RoomComponents.tsx'
+import { RoomAdminPanel } from './RoomAdminPanel.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
 
-type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies'
-type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help'
+type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit'
+type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help' | 'room-admins'
   | { account: AccountIntent }
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
   | { editBill: Bill } | { payBill: BillOccurrence } | { pauseBill: { bill: Bill; paused: boolean } }
   | { editShopping: ShoppingItem } | { removeShopping: string } | { releaseShopping: string }
-  | { createChore: { roomId: RoomId | null; area: ChoreArea | null } } | { editChore: Chore }
+  | { createChore: { roomId: RoomId | null; area: ChoreArea | null; componentId?: string | null; title?: string; repeatDays?: number | null } } | { editChore: Chore }
   | { completeChore: Chore } | { archiveChore: Chore } | { undoChore: ChoreCompletion }
   | { restockItem: ShoppingItemInput }
   | { checkout: { id: string; items: ShoppingItem[] } } | null
@@ -102,6 +108,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   sessionRef.current = session
   const sessionEpoch = useRef(0)
   const pendingMutation = useRef<{ key: string; id: string; version: number } | null>(null)
+  const pendingRoomMutation = useRef<{ key: string; id: string; version: number } | null>(null)
   const [account, setAccount] = useState<AccountState | null>(null)
   const accountRef = useRef(account)
   accountRef.current = account
@@ -131,6 +138,19 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const [saved, setSaved] = useState<SavedKitchen[]>([])
   const [stockEvent, setStockEvent] = useState<{ id: string; category: Category } | null>(null)
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ target: 'room', id: 0 })
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null)
+  const [componentPreview, setComponentPreview] = useState<{ householdId: string; roomId: RoomId; components: readonly RoomComponent[] } | null>(null)
+  const [roomAccess, setRoomAccess] = useState<RoomAccess | null>(null)
+  const [roomAccessError, setRoomAccessError] = useState('')
+  const [roomAccessRetry, setRoomAccessRetry] = useState(0)
+  const savedComponents = useMemo(() => session ? getRoomComponents(session.household) : [], [session?.household.id, session?.household.roomComponents])
+  const canEditRooms = !!session && roomAccess?.householdId === session.household.id && roomAccess.memberId === session.memberId
+    && roomAccess.role !== 'member' && !roomAccessError
+  const previewComponents = useCallback((components: readonly RoomComponent[] | null) => {
+    const householdId = session?.household.id
+    setComponentPreview((previous) => components && householdId ? { householdId, roomId: currentRoom, components }
+      : previous && previous.householdId === householdId && previous.roomId === currentRoom ? null : previous)
+  }, [session?.household.id, currentRoom])
 
   const changeSavedKitchen = useCallback((token: string, change: SavedKitchenChange) => {
     setSaved((previous) => previous.map((kitchen) => kitchen.token === token ? { ...kitchen, ...change } : kitchen))
@@ -251,6 +271,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setChoreView('active')
     setChoreMine(false)
     setSupplyRoom(currentRoom)
+    setSelectedComponentId(null)
+    setComponentPreview(null)
     setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
   }, [currentRoom])
   useEffect(() => {
@@ -259,6 +281,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     return () => clearTimeout(timer)
   }, [notice])
   useEffect(() => { setFormError(''); pendingMutation.current = null }, [dialog])
+  useEffect(() => { pendingRoomMutation.current = null }, [currentRoom, session?.household.id, session?.memberId])
 
   const expireSession = useCallback((expected: KitchenSession, message: string, accountExpired = false) => {
     if (!sameKitchenSession(sessionRef.current, expected)) return
@@ -285,6 +308,31 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setSyncState('offline')
     if (expected.token !== null) changeSavedKitchen(expected.token, { expired: true })
   }, [changeSavedKitchen])
+
+  useEffect(() => {
+    const current = sessionRef.current
+    if (!current) { setRoomAccess(null); setRoomAccessError(''); return }
+    const controller = new AbortController()
+    setRoomAccess((previous) => previous?.householdId === current.household.id && previous.memberId === current.memberId ? previous : null)
+    void request('/household/room-access', { token: current.token, householdId: current.household.id,
+      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) })
+      .then((data) => {
+        const next = roomAccessSchema.parse(data)
+        if (controller.signal.aborted || !sameKitchenSession(sessionRef.current, current)) return
+        if (next.householdId !== current.household.id || next.memberId !== current.memberId) throw new Error('The room permissions did not match this household. Refresh access before editing.')
+        if (next.version < (sessionRef.current?.household.version ?? 0)) return
+        setRoomAccess((previous) => previous?.householdId === next.householdId && previous.memberId === next.memberId && previous.version > next.version ? previous : next)
+        setRoomAccessError('')
+      }).catch((failure: unknown) => {
+        if (controller.signal.aborted || !sameKitchenSession(sessionRef.current, current)) return
+        if (failure instanceof RequestError && failure.status === 401) {
+          expireSession(current, failure.message, true)
+          return
+        }
+        setRoomAccessError(failure instanceof Error ? failure.message : 'Room editing permissions could not be loaded.')
+      })
+    return () => controller.abort()
+  }, [session?.token, session?.memberId, session?.household.id, session?.household.version, roomAccessRetry, expireSession])
 
   const refresh = useCallback(async (refreshAccess = false) => {
     const current = sessionRef.current
@@ -356,13 +404,16 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     if (!keepDialog) setDialog(null)
     setSyncState('saved')
     setStockEvent(null)
+    setSelectedComponentId(null)
+    setComponentPreview(null)
     setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
     if (location.pathname === '/' && !keepDialog) history.replaceState(history.state, '', roomPath(currentRoom))
   }
 
-  const action = async (path: string, body: Record<string, unknown>, success: string, method?: string, inline = false) => {
-    if (!session || busy) return
+  const action = async (path: string, body: Record<string, unknown>, success: string, method?: string, inline = false): Promise<boolean> => {
+    if (!session || busy) return false
     const epoch = sessionEpoch.current
+    const pending = path === '/household/room-components' ? pendingRoomMutation : pendingMutation
     setBusy(true)
     setFormError('')
     if (inline) setError('')
@@ -370,20 +421,20 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       let mutation: { mutationId: string; mutationVersion: number } | undefined
       if (path !== '/shopping/checkout') {
         const key = JSON.stringify([epoch, session.household.id, session.memberId, path, method ?? 'POST', inline ? body : null])
-        if (pendingMutation.current?.key !== key) {
+        if (pending.current?.key !== key) {
           if (!globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to safely save a kitchen change.')
-          pendingMutation.current = { key, id: crypto.randomUUID(), version: session.household.version }
+          pending.current = { key, id: crypto.randomUUID(), version: session.household.version }
         }
-        mutation = { mutationId: pendingMutation.current.id, mutationVersion: pendingMutation.current.version }
+        mutation = { mutationId: pending.current.id, mutationVersion: pending.current.version }
       }
       const result = await request<{ household: unknown; replayed?: boolean }>(path, {
         token: session.token, csrfToken: session.token === null ? accountRef.current?.csrfToken : undefined,
         householdId: session.household.id, body: { ...body, ...mutation, version: session.household.version }, method,
       })
-      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return
+      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return false
       const household = householdSchema.parse(result.household)
       setSession((previous) => previous && sameKitchenSession(previous, session) && household.version >= previous.household.version ? { ...previous, household } : previous)
-      pendingMutation.current = null
+      pending.current = null
       setNotice(result.replayed ? 'Your earlier change was already saved. The latest kitchen is now shown.' : success)
       if (!inline) setDialog(null)
       setSyncState('saved')
@@ -395,19 +446,23 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         setFilter('all')
         setPage('overview')
       }
+      return true
     } catch (failure) {
-      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return
+      if (sessionEpoch.current !== epoch || !sameKitchenSession(sessionRef.current, session)) return false
       if (failure instanceof RequestError && failure.status === 401) {
         expireSession(session, failure.message, true)
-        return
+        return false
       }
       const message = failure instanceof Error ? failure.message : 'The change could not be saved.'
+      if (path === '/household/room-components' && failure instanceof RequestError && failure.code === 'MUTATION_PAYLOAD_CHANGED') pending.current = null
       if (failure instanceof RequestError && (failure.status === 0 || failure.status >= 500)) setSyncState('offline')
       if (inline) setError(message)
       else setFormError(message)
-      if (failure instanceof RequestError && (failure.status === 409 || (failure.status === 403 && session.token === null))) {
-        await refresh(failure.status === 403)
+      if (failure instanceof RequestError && (failure.status === 409 || failure.status === 403)) {
+        await refresh(failure.status === 403 && session.token === null)
+        if (failure.status === 403) setRoomAccessRetry((attempt) => attempt + 1)
       }
+      return false
     } finally {
       if (sessionEpoch.current === epoch && sameKitchenSession(sessionRef.current, session)) setBusy(false)
     }
@@ -473,6 +528,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     }
   }
   const openDialog = (next: Dialog) => {
+    if (busy && page === 'room-edit') { setError('Wait for the room change to finish before opening another tool.'); return }
     setFormError('')
     if ((account?.configured || account?.account) && (next === 'create' || next === 'join' || next === 'invite')) {
       setDialog({ account: next === 'create' ? 'create' : next === 'join' ? 'join' : 'manage' })
@@ -490,7 +546,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       expense.bill ? 'Bill' : 'Expense', expense.date, expense.description, (expense.amount / 100).toFixed(2), household.currency,
       memberName(expense.paidBy), expense.participants.map(memberName).join('; '), expense.bill ? 'Monthly bill' : categoryLabels[expense.category],
       expense.bill?.month ?? '',
-      expense.shoppingRunId ? runs.get(expense.shoppingRunId)?.items.map((item) => `${item.quantity} ${item.name}${item.notes ? ` (${item.notes})` : ''}`).join('; ') ?? '' : '',
+      expense.shoppingRunId ? runs.get(expense.shoppingRunId)?.items.map((item) =>
+        `${item.quantity} ${item.name}${item.notes ? ` (${item.notes})` : ''}${item.componentSources?.length ? ` [${item.componentSources.map((source) => `${roomCatalog[source.roomId].name}: ${source.componentName}`).join(', ')}]` : ''}`).join('; ') ?? '' : '',
     ])
     for (const settlement of household.settlements) rows.push([
       'Repayment', settlement.createdAt.slice(0, 10), 'Recorded repayment', (settlement.amount / 100).toFixed(2),
@@ -547,6 +604,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setMonth(localDate(date).slice(0, 7))
   }
   const visit = (next: Page) => {
+    if (page === 'room-edit' && busy) { setError('Wait for the room change to finish before leaving the editor.'); return }
+    if (next !== 'room-edit') { setComponentPreview(null); pendingRoomMutation.current = null }
     setPage(next)
     setFormError('')
     setSearch('')
@@ -568,6 +627,52 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const openSupplies = (roomId = currentRoom) => {
     setSupplyRoom(roomId)
     visit('supplies')
+  }
+  const openRoomObjects = (id: string | null = null) => {
+    setSelectedComponentId(id)
+    visit('objects')
+  }
+  const editRoom = (id: string | null = null) => {
+    if (!canEditRooms) { setError(roomAccessError || 'Ask a household admin for room editing access.'); return }
+    if (page !== 'room-edit') pendingRoomMutation.current = null
+    setSelectedComponentId(id)
+    setFormError('')
+    setError('')
+    visit('room-edit')
+  }
+  const selectRoomComponent = (id: string) => {
+    if (busy) return
+    if (page === 'room-edit') setSelectedComponentId(id)
+    else openRoomObjects(id)
+  }
+  const openComponentChores = (component: RoomComponent) => {
+    setChoreFilter({ room: component.roomId, area: null, componentId: component.id })
+    setChoreView('active')
+    setChoreMine(false)
+    visit('chores')
+  }
+  const createComponentChore = (component: RoomComponent, suggestion?: ComponentChoreSuggestion) => {
+    openDialog({ createChore: {
+      roomId: component.roomId, area: componentChoreArea(component), componentId: component.id,
+      title: suggestion?.title, repeatDays: suggestion?.repeatDays,
+    } })
+  }
+  const useRoomComponent = (component: RoomComponent) => {
+    switch (component.kind) {
+      case 'shopping-bag': interact('stock'); break
+      case 'receipt-book': interact('ledger'); break
+      case 'house-pot': interact('budget'); break
+      case 'noticeboard': interact('roommates'); break
+      case 'settlement-envelope': interact('settle'); break
+      case 'supply-shelf': openSupplies(component.roomId); break
+      case 'cleaning-caddy':
+        setChoreFilter({ room: component.roomId, area: null })
+        setChoreView('active')
+        setChoreMine(false)
+        visit('chores')
+        break
+      default: setError('Use this object through its supplies, chores or state controls.')
+    }
   }
   const switchRoom = (value: string) => {
     const parsed = roomIdSchema.safeParse(value)
@@ -610,6 +715,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         <p><Check size={19} /><span><strong>Choose a fixture.</strong> The sink, mirror, bath, toilet and floor open chores for that area.</span></p>
         <p><Users size={19} /><span><strong>Share the work.</strong> Assign a person or rotation. Completing a chore records who did it and advances the next turn.</span></p>
         <p><Plus size={19} /><span><strong>Restock supplies.</strong> The supply shelf adds items to the existing shopping list. It does not record a purchase.</span></p>
+        <p><Settings2 size={19} /><span><strong>Make the room yours.</strong> Room objects holds supplies, care and manual states. Admins use Edit room to preview appliances, fixtures and decorations before applying a shared change.</span></p>
       </div><p className="field-hint">Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.</p>
     </Modal>
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
@@ -620,6 +726,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         <p><Wallet size={19} /><span><strong>Watch the house pot.</strong> The coins represent the monthly budget you have left, not points or rewards.</span></p>
         <p><Users size={19} /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
         <p><Check size={19} /><span><strong>Keep up with chores.</strong> The cleaning caddy opens this room's tasks. Room supplies go onto the existing shopping list.</span></p>
+        <p><Settings2 size={19} /><span><strong>Make the room yours.</strong> Room objects holds supplies, care and manual states. Admins use Edit room to preview appliances, furniture and decorations before applying a shared change.</span></p>
       </div><p className="field-hint">Drag to turn the room. Scroll or pinch to zoom. Selecting an object brings it closer while its details stay beside the room. Use Whole room to pull back, or tap the kettle for a little tea break. Everything is also available from the toolbar. The fridge visualizes purchases, not what is left to eat.</p>
     </Modal>
     // Keep welcome-screen forms mounted when the loaded kitchen replaces the welcome content.
@@ -636,10 +743,20 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       <RecoveryForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/recover', body) }} />
     </Modal>
     if (!household || !session) return null
-    if (dialog === 'rooms') return <RoomPicker currentRoom={currentRoom} onClose={close}
+    if (dialog === 'rooms') return <RoomPicker currentRoom={currentRoom} onClose={close} components={savedComponents} roomStyle={household.roomStyle}
+      ledger={{ counts, memberCount: household.members.filter((member) => !member.inactive).length, expenseCount: household.expenses.length, fundFraction: remaining / household.budget }}
       onSelect={(roomId) => { switchRoom(roomId); setDialog(null) }} />
+    if (dialog === 'room-admins') return <Modal title="Household admins." subtitle="Admins customize the rooms and can give another roommate admin access. Ownership and the shared ledger stay unchanged." onClose={close} busy={busy}>
+      {roomAccess?.householdId === household.id && roomAccess.memberId === session.memberId
+        ? <RoomAdminPanel access={roomAccess} busy={busy || !!roomAccessError}
+          onChange={(memberId, role) => { void action(`/household/room-access/${memberId}`, { role }, role === 'admin' ? 'Room admin access granted.' : 'Room admin access removed.', 'PATCH') }} />
+        : <p className="field-hint" role="status">Loading household permissions...</p>}
+      {roomAccessError && <p className="form-error" role="alert">{roomAccessError}<button type="button" className="text-button" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry room access</button></p>}
+      {footerError}
+    </Modal>
     if (typeof dialog === 'object' && 'createChore' in dialog) return <Modal title="Add a household chore." subtitle="Choose a room, schedule and who takes turns." onClose={close} busy={busy}>
       <ChoreForm household={household} memberId={session.memberId} initialRoom={dialog.createChore.roomId} initialArea={dialog.createChore.area} busy={busy} error={footerError}
+        initialComponentId={dialog.createChore.componentId} initialTitle={dialog.createChore.title} initialRepeatDays={dialog.createChore.repeatDays}
         onSubmit={(body) => { void action('/chores', body, 'Chore added to your household.') }} />
     </Modal>
     if (typeof dialog === 'object' && 'editChore' in dialog) return <Modal title="Edit a household chore." subtitle="Completed turns stay in history. Changes apply to the scheduled task." onClose={close} busy={busy}>
@@ -656,7 +773,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       return <Modal title={completing ? 'Mark this chore done?' : snapshot.archived ? 'Restore this chore?' : 'Archive this chore?'}
         subtitle={completing ? 'This records a completed turn, not a payment.' : snapshot.archived ? 'The chore returns with its saved schedule. Previous history stays.' : 'The chore leaves the active list. Its history stays, and it can be restored later.'}
         onClose={close} busy={busy}>
-        <div className="chore-confirmation"><h3>{snapshot.title}</h3><p>{choreLocationLabel(snapshot.roomId, snapshot.area)}</p>
+        <div className="chore-confirmation"><h3>{snapshot.title}</h3><p>{choreLocationLabel(snapshot.roomId, snapshot.area,
+          snapshot.componentId ? savedComponents.find((component) => component.id === snapshot.componentId)?.name ?? snapshot.componentName : undefined)}</p>
           {snapshot.dueDate && <p>Scheduled for {dateTitle(snapshot.dueDate, billingDate(household.billingTimeZone))}.</p>}
           {completing && <p>{assignee ? `Assigned to ${assignee.name}. ` : 'Unassigned. '}Completion will be recorded by {memberName(session.memberId)}.</p>}
         </div>
@@ -674,7 +792,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const chore = household.chores.items.find((item) => item.id === dialog.undoChore.choreId)
       const allowed = !!completion && canUndoChore(chore, completion)
       return <Modal title="Undo this chore completion?" subtitle="Restore the previous due date and turn. A later edit or completion cannot be overwritten." onClose={close} busy={busy}>
-        <div className="chore-confirmation"><h3>{dialog.undoChore.title}</h3><p>Scheduled for {dateTitle(dialog.undoChore.dueDate, billingDate(household.billingTimeZone))}.</p></div>
+        <div className="chore-confirmation"><h3>{dialog.undoChore.title}</h3><p>{choreLocationLabel(dialog.undoChore.roomId, dialog.undoChore.area, dialog.undoChore.componentName)}</p><p>Scheduled for {dateTitle(dialog.undoChore.dueDate, billingDate(household.billingTimeZone))}.</p></div>
         {!allowed ? <p className="form-error" role="alert">This completion can no longer be undone because the chore changed.</p> : footerError}
         <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep completion</button>
           <button className="button primary" disabled={busy || !allowed} onClick={() => {
@@ -685,7 +803,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     }
     if (typeof dialog === 'object' && 'restockItem' in dialog) return <Modal title="Restock a household supply." subtitle="Review the quantity before adding it to the shared shopping list." onClose={close} busy={busy}>
       <ShoppingItemForm household={household} memberId={session.memberId} initialItem={dialog.restockItem} preventDuplicate busy={busy} error={footerError}
-        onSubmit={(body) => { void action('/shopping/items', body, 'Supply added to the shared shopping list.') }} />
+        onSubmit={(body) => { void action('/shopping/items', body, 'Supply saved on the shared shopping list.') }} />
     </Modal>
     if (dialog === 'access' && session.token !== null) return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
       onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session, message)} />
@@ -751,7 +869,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       <SettingsForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/household', body, 'Your house rules have been updated.', 'PATCH') }} />
     </Modal>
     if (dialog === 'room-style') return <Modal title="Make the room feel like home." subtitle="One shared look for your household. Your groceries, bills and balances stay the same." onClose={close} busy={busy}>
-      <RoomStyleForm current={household.roomStyle} busy={busy} error={footerError} onClose={close}
+      <RoomStyleForm current={household.roomStyle} busy={busy} canEdit={canEditRooms} error={footerError} onClose={close}
         onSubmit={(roomStyle) => { void action('/household/room-style', { roomStyle }, 'Room style saved for everyone.', 'PATCH') }} />
     </Modal>
     if (dialog === 'invite') return <Modal title="Better with roommates." subtitle="This private invitation lets a roommate join and edit your kitchen. Only share it with people you trust." onClose={close} busy={busy}>
@@ -831,27 +949,52 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     </div>
   </section>
 
-  return <div className="game-app">
+  return <div className="game-app" data-page={page} data-component-panel={page === 'objects' || page === 'room-edit'}>
     <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
       stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
       busy={busy} onRooms={() => openDialog('rooms')} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
-      panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : null}
+      panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : page === 'objects' || page === 'room-edit' ? page : null}
+      panelSide={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
+      components={page === 'room-edit' && componentPreview?.householdId === household.id && componentPreview.roomId === currentRoom ? componentPreview.components : savedComponents}
+      editMode={page === 'room-edit'} selectedComponentId={selectedComponentId} onComponentSelect={selectRoomComponent}
+      onObjects={() => { if (page === 'room-edit') setSelectedComponentId(null); else openRoomObjects() }}
+      canEditRooms={canEditRooms} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')} onSettings={() => openDialog('settings')}
       onAction={interact} onInvite={() => openDialog('invite')}
-      onSettings={() => openDialog('settings')} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
-    {error && <div className="error-banner" role="alert"><span>{error}</span><button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button></div>}
-    {page !== 'overview' && !dialog && <RoomPanel
-      title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.` }[page]}
-      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', supplies: 'Use the same shopping list for supplies across your home.' }[page]}
-      view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}` : page}
+    {(error || (roomAccessError && !dialog)) && <div className="error-banner" role="alert">
+      <span>{error || roomAccessError}{error && roomAccessError && error !== roomAccessError ? ` ${roomAccessError}` : ''}</span>
+      {roomAccessError && <button className="text-button" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry room access</button>}
+      {error && <button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button>}
+    </div>}
+    {page !== 'overview' && (!dialog || page === 'room-edit') && <RoomPanel
+      title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
+      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
+      view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}:${choreFilter.componentId ?? ''}` : page === 'objects' ? `objects:${selectedComponentId ?? ''}` : page}
+      suspended={dialog !== null} busy={page === 'room-edit' && busy}
+      side={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
+      badge={page === 'objects' || page === 'room-edit' ? <span className={`room-panel-mode ${page === 'room-edit' ? 'editing' : 'live'}`}>{page === 'room-edit' ? 'Private preview' : 'Live room'}</span> : undefined}
       onClose={() => visit('overview')}
     ><div className="game-panel-content">
+        {page === 'room-edit' && <RoomEditor key={`${household.id}:${currentRoom}`} household={household} roomId={currentRoom} busy={busy} canEdit={canEditRooms}
+          error={formError ? <p className="form-error" role="alert">{formError}</p> : !canEditRooms ? <p className="form-error" role="alert">Room editing access is unavailable. Your draft is still here; an admin must restore your access before you can apply it.</p> : null}
+          selectedComponentId={selectedComponentId} onSelect={setSelectedComponentId} onPreview={previewComponents}
+          onSubmit={(patch) => action('/household/room-components', patch, 'Room updated for everyone.', 'PATCH')}
+          onClose={() => visit('overview')} onManageAdmins={() => openDialog('room-admins')} onRoomColors={() => openDialog('room-style')} />}
+        {page === 'objects' && <RoomObjectsPanel household={household} roomId={currentRoom} selectedComponentId={selectedComponentId} busy={busy} canEdit={canEditRooms}
+          onSelect={setSelectedComponentId} onEdit={editRoom} onRestock={(item) => openDialog({ restockItem: item })}
+          onShopping={() => { setShoppingView('list'); visit('shopping') }} onCreateChore={createComponentChore} onOpenChores={openComponentChores}
+          onState={(component, state) => { void action(`/room-components/${component.id}/state`, { componentVersion: component.version, state }, 'Object state saved for everyone.', 'PATCH', true) }}
+          onUse={useRoomComponent} onHelp={() => openDialog('help')} />}
         {page === 'chores' && <ChoresPanel household={household} memberId={session.memberId} filter={choreFilter} onFilter={setChoreFilter} view={choreView} onView={setChoreView} mine={choreMine} onMine={setChoreMine} busy={busy}
-          onAdd={() => openDialog({ createChore: { roomId: choreFilter.room === 'home' ? null : choreFilter.room === 'all' ? currentRoom : choreFilter.room, area: choreFilter.area } })}
+          onAdd={() => {
+            const component = savedComponents.find((component) => component.id === choreFilter.componentId && component.installed)
+            if (component) createComponentChore(component)
+            else openDialog({ createChore: { roomId: choreFilter.room === 'home' ? null : choreFilter.room === 'all' ? currentRoom : choreFilter.room, area: choreFilter.area } })
+          }}
           onEdit={(chore) => openDialog({ editChore: chore })} onComplete={(chore) => openDialog({ completeChore: chore })}
           onArchive={(chore) => openDialog({ archiveChore: chore })} onUndo={(completion) => openDialog({ undoChore: completion })}
           onRestock={() => openSupplies(choreFilter.room === 'all' || choreFilter.room === 'home' ? currentRoom : choreFilter.room)} />}
@@ -878,6 +1021,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           onPause={(bill, paused) => openDialog({ pauseBill: { bill, paused } })} onRemove={(expense) => openDialog({ remove: expense })} onExport={exportLedger} />}
         {page === 'kitchen' && <div className="access-entry">
           <button className="button secondary full" disabled={busy} onClick={() => openDialog({ account: 'manage' })}><Users size={16} />Account and membership</button>
+          <button className="button secondary full" disabled={busy} onClick={() => openDialog('room-admins')}><Users size={16} />Household admins</button>
           {session.token !== null && <><button className="button secondary full" disabled={busy} onClick={() => openDialog('access')}><KeyRound size={16} />Recovery and devices</button>
             <button className="text-button" disabled={busy} onClick={() => openDialog('recover')}>Use a recovery code</button></>}
         </div>}

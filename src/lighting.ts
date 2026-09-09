@@ -2,8 +2,9 @@ import {
   AmbientLight, DataTexture, DirectionalLight, Group, HemisphereLight, LinearFilter,
   Mesh, MeshBasicMaterial, PlaneGeometry, RGBAFormat, UnsignedByteType,
 } from 'three'
+import { roomAccents } from './roomStyles.ts'
 
-export const daylight = { sun: 2.45, sky: 1.3, fill: 0.65, lamp: 0, bulb: 0.12, window: '#bad6d0', disc: '#ecc86c' }
+export const daylight = { sun: 2.45, sky: 1.3, fill: 0.65, lamp: 0, bulb: 0.12, window: roomAccents.sky, disc: roomAccents.gold }
 export const eveningLight = { sun: 0.45, sky: 0.65, fill: 0.3, lamp: 10, bulb: 1.7, window: '#697e98', disc: '#e6edf0' }
 
 export function createRoomLights() {

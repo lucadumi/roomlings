@@ -9,8 +9,10 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 - Split paid groceries and recurring bills between the people sharing them.
 - Track the monthly grocery budget and record roommate repayments.
 - Share a household through verified-email accounts, invitations and saved access.
+- Customize the kitchen and bathroom with optional appliances, furniture and decorations across compatible, live-previewed positions.
+- Give room admins editing access while everyone uses the same supplies, chores and manually recorded object states.
 
-The room's objects open these tools, and a toolbar keeps them available without 3D. Every balance comes from the same shared ledger.
+The room's objects open these tools, and a toolbar keeps them available without 3D. **Room objects** groups each kind into one preview card, with position choices for repeated objects. Its **Edit room** action lets admins preview and apply a shared layout. Installing or moving an object never creates a purchase, debt or chore. Every balance comes from the same shared ledger.
 
 ## Run locally
 

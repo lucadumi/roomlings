@@ -1,6 +1,6 @@
 import { Component, Suspense, useLayoutEffect, useRef } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { CircleHelp, Coins, Grid2X2, Home, ListChecks, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
+import { Boxes, CircleHelp, Coins, Grid2X2, Home, ListChecks, Palette, Plus, ReceiptText, Settings2, Snowflake, Users, Wallet } from 'lucide-react'
 import { money } from '../shared/domain.ts'
 import type { Category, Household } from '../shared/domain.ts'
 import { Avatar } from './components.tsx'
@@ -10,6 +10,8 @@ import type { FocusRequest } from './camera.ts'
 import { roomCatalog } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { roomViews } from './roomViews.ts'
+import { getRoomComponents } from '../shared/roomComponents.ts'
+import type { RoomComponent } from '../shared/roomComponents.ts'
 
 type Props = {
   roomId: RoomId
@@ -34,12 +36,19 @@ type Props = {
   syncState: 'saved' | 'offline'
   inert: boolean
   panelOpen: boolean
-  activeTool: KitchenAction | 'chores' | null
-  onAction: (action: KitchenAction) => void
-  onInvite: () => void
-  onSettings: () => void
+  panelSide?: 'left' | 'right'
+  activeTool: KitchenAction | 'chores' | 'objects' | 'room-edit' | null
+  components?: readonly RoomComponent[]
+  editMode: boolean
+  selectedComponentId: string | null
+  onComponentSelect: (id: string) => void
+  onObjects: () => void
+  canEditRooms: boolean
   onRoomStyle: () => void
   onHelp: () => void
+  onSettings: () => void
+  onAction: (action: KitchenAction) => void
+  onInvite: () => void
   onSelect: (category: Category) => void
 }
 
@@ -57,7 +66,9 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export function GameHome({
   roomId, onRooms, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
-  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onInvite, onSettings, onRoomStyle, onHelp, onSelect,
+  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onInvite, onSelect,
+  components, editMode, selectedComponentId, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
+  panelSide = 'right',
 }: Props) {
   const World = roomViews[roomId]
   const home = useRef<HTMLElement>(null)
@@ -84,12 +95,12 @@ export function GameHome({
   }, [])
   const viewer = household.members.find((member) => member.id === memberId)!
   const activeMembers = household.members.filter((member) => !member.inactive)
-  return <main className="game-home" id="main" ref={home} data-panel-open={panelOpen} inert={inert} aria-hidden={inert || undefined}>
+  return <main className="game-home" id="main" ref={home} data-panel-open={panelOpen} data-panel-side={panelSide} data-edit-mode={editMode} inert={inert} aria-hidden={inert || undefined}>
     <header className="game-hud">
       <div className="game-identity">
         <a className="brand" href="/" aria-label="Roomlings home"><Brand decorative /></a>
         <i className="hud-divider" />
-        <button className="game-house control-surface" onClick={() => onAction('roommates')} aria-pressed={activeTool === 'roommates'}><Home size={17} /><span>{household.name}</span><span className={`connection-dot ${syncState}`} aria-label={syncState === 'saved' ? 'Kitchen saved' : 'Kitchen offline'} /></button>
+        <button className="game-house control-surface" onClick={() => onAction('roommates')} aria-pressed={activeTool === 'roommates'}><Home size={17} /><span>{household.name}</span><span className={`connection-dot ${syncState}`} aria-label={syncState === 'offline' ? 'Kitchen offline' : editMode ? 'Room preview not yet shared' : 'Kitchen saved'} /></button>
       </div>
       <div className="game-month" hidden={panelOpen}>{monthControls}</div>
       <div className="game-resources">
@@ -103,7 +114,8 @@ export function GameHome({
     <h1 className="sr-only">{household.name}: {roomCatalog[roomId].label}</h1>
     <SceneBoundary key={`${roomId}:${household.id}`}>
       <Suspense fallback={<SceneLoading label={`Opening ${roomCatalog[roomId].label.toLowerCase()}...`} />}>
-        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || panelOpen} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores} />
+        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || (panelOpen && !editMode)} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
+          components={components ?? getRoomComponents(household)} editMode={editMode} selectedComponentId={selectedComponentId} onComponentSelect={onComponentSelect} />
       </Suspense>
     </SceneBoundary>
     <div className="room-caption">
@@ -112,18 +124,23 @@ export function GameHome({
       </button>
       <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{activeMembers.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>
     </div>
-    <div className="house-tools"><button className="icon-button control-surface" onClick={onRoomStyle} aria-label="Room style" title="Room style" aria-haspopup="dialog"><Palette size={19} /></button><button className="icon-button control-surface" onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button><button className="icon-button control-surface" onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button></div>
+    <div className="house-tools">
+      <button className="icon-button control-surface room-page-tool" disabled={busy} onClick={onObjects} aria-label="Room objects" title="Room objects" aria-pressed={activeTool === 'objects' || editMode}><Boxes size={19} /></button>
+      {canEditRooms && <button className="icon-button control-surface" disabled={busy} onClick={onRoomStyle} aria-label="Room style" title="Room colors" aria-haspopup="dialog"><Palette size={19} /></button>}
+      <button className="icon-button control-surface" disabled={busy} onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size={19} /></button>
+      <button className="icon-button control-surface" disabled={busy} onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size={19} /></button>
+    </div>
     <div className="game-bottom" ref={dock}>
       <button className="game-balance control-surface" onClick={() => onAction('settle')} aria-label="Your household balance" aria-pressed={activeTool === 'settle'}><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>
       <nav className="game-dock" aria-label="Household tools">
-        <button className="dock-tool" onClick={() => onAction('ledger')} aria-label="Grocery runs" aria-pressed={activeTool === 'ledger'}><ReceiptText size={21} /><span>Receipts</span></button>
-        <button className="dock-tool" onClick={() => onAction('budget')} aria-label="Monthly budget" aria-pressed={activeTool === 'budget'}><Coins size={21} /><span>House pot</span></button>
+        <button className="dock-tool" data-tool="ledger" onClick={() => onAction('ledger')} aria-label="Grocery runs" aria-pressed={activeTool === 'ledger'}><ReceiptText size={21} /><span>Receipts</span></button>
+        <button className="dock-tool" data-tool="budget" onClick={() => onAction('budget')} aria-label="Monthly budget" aria-pressed={activeTool === 'budget'}><Coins size={21} /><span>House pot</span></button>
         <button className="stock-button" onClick={() => onAction('stock')} aria-label="Shopping bag, plan and record groceries" aria-pressed={activeTool === 'stock'}><span><Plus size={23} /></span><span>Shopping bag<small>Plan and record groceries</small></span></button>
-        <button className="dock-tool" onClick={() => onOpenChores(null)} aria-label="Chores" aria-pressed={activeTool === 'chores'}><ListChecks size={21} /><span>Chores</span>{dueChoreCount > 0 && <i className="tool-count">{dueChoreCount}</i>}</button>
-        <button className="dock-tool" onClick={() => onAction('settle')} aria-label="Settle up" aria-pressed={activeTool === 'settle'}><Wallet size={21} /><span>Settle up</span>{transferCount > 0 && <i className="tool-count">{transferCount}</i>}</button>
-        <button className="dock-tool" onClick={() => onAction('roommates')} aria-label="The roommates" aria-pressed={activeTool === 'roommates'}><Users size={21} /><span>People</span></button>
+        <button className="dock-tool" data-tool="chores" onClick={() => onOpenChores(null)} aria-label="Chores" aria-pressed={activeTool === 'chores'}><ListChecks size={21} /><span>Chores</span>{dueChoreCount > 0 && <i className="tool-count">{dueChoreCount}</i>}</button>
+        <button className="dock-tool" data-tool="settle" onClick={() => onAction('settle')} aria-label="Settle up" aria-pressed={activeTool === 'settle'}><Wallet size={21} /><span>Settle up</span>{transferCount > 0 && <i className="tool-count">{transferCount}</i>}</button>
+        <button className="dock-tool" data-tool="roommates" onClick={() => onAction('roommates')} aria-label="The roommates" aria-pressed={activeTool === 'roommates'}><Users size={21} /><span>People</span></button>
       </nav>
-      <span className={`room-sync ${syncState}`}><span className={`connection-dot ${syncState}`} />{syncState === 'saved' ? 'All fresh & saved' : 'Offline'}<small>{monthLabel}</small></span>
+      <span className={`room-sync ${syncState}`}><span className={`connection-dot ${syncState}`} />{syncState === 'offline' ? 'Offline' : editMode ? 'Private room preview' : 'All fresh & saved'}<small>{monthLabel}</small></span>
     </div>
   </main>
 }

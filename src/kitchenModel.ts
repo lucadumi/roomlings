@@ -5,7 +5,7 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { Category, RoomStyle } from '../shared/domain.ts'
 import { buildRoom } from './room.ts'
-import { roomPresets } from './roomStyles.ts'
+import { roomAccents, roomPresets } from './roomStyles.ts'
 
 export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const kitchen = new Group()
@@ -22,19 +22,19 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const sage = material(palette.fridge, 0.6)
   const lightSage = material(palette.fridgeDoor, 0.6)
   const edge = material(palette.fridgeEdge)
-  const porcelain = material('#f2f1dd', 0.65)
+  const porcelain = material(roomAccents.cream, 0.65)
   const inside = material('#dce3d0')
-  const dark = material('#59674f')
-  const silver = material('#e9e8d9', 0.34)
+  const dark = material(roomAccents.ink)
+  const silver = material(roomAccents.metal, 0.34)
   silver.metalness = 0.18
   const milk = material('#f8f3de')
-  const blue = material('#72979b')
-  const red = material('#d35739')
-  const orange = material('#e99938')
-  const green = material('#5b8451')
-  const yellow = material('#e0bb5a')
+  const blue = material(roomAccents.blue)
+  const red = material(roomAccents.tomato)
+  const orange = material(roomAccents.orange)
+  const green = material(roomAccents.leaf)
+  const yellow = material(roomAccents.gold)
   const bread = material('#c69150')
-  const berry = material('#9b677b')
+  const berry = material(roomAccents.berry)
 
   const box = (parent: Group, dimensions: [number, number, number], position: [number, number, number], mat: MeshStandardMaterial, radius = 0) => {
     const geometry = radius ? new RoundedBoxGeometry(...dimensions, 1, radius) : new BoxGeometry(...dimensions)
@@ -169,5 +169,9 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   for (let i = 0; i < 6; i++) box(iceTray, [0.18, 0.06, 0.18], [-0.04 + (i % 3) * 0.24, 2.84, -0.12 + Math.floor(i / 3) * 0.24], porcelain, 0.015)
   kitchen.add(iceTray)
   const foodMaterials: Record<Category, MeshStandardMaterial> = { produce: red, dairy: milk, pantry: yellow, drinks: blue, other: berry }
+  scenery.componentBindings.set('kitchen-fridge', {
+    root: kitchen, finishes: [sage, lightSage, edge], anchor: [-2.7, 3.95, -2.1],
+    contacts: [{ position: [kitchen.position.x, 0.007, kitchen.position.z], size: [2.55, 2.1] }],
+  })
   return { kitchen, scenery, materials, doors, foods, iceTray, interiorLight, foodMaterials, styleMaterials }
 }

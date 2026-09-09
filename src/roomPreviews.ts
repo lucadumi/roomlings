@@ -3,3 +3,10 @@ import kitchen from './assets/rooms/kitchen.png'
 import bathroom from './assets/rooms/bathroom.png'
 
 export const roomPreviewImages: Record<RoomId, string> = { kitchen, bathroom }
+
+export async function householdRoomPreviews(
+  options: Parameters<typeof import('./householdRoomPreview.ts').renderHouseholdRoomPreviews>[0],
+) {
+  const { renderHouseholdRoomPreviews } = await import('./householdRoomPreview.ts')
+  return renderHouseholdRoomPreviews(options)
+}

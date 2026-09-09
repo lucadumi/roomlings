@@ -90,7 +90,7 @@ test('room choices and shared exploration controls remain contained through resi
 
 test('switching rooms releases the old renderer and browser Back restores its chapter', { tag: '@room' }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  const drawing = await trackDrawing(page)
+  const drawing = await trackDrawing(page, '.welcome-tour canvas')
   await page.goto('/#receipts')
   const explore = page.locator('#tour')
   const canvas = explore.locator('.welcome-canvas')

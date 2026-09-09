@@ -6,10 +6,11 @@ import { roomCatalog } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import type { Store } from '../../server/store.ts'
 
-export async function trackDrawing(page: Page) {
-  await page.addInitScript(() => {
+export async function trackDrawing(page: Page, canvasSelector?: string) {
+  await page.addInitScript(({ canvasSelector }) => {
     let draws = 0
     let shadowDraws = 0
+    const tracked = new WeakSet<WebGL2RenderingContext>()
     const framebuffers = new WeakMap<WebGL2RenderingContext, WebGLFramebuffer | null>()
     const bindFramebuffer = WebGL2RenderingContext.prototype.bindFramebuffer
     Object.defineProperty(WebGL2RenderingContext.prototype, 'bindFramebuffer', {
@@ -22,15 +23,18 @@ export async function trackDrawing(page: Page) {
       const original = WebGL2RenderingContext.prototype[method]
       Object.defineProperty(WebGL2RenderingContext.prototype, method, {
         value(this: WebGL2RenderingContext, ...args: number[]) {
-          draws++
-          if (framebuffers.get(this)) shadowDraws++
+          if (!canvasSelector || this.canvas instanceof HTMLCanvasElement && this.canvas.matches(canvasSelector)) tracked.add(this)
+          if (tracked.has(this)) {
+            draws++
+            if (framebuffers.get(this)) shadowDraws++
+          }
           return Reflect.apply(original, this, args)
         },
       })
     }
     Object.defineProperty(window, 'roomlingsFrameDrawCalls', { get: () => draws })
     Object.defineProperty(window, 'roomlingsShadowDrawCalls', { get: () => shadowDraws })
-  })
+  }, { canvasSelector })
   return () => page.evaluate(() => ({
     draws: Number(Reflect.get(window, 'roomlingsFrameDrawCalls')),
     shadows: Number(Reflect.get(window, 'roomlingsShadowDrawCalls')),
@@ -67,6 +71,38 @@ export async function openGroceryForm(page: Page) {
   await openShoppingBag(page)
   await page.getByRole('button', { name: 'Record without a list', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'What is in the bag?', exact: true })).toBeVisible()
+}
+
+export async function openRoomObjects(page: Page) {
+  const objects = page.locator('.room-objects-panel')
+  if (!await objects.isVisible()) await page.getByRole('button', { name: 'Room objects', exact: true }).click()
+  await expect(objects).toBeVisible()
+  return objects
+}
+
+export async function openRoomEditor(page: Page) {
+  const editor = page.locator('.room-editor')
+  if (!await editor.isVisible()) {
+    const objects = await openRoomObjects(page)
+    await objects.getByRole('button', { name: 'Edit room', exact: true }).click()
+  }
+  await expect(editor).toBeVisible()
+  return editor
+}
+
+export async function openRoomColors(page: Page) {
+  const editor = await openRoomEditor(page)
+  await editor.getByRole('button', { name: 'Room colors', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+export async function closeRoomEditor(page: Page) {
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const editor = page.locator('.room-editor')
+  if (await editor.isVisible()) await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(editor).toHaveCount(0)
 }
 
 export async function selectRoom(page: Page, roomId: RoomId) {

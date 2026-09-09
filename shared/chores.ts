@@ -70,6 +70,7 @@ export function completeChore(
   const completion = choreCompletionSchema.parse({
     id: completionId, choreId: chore.id, occurrence: chore.occurrence, title: chore.title,
     roomId: chore.roomId, area: chore.area, dueDate: chore.dueDate, turn: chore.turn,
+    ...(chore.componentId ? { componentId: chore.componentId, componentName: chore.componentName } : {}),
     assignedTo: choreAssignee(chore, members)?.id ?? null, completedBy: memberId, completedAt,
     resultVersion: updated.version, undoneAt: null, undoneBy: null,
   })
