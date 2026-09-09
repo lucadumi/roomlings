@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowDown, ArrowRight, ArrowUpRight, Check, CheckCheck, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
-import { GardenBackdrop } from './GardenBackdrop.tsx'
+import invitationPlant from '../assets/garden/left.png'
 import { roomPath } from '../roomNavigation.ts'
 import './welcome.css'
 
@@ -21,11 +21,23 @@ const features = [
 ]
 
 export default function Welcome({ accessNotice, paused = false }: { accessNotice?: ReactNode; paused?: boolean }) {
-  const content = useRef<HTMLElement>(null)
+  const page = useRef<HTMLDivElement>(null)
+  const header = useRef<HTMLElement>(null)
   const systemReduced = useSyncExternalStore(subscribeToMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches, () => false)
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
   const createPath = `${roomPath()}#account=create`
+
+  useLayoutEffect(() => {
+    const root = page.current
+    const bar = header.current
+    if (!root || !bar) return
+    const measure = () => root.style.setProperty('--welcome-header-height', `${bar.getBoundingClientRect().height}px`)
+    const observer = new ResizeObserver(measure)
+    observer.observe(bar)
+    measure()
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const previousTitle = document.title
@@ -60,10 +72,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
     }
   }, [])
 
-  return <div className="welcome" data-motion={reducedMotion ? 'reduced' : 'full'} data-edition="journal" id="welcome-top">
-    <GardenBackdrop contentRef={content} reducedMotion={reducedMotion} paused={paused} />
+  return <div className="welcome" ref={page} data-motion={reducedMotion ? 'reduced' : 'full'} data-edition="journal" id="welcome-top">
     <a className="welcome-skip" href="#welcome-content">Skip to content</a>
-    <header className="welcome-header welcome-container" ref={content}>
+    <header className="welcome-header welcome-container" ref={header}>
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning">
         <Brand variant="featured" decorative />
       </a>
@@ -104,7 +115,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           {features.map(({ number, title, description }, index) => <article className={`welcome-feature welcome-feature-${number}`} key={number}>
             <span className="welcome-feature-number" aria-hidden="true">{number}</span>
             <div className="welcome-feature-copy"><h3>{title}</h3><p>{description}</p></div>
-            <div className="welcome-feature-art" aria-hidden="true">{index === 0 ? <ShoppingNote /> : index === 1 ? <ReceiptNote /> : <EnvelopeNote />}</div>
+            <div className="welcome-feature-art" aria-hidden="true">{index === 0 ? <ShoppingNote /> : index === 1 ? <LedgerNote /> : <EnvelopeNote />}</div>
           </article>)}
         </div>
       </section>
@@ -122,7 +133,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       </section>
 
       <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
-        <div><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
+        <img className="welcome-invitation-plant" src={invitationPlant} alt="" aria-hidden="true"
+          width={600} height={1000} loading="lazy" decoding="async" draggable={false} />
+        <div className="welcome-invitation-copy"><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
         <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
       </section>
     </main>
@@ -145,13 +158,24 @@ function ShoppingNote() {
   </div>
 }
 
-function ReceiptNote() {
-  return <div className="journal-receipt">
-    <span className="journal-paper-label">SHARED LEDGER</span>
-    <span>Grocery receipts</span>
-    <span>Monthly bills</span>
-    <span>Ledger export</span>
-  </div>
+function LedgerNote() {
+  return <svg className="journal-ledger" viewBox="0 0 260 150" aria-hidden="true" focusable="false">
+    <rect className="journal-ledger-shadow" x="25" y="16" width="217" height="129" rx="3" />
+    <rect className="journal-ledger-page journal-ledger-back" x="23" y="12" width="217" height="128" rx="3" />
+    <rect className="journal-ledger-page" x="16" y="6" width="218" height="128" rx="3" />
+    <path className="journal-ledger-accent" d="M30 20V34" />
+    <text className="journal-ledger-title" x="41" y="29">SHARED LEDGER</text>
+    <path className="journal-ledger-rule" d="M30 41H220M157 49V116" />
+    <text className="journal-ledger-column" x="30" y="54">ENTRY</text>
+    <text className="journal-ledger-column" x="173" y="54">SHARED</text>
+    <text className="journal-ledger-entry" x="30" y="72">Groceries</text>
+    <text className="journal-ledger-entry" x="30" y="90">House bills</text>
+    <text className="journal-ledger-entry" x="30" y="108">Repayments</text>
+    {[77, 95, 113].map((y) => <g key={y}>
+      <path className="journal-ledger-rule" d={`M30 ${y}H220`} />
+      <path className="journal-ledger-value" d={`M177 ${y - 8}H205M211 ${y - 8}H220`} />
+    </g>)}
+  </svg>
 }
 
 function EnvelopeNote() {

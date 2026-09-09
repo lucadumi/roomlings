@@ -44,7 +44,7 @@ const throwsStatus = (operation: () => unknown, status: number) =>
 
 describe('room component catalog and legacy defaults', () => {
   it('gives every real catalog entry an allowed fixed position and useful supported settings', () => {
-    assert.ok(componentKinds.length >= 35)
+    assert.ok(componentKinds.length >= 80)
     assert.deepEqual(Object.keys(componentCatalog), [...componentKinds])
     for (const kind of componentKinds) {
       const slots = roomSlots.filter((slot) => slot.kinds.includes(kind))

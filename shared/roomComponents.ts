@@ -13,6 +13,9 @@ export const componentKinds = [
   'paper-towel-holder', 'storage-jars', 'kitchen-cart', 'pet-bowls', 'speaker', 'air-purifier', 'watering-can',
   'tea-set', 'bathroom-scales', 'hair-dryer', 'toothbrush-holder', 'storage-cabinet', 'wall-calendar',
   'key-hooks', 'bath-tray', 'bathroom-stool',
+  'stand-mixer', 'waffle-maker', 'kitchen-scale', 'cutting-boards', 'mug-tree', 'cereal-dispenser',
+  'egg-basket', 'wall-shelf', 'ironing-board', 'toilet-brush', 'shower-squeegee', 'tissue-box',
+  'first-aid-kit', 'reed-diffuser', 'board-game', 'record-player',
 ] as const
 export const componentKindSchema = z.enum(componentKinds)
 export type ComponentKind = z.infer<typeof componentKindSchema>
@@ -24,10 +27,10 @@ export const componentFinishSchema = z.enum(['room', 'cream', 'sage', 'tomato', 
 export type ComponentFinish = z.infer<typeof componentFinishSchema>
 export const componentFinishes: Record<ComponentFinish, { name: string; color: string | null }> = {
   room: { name: 'Match room colors', color: null },
-  cream: { name: 'Warm cream', color: '#f5edda' },
-  sage: { name: 'Sage green', color: '#8ab27a' },
-  tomato: { name: 'Tomato red', color: '#d96d4b' },
-  clay: { name: 'Terracotta', color: '#cc9067' },
+  cream: { name: 'Warm cream', color: '#fcf9f1' },
+  sage: { name: 'Sage green', color: '#81b29a' },
+  tomato: { name: 'Tomato red', color: '#e07a5f' },
+  clay: { name: 'Terracotta', color: '#c58d71' },
   walnut: { name: 'Walnut', color: '#806044' },
 }
 export const roomComponentLimit = 120
@@ -273,15 +276,67 @@ export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
   'bathroom-stool': define('Bathroom stool', 'A little wooden step stool with a finish of its own.', 'furniture', {
     chores: [chore('Wipe the bathroom stool', 7)],
   }),
+  'stand-mixer': define('Stand mixer', 'A little baking station with a mixing bowl and a shared cleanup routine.', 'appliances', {
+    supplies: [supply('flour', 'Flour', '1 bag'), supply('sugar', 'Sugar', '1 bag')],
+    chores: [chore('Wash the mixing bowl and attachments', 7)], states: states('Clean', 'Needs cleaning'),
+  }),
+  'waffle-maker': define('Waffle maker', 'A countertop waffle iron for a slow shared breakfast.', 'appliances', {
+    supplies: [supply('cooking-oil', 'Cooking oil')], chores: [chore('Clean the waffle plates', 7)], states: states('Clean', 'Needs cleaning'),
+  }),
+  'kitchen-scale': define('Kitchen scale', 'A compact scale for cooking and baking, with no ingredient tracking.', 'appliances', {
+    supplies: [supply('batteries', 'Batteries', '1 pack')], chores: [chore('Wipe the kitchen scale', 7)],
+  }),
+  'cutting-boards': define('Cutting boards', 'A pair of wooden boards with a tidy stand.', 'fixtures', {
+    supplies: [dishSoap, supply('board-oil', 'Cutting board oil')],
+    chores: [chore('Clean the cutting boards', 7), chore('Care for the wooden boards', 30)],
+  }),
+  'mug-tree': define('Mug tree', 'Keep the household mugs together on a little wooden tree.', 'fixtures', {
+    chores: [chore('Wash the shared mugs', 7), chore('Wipe the mug stand', 14)],
+  }),
+  'cereal-dispenser': define('Cereal dispenser', 'A breakfast hopper with a simple refill shortcut.', 'fixtures', {
+    supplies: [supply('cereal', 'Breakfast cereal', '1 box')], chores: [chore('Clean the cereal dispenser', 30)],
+  }),
+  'egg-basket': define('Egg basket', 'A small basket for a kitchen with a farmhouse feel.', 'decor', {
+    supplies: [supply('eggs', 'Eggs', '1 carton')], chores: [chore('Check egg dates and clean the basket', 7)],
+  }),
+  'wall-shelf': define('Wall shelf', 'A floating shelf for books and the little things that make a room yours.', 'furniture', {
+    chores: [chore('Dust the wall shelf', 14)],
+  }),
+  'ironing-board': define('Ironing board', 'A folding board and iron with a dedicated place in the room.', 'furniture', {
+    supplies: [supply('ironing-spray', 'Ironing spray')], chores: [chore('Put away the ironing', 7), chore('Clean the ironing-board cover', 60)],
+  }),
+  'toilet-brush': define('Toilet brush', 'A brush and holder with a regular cleaning reminder.', 'fixtures', {
+    supplies: [supply('toilet-cleaner', 'Toilet cleaner')], chores: [chore('Clean the toilet-brush holder', 7)],
+  }),
+  'shower-squeegee': define('Shower squeegee', 'A wall-hung squeegee for keeping the bathing area clear.', 'fixtures', {
+    chores: [chore('Squeegee the bathing area', 1), chore('Clean the squeegee blade', 14)],
+  }),
+  'tissue-box': define('Tissue box', 'A refillable tissue box for a counter or table.', 'fixtures', {
+    supplies: [supply('tissues', 'Tissues', '1 box')], chores: [chore('Refill the tissue box', 14)],
+  }),
+  'first-aid-kit': define('First-aid kit', 'Keep everyday first-aid supplies together and check their expiry dates.', 'household', {
+    supplies: [supply('plasters', 'Plasters', '1 box'), supply('sterile-dressings', 'Sterile dressings', '1 pack')],
+    chores: [chore('Check the first-aid kit', 90)],
+  }),
+  'reed-diffuser': define('Reed diffuser', 'A small bottle and reeds for a quiet decorative corner.', 'decor', {
+    supplies: [supply('diffuser-refill', 'Reed diffuser refill')], chores: [chore('Dust the diffuser bottle', 14)],
+  }),
+  'board-game': define('Board game', 'A little board, dice and pieces for time around the shared table.', 'decor', {
+    chores: [chore('Put away and count the game pieces', 7)], states: states('Ready', 'In use', 'Needs tidying'),
+  }),
+  'record-player': define('Record player', 'A turntable corner with a vinyl record and a care routine.', 'decor', {
+    supplies: [supply('record-cleaner', 'Record cleaner')], chores: [chore('Dust the record player', 14)],
+  }),
 }
 
 type PlacementRequirement = { slotId: string; variant: string; message: string }
 const slot = <Id extends string>(id: Id, roomId: RoomId, name: string, kinds: readonly ComponentKind[], defaultKind: ComponentKind | null = null, removable = true, requires?: PlacementRequirement) =>
   ({ id, roomId, name, kinds, defaultKind, removable, requires })
-const counterAppliances = ['coffee-machine', 'microwave', 'air-fryer', 'toaster', 'blender', 'rice-cooker'] as const
-const tableAccessories = ['plant', 'fruit-bowl', 'bread-box', 'cookbook-stand', 'storage-jars', 'paper-towel-holder', 'tea-set', 'speaker', 'watering-can'] as const
+const counterAppliances = ['coffee-machine', 'microwave', 'air-fryer', 'toaster', 'blender', 'rice-cooker', 'stand-mixer', 'waffle-maker'] as const
+const tableAccessories = ['plant', 'fruit-bowl', 'bread-box', 'cookbook-stand', 'storage-jars', 'paper-towel-holder', 'tea-set', 'speaker', 'watering-can',
+  'kitchen-scale', 'mug-tree', 'cereal-dispenser', 'egg-basket', 'tissue-box', 'first-aid-kit', 'reed-diffuser', 'board-game', 'record-player'] as const
 const floorStorage = ['plant', 'storage-cabinet', 'kitchen-cart', 'pet-bowls', 'air-purifier', 'vacuum'] as const
-const wallAccessories = ['wall-art', 'wall-calendar', 'key-hooks', 'spice-rack'] as const
+const wallAccessories = ['wall-art', 'wall-calendar', 'key-hooks', 'spice-rack', 'wall-shelf'] as const
 
 export const roomSlots = [
   slot('kitchen-fridge', 'kitchen', 'Fridge corner', ['fridge'], 'fridge', false),
@@ -307,14 +362,14 @@ export const roomSlots = [
   slot('kitchen-undercounter', 'kitchen', 'Fitted appliance bay', ['dishwasher', 'washing-machine', 'dryer', 'oven']),
   slot('kitchen-coffee', 'kitchen', 'Coffee corner', counterAppliances),
   slot('kitchen-small-appliance', 'kitchen', 'Countertop appliance spot', counterAppliances),
-  slot('kitchen-drinks', 'kitchen', 'Small drinks accessory', ['grinder', 'water-filter', 'tea-set', 'speaker', 'storage-jars', 'fruit-bowl']),
-  slot('kitchen-dish-rack', 'kitchen', 'Beside the sink', ['dish-rack', 'paper-towel-holder', 'knife-block', 'spice-rack', 'watering-can']),
+  slot('kitchen-drinks', 'kitchen', 'Small drinks accessory', ['grinder', 'water-filter', 'tea-set', 'speaker', 'storage-jars', 'fruit-bowl', 'mug-tree', 'kitchen-scale', 'cereal-dispenser', 'egg-basket', 'reed-diffuser']),
+  slot('kitchen-dish-rack', 'kitchen', 'Beside the sink', ['dish-rack', 'paper-towel-holder', 'knife-block', 'spice-rack', 'watering-can', 'cutting-boards']),
   slot('kitchen-bins', 'kitchen', 'Bin corner', ['bins']),
   slot('kitchen-vacuum', 'kitchen', 'Cleaning station', floorStorage),
   slot('kitchen-wall-art', 'kitchen', 'Wall picture', wallAccessories),
   slot('kitchen-soap-dispenser', 'kitchen', 'Sink dispenser', ['soap-dispenser']),
   slot('kitchen-table-center', 'kitchen', 'Table centerpiece', tableAccessories),
-  slot('kitchen-windowsill', 'kitchen', 'Window ledge', ['plant', 'storage-jars', 'speaker']),
+  slot('kitchen-windowsill', 'kitchen', 'Window ledge', ['plant', 'storage-jars', 'speaker', 'reed-diffuser']),
   slot('kitchen-left-wall', 'kitchen', 'Side wall', wallAccessories),
   slot('bathroom-sink', 'bathroom', 'Bathroom basin', ['sink'], 'sink', false),
   slot('bathroom-mirror', 'bathroom', 'Vanity mirror', ['mirror'], 'mirror', false),
@@ -324,15 +379,16 @@ export const roomSlots = [
   slot('bathroom-cleaning-caddy', 'bathroom', 'Bathroom cleaning caddy', ['cleaning-caddy'], 'cleaning-caddy', false),
   slot('bathroom-laundry', 'bathroom', 'Laundry appliance spot', ['washing-machine', 'dryer']),
   slot('bathroom-laundry-basket', 'bathroom', 'Laundry basket spot', ['laundry-basket', 'storage-cabinet', 'bathroom-stool', 'air-purifier']),
-  slot('bathroom-drying-rack', 'bathroom', 'Drying rack spot', ['drying-rack']),
+  slot('bathroom-drying-rack', 'bathroom', 'Drying rack spot', ['drying-rack', 'ironing-board']),
   slot('bathroom-towel-rack', 'bathroom', 'Towel rail', ['towel-rack']),
   slot('bathroom-plant', 'bathroom', 'Bathroom planter', ['plant', 'air-purifier', 'storage-cabinet', 'bathroom-stool']),
-  slot('bathroom-wall-art', 'bathroom', 'Bathroom wall picture', ['wall-art', 'wall-calendar', 'key-hooks']),
+  slot('bathroom-wall-art', 'bathroom', 'Bathroom wall picture', ['wall-art', 'wall-calendar', 'key-hooks', 'wall-shelf']),
   slot('bathroom-soap-dispenser', 'bathroom', 'Basin dispenser', ['soap-dispenser']),
-  slot('bathroom-shower-shelf', 'bathroom', 'Bathing area shelf', ['shower-shelf']),
+  slot('bathroom-shower-shelf', 'bathroom', 'Bathing area shelf', ['shower-shelf', 'shower-squeegee']),
   slot('bathroom-bins', 'bathroom', 'Bathroom bin', ['bins']),
-  slot('bathroom-vanity-accessory', 'bathroom', 'Vanity corner', ['soap-dispenser', 'toothbrush-holder', 'hair-dryer', 'storage-jars', 'plant']),
-  slot('bathroom-floor-storage', 'bathroom', 'Front storage spot', ['plant', 'laundry-basket', 'storage-cabinet', 'bathroom-stool', 'bathroom-scales', 'air-purifier', 'vacuum']),
+  slot('bathroom-vanity-accessory', 'bathroom', 'Vanity corner', ['soap-dispenser', 'toothbrush-holder', 'hair-dryer', 'storage-jars', 'plant', 'tissue-box', 'first-aid-kit', 'reed-diffuser']),
+  slot('bathroom-floor-storage', 'bathroom', 'Front storage spot', ['plant', 'laundry-basket', 'storage-cabinet', 'bathroom-stool', 'bathroom-scales', 'air-purifier', 'vacuum', 'ironing-board']),
+  slot('bathroom-toilet-accessory', 'bathroom', 'Beside the toilet', ['toilet-brush', 'bins']),
   slot('bathroom-bath-tray', 'bathroom', 'Across the bathtub', ['bath-tray'], null, true, {
     slotId: 'bathroom-bath', variant: 'original', message: 'This position needs the bathtub. Remove the bath tray before choosing a shower.',
   }),

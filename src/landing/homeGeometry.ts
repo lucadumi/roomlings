@@ -27,7 +27,7 @@ function plant(x: number, z: number, size = 1): IllustrationFace[] {
   return [
     ...box({ x, z, w: size * 0.44, d: size * 0.44, h: size * 0.5, top: '#765942', front: roomAccents.terracotta, side: '#b65935' }),
     ...[[-0.5, 1.2, 0.1], [0.4, 1.4, -0.2], [0.12, 1.75, 0.1], [-0.15, 1.25, 0.65], [0.6, 1.05, 0.35]].map(([dx, dy, dz], index) =>
-      face([roomAccents.leaf, roomAccents.leafLight, roomAccents.leafDark, '#88a46c', '#b6cb94'][index], [
+      face([roomAccents.leaf, roomAccents.leafLight, roomAccents.leafDark, '#92bca1', '#c2d9c8'][index], [
         center, [center[0] + dx * size * 0.35, dy * size * 0.75, center[2] + dz * size * 0.2],
         [center[0] + dx * size, dy * size, center[2] + dz * size],
         [center[0] + dx * size * 0.7 + size * 0.12, dy * size * 0.6, center[2] + dz * size * 0.7],
@@ -81,8 +81,8 @@ export const homeSurfaces: IllustrationFace[] = [
   ...box({ x: 1.04, y: 1.59, z: 0.51, w: 0.38, h: 0.05, d: 0.34, top: '#d6a779', front: '#9f6e45', side: '#886040' }),
   ...box({ x: 1.69, y: 1.2, z: 0.65, w: 0.28, h: 0.26, d: 0.26, top: '#efe3c8', front: '#d5b57c', side: '#b69b6a' }),
   ...box({ x: 0.32, z: 1.43, w: 1.11, h: 2.27, d: 0.96, top: palette.fridgeDoor, front: palette.fridge, side: palette.fridgeEdge }),
-  ...box({ x: 0.35, y: 0.18, z: 2.4, w: 1.04, h: 1.32, d: 0.065, top: '#c3d6b3', front: palette.fridgeDoor, side: palette.fridgeEdge }),
-  ...box({ x: 0.35, y: 1.55, z: 2.4, w: 1.04, h: 0.66, d: 0.065, top: '#c3d6b3', front: palette.fridgeDoor, side: palette.fridgeEdge }),
+  ...box({ x: 0.35, y: 0.18, z: 2.4, w: 1.04, h: 1.32, d: 0.065, top: '#c8dfd0', front: palette.fridgeDoor, side: palette.fridgeEdge }),
+  ...box({ x: 0.35, y: 1.55, z: 2.4, w: 1.04, h: 0.66, d: 0.065, top: '#c8dfd0', front: palette.fridgeDoor, side: palette.fridgeEdge }),
   ...box({ x: 1.2, y: 0.94, z: 2.48, w: 0.065, h: 0.42, d: 0.065, top: '#f5edd9', front: '#e4dfc9', side: '#b6bea7' }),
   ...box({ x: 1.2, y: 1.62, z: 2.48, w: 0.065, h: 0.31, d: 0.065, top: '#f5edd9', front: '#e4dfc9', side: '#b6bea7' }),
   face('#f8eecd', [[0.57, 1.71, 2.475], [0.89, 1.73, 2.475], [0.9, 2.04, 2.475], [0.58, 2.02, 2.475]]),
@@ -99,11 +99,11 @@ export const homeSurfaces: IllustrationFace[] = [
   face(roomAccents.tomato, [[4.77, 1.07, 0.69], [4.77, 1.72, 0.69], [4.77, 1.72, 1.26], [4.77, 1.02, 1.26]]),
   ...box({ x: 4.73, y: 1.72, z: 0.64, w: 0.1, h: 0.055, d: 0.69, top: '#c7a57a', front: '#a88659', side: '#a88659' }),
   ...plant(7.31, 2.05, 0.7),
-  ...box({ x: 6.64, y: 0.15, z: 3.1, w: 1.1, h: 0.38, d: 2.35, top: roomAccents.blue, front: '#628796', side: '#506f80' }),
-  ...box({ x: 7.48, y: 0.51, z: 3.1, w: 0.26, h: 0.73, d: 2.35, top: roomAccents.sky, front: '#8bb4bf', side: '#688b9a' }),
-  ...[3.28, 4.29].flatMap((z) => box({ x: 6.68, y: 0.53, z, w: 0.76, h: 0.19, d: 0.94, top: '#bed8dd', front: '#9cbec8', side: '#789fab' })),
-  ...[3.09, 5.28].flatMap((z) => box({ x: 6.59, y: 0.53, z, w: 1.18, h: 0.48, d: 0.2, top: roomAccents.sky, front: '#94b7c1', side: '#7398a6' })),
-  ...box({ x: 7.01, y: 0.73, z: 3.48, w: 0.38, h: 0.34, d: 0.39, top: '#e0ab8d', front: roomAccents.tomato, side: roomAccents.tomatoDark }),
+  ...box({ x: 6.64, y: 0.15, z: 3.1, w: 1.1, h: 0.38, d: 2.35, top: roomAccents.blue, front: '#656b89', side: roomAccents.ink }),
+  ...box({ x: 7.48, y: 0.51, z: 3.1, w: 0.26, h: 0.73, d: 2.35, top: '#b0b7cb', front: '#8c96b0', side: '#65728d' }),
+  ...[3.28, 4.29].flatMap((z) => box({ x: 6.68, y: 0.53, z, w: 0.76, h: 0.19, d: 0.94, top: '#c7cedd', front: '#a8b3c8', side: '#828da9' })),
+  ...[3.09, 5.28].flatMap((z) => box({ x: 6.59, y: 0.53, z, w: 1.18, h: 0.48, d: 0.2, top: '#b5bed1', front: '#9aa6bf', side: '#7280a0' })),
+  ...box({ x: 7.01, y: 0.73, z: 3.48, w: 0.38, h: 0.34, d: 0.39, top: '#ebb59b', front: roomAccents.tomato, side: roomAccents.tomatoDark }),
   ...[5.05, 6.04].flatMap((x) => [3.98, 4.78].flatMap((z) => box({ x, z, w: 0.1, h: 0.7, d: 0.1, top: '#b17e51', front: '#ac7d52', side: '#90663f' }))),
   ...box({ x: 4.92, y: 0.7, z: 3.86, w: 1.35, h: 0.12, d: 1.12, top: '#d7b27c', front: '#b98c56', side: '#a67a4b' }),
   ...box({ x: 5.2, y: 0.83, z: 4.05, w: 0.59, h: 0.07, d: 0.45, top: roomAccents.tomato, front: roomAccents.tomatoDark, side: '#eee3c9' }),

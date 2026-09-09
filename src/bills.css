@@ -4,9 +4,9 @@
 .receipt-tabs > button:hover:not(:disabled) { background: var(--section-soft); color: var(--section-ink); }
 .bills-panel > .field-hint { margin-bottom: 18px; }
 .bill-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; margin-bottom: 16px; }
-.bill-totals > span { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 13px; border: 1px solid var(--sunflower-border); border-radius: 10px; background: var(--sunflower-soft); }
-.bill-totals small { color: var(--sunflower-ink); font-size: 0.5625rem; line-height: 1.5; letter-spacing: 0.6px; }
-.bill-totals strong { color: var(--sunflower-ink); font-size: 1.1875rem; overflow-wrap: anywhere; }
+.bill-totals > span { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--control-surface); }
+.bill-totals small { color: var(--muted); font-size: 0.5625rem; line-height: 1.5; letter-spacing: 0.6px; }
+.bill-totals strong { color: var(--ink); font-size: 1.1875rem; overflow-wrap: anywhere; }
 .bill-card { padding: 16px; margin-bottom: 12px; border: 1px solid var(--section-border); border-radius: 10px; background: var(--control-surface); }
 .bill-card > header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
 .bill-card > header > div { min-width: 0; flex: 1; }
@@ -25,7 +25,7 @@
 .bill-schedules { margin: 24px 0; }
 .bill-schedules > .section-heading { margin-bottom: 12px; }
 .bill-schedules > .field-hint { margin-bottom: 16px; }
-.bill-payment-summary { display: flex; flex-direction: column; gap: 7px; padding: 14px; margin-bottom: 20px; border-radius: 9px; background: var(--leaf-soft); color: var(--leaf-ink); }
+.bill-payment-summary { display: flex; flex-direction: column; gap: 7px; padding: 14px; margin-bottom: 20px; border-radius: 9px; background: var(--surface-muted); color: var(--ink); }
 .bill-payment-summary strong { font-size: 1.125rem; overflow-wrap: anywhere; }
 .bill-payment-summary span { font-size: 0.75rem; }
 @media (max-width: 560px) {

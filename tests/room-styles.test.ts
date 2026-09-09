@@ -9,21 +9,21 @@ import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 
 const styles = ['original', 'sage', 'clay', 'linen'] as const
 
-test('every supported room preset has distinct finishes and the default uses the softer Garden pop palette', () => {
+test('every supported room preset has distinct finishes and the default uses the Coolors sage and clay palette', () => {
   assert.deepEqual(Object.keys(roomPresets), styles)
   assert.equal(new Set(Object.values(roomPresets).map((preset) => JSON.stringify(preset.colors))).size, 4)
   for (const preset of Object.values(roomPresets)) {
     for (const color of Object.values(preset.colors)) assert.match(color, /^#[0-9a-f]{6}$/)
   }
   assert.deepEqual(roomPresets.original.colors, {
-    wall: '#f4e9d2', trim: '#d8c7a1', floor: '#eef0dc', floorAlternate: '#bed6a5',
-    fridge: '#8ab27a', fridgeDoor: '#acd09a', fridgeEdge: '#6b8b60',
-    cabinet: '#588d74', cabinetPanel: '#7eb48f', counter: '#f8f0dd',
-    wood: '#c9975e', lightWood: '#dfbd7e', woodGrain: '#bd9462',
+    wall: '#faf7ee', trim: '#ded5c4', floor: '#f4f5ef', floorAlternate: '#d2e2d5',
+    fridge: '#81b29a', fridgeDoor: '#acd0ba', fridgeEdge: '#5d8b73',
+    cabinet: '#5d8973', cabinetPanel: '#83b099', counter: '#fffdf7',
+    wood: '#ba9164', lightWood: '#e4bf88', woodGrain: '#c5a375',
   })
 })
 
-test('individual object finishes use the same palette as the rooms and garden', () => {
+test('individual object finishes use the same palette as the rooms', () => {
   assert.equal(componentFinishes.cream.color, roomAccents.cream)
   assert.equal(componentFinishes.sage.color, roomPresets.original.colors.fridge)
   assert.equal(componentFinishes.tomato.color, roomAccents.tomato)

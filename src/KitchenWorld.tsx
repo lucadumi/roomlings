@@ -51,7 +51,7 @@ type WorldControls = {
 
 export default function KitchenWorld({
   roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
-  onSelect, onAction, onOpenChores, onRestock, dueChores, components, editMode = false, selectedComponentId = null, onComponentSelect,
+  onSelect, onAction, onOpenChores, onRestock, dueChores, components, editMode = false, selectedComponentId = null, onComponentSelect, overviewFocus = false,
 }: RoomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
@@ -59,7 +59,7 @@ export default function KitchenWorld({
   const utilityLabels = useRef(new Map<KitchenUtility, HTMLButtonElement>())
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<WorldControls | null>(null)
-  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, onComponentSelect })
+  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, onComponentSelect, overviewFocus })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -72,7 +72,7 @@ export default function KitchenWorld({
   const [renderingPaused, setRenderingPaused] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [brewing, setBrewing] = useState(false)
-  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, onComponentSelect }
+  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, onComponentSelect, overviewFocus }
   hoverRef.current = hovered
   const installed = installedRoomComponents(components, 'kitchen')
   const objectLabels = installed.filter((component) => editMode || !roomSlots.find((slot) => slot.id === component.slotId)?.defaultKind)
@@ -405,7 +405,7 @@ export default function KitchenWorld({
       last = now
       const latest = state.current
       if (!visible || document.hidden) return
-      const componentUpdate = componentScene.update(latest.components, latest.roomStyle, latest.editMode ? latest.selectedComponentId : null)
+      const componentUpdate = componentScene.update(latest.components, latest.roomStyle, latest.editMode && !latest.overviewFocus ? latest.selectedComponentId : null)
       if (componentUpdate.changed) { shadowsDirty ||= componentUpdate.shadowsChanged; wake(0) }
       if (lastSelectedComponentId !== latest.selectedComponentId) {
         lastSelectedComponentId = latest.selectedComponentId
@@ -465,10 +465,10 @@ export default function KitchenWorld({
       room.updateMatrixWorld(true)
       cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
       const area = latest.panelOpen ? framingArea : { x: 0, y: 0, width: viewport.width, height: viewport.height }
-      const selectedBounds = !currentControls.wholeRoom && latest.selectedComponentId ? componentScene.getBounds(latest.selectedComponentId) : undefined
+      const selectedBounds = !latest.overviewFocus && !currentControls.wholeRoom && latest.selectedComponentId ? componentScene.getBounds(latest.selectedComponentId) : undefined
       const framing = selectedBounds
         ? fitRoomBounds(area.width, area.height, selectedBounds, room.rotation.y, cameraPitch)
-        : cameraFraming(area.width, area.height, currentControls.focus, currentControls.wholeRoom, {
+        : cameraFraming(area.width, area.height, latest.overviewFocus ? 'room' : currentControls.focus, latest.overviewFocus || currentControls.wholeRoom, {
           bounds: roomBounds, rotation: room.rotation.y, pitch: cameraPitch,
         })
       if (selectedBounds) framing.halfHeight = Math.max(2.05, framing.halfHeight)
@@ -481,7 +481,8 @@ export default function KitchenWorld({
       camera.position.copy(desiredCamera)
       camera.lookAt(cameraCenter)
       halfHeight = reducedMotion.matches ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      camera.zoom = reducedMotion.matches ? currentControls.zoom : dampTo(camera.zoom, currentControls.zoom, 8, delta, 0.002)
+      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      camera.zoom = reducedMotion.matches ? desiredZoom : dampTo(camera.zoom, desiredZoom, 8, delta, 0.002)
       const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
       camera.left = projection.left
       camera.right = projection.right
@@ -489,7 +490,7 @@ export default function KitchenWorld({
       camera.bottom = projection.bottom
       camera.updateProjectionMatrix()
       const moving = cameraCenter.distanceTo(desiredCenter) > 0.002 || cameraPitch !== targetPitch
-        || halfHeight !== framing.halfHeight || camera.zoom !== currentControls.zoom || room.rotation.y !== targetRotation
+        || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom || room.rotation.y !== targetRotation
       if (moving !== wasMoving) { wasMoving = moving; setCameraMoving(moving) }
       if (moving) activeUntil = Math.max(activeUntil, now + 120)
       for (const item of foods) {
@@ -664,7 +665,7 @@ export default function KitchenWorld({
     }
   }, [])
 
-  useEffect(() => { controls.current?.wake(0) }, [showLabels, components, editMode, selectedComponentId])
+  useEffect(() => { controls.current?.wake(0) }, [showLabels, components, editMode, selectedComponentId, overviewFocus])
 
   const toggle = () => {
     if (editMode) {
@@ -701,7 +702,7 @@ export default function KitchenWorld({
   }
 
   return (
-    <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={focused} data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={selectedComponentId ?? undefined}>
+    <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused} data-framing={overviewFocus || fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined}>
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable} aria-label={editMode
         ? 'Kitchen editing preview. Select an object to edit its settings in its fixed position, or use the room objects list. Drag to turn the room, scroll or pinch to zoom.'
         : 'Interactive low-poly shared kitchen. Select objects to move closer. The shopping bag opens the shared shopping list, the receipt book opens grocery runs, the house pot shows the grocery budget, and the noticeboard holds your roommates. The cleaning caddy opens room chores and the shelf opens kitchen supplies. Drag to turn the room, scroll or pinch to zoom.'} />
@@ -723,13 +724,13 @@ export default function KitchenWorld({
           {onComponentSelect && objectLabels.map((component) => <button type="button" key={component.id}
             ref={(element) => { if (element) componentLabels.current.set(component.id, element); else componentLabels.current.delete(component.id) }}
             className="world-hotspot hotspot-component" data-component-id={component.id} data-component-kind={component.kind}
-            aria-label={`${editMode ? 'Edit' : 'Open'} ${componentAccessibleName(component, installed)}`} data-selected={selectedComponentId === component.id}
+            aria-label={`${editMode ? 'Edit' : 'Open'} ${componentAccessibleName(component, installed)}`} data-selected={!overviewFocus && selectedComponentId === component.id}
             onClick={() => onComponentSelect(component.id)} onMouseEnter={() => setHovered({ componentId: component.id })}
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
             <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
           </button>)}
         </div>
-        <div className="world-view-label"><span className="view-label-dot" />{selectedComponent && !fittingRoom ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
+        <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && !fittingRoom ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.9} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.65} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Frame the whole room" title="Whole room" aria-pressed={fittingRoom}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels} title="Object labels">{showLabels ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
         <div className="world-interaction-hint"><Move size={13} />{hovered ? ('componentId' in hovered ? `${editMode ? 'Edit' : 'Open'} ${hoveredComponent ? componentAccessibleName(hoveredComponent, installed) : 'room object'}` : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : editMode ? 'Select an object to edit. Positions stay fixed.' : 'Drag to explore. Select an object to get closer.'}</div>
         {!editMode && componentAtSlot(components, 'kitchen-fridge') && <button className="world-fridge-toggle" onClick={toggle} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size={15} />{open ? 'Close the fridge' : 'Peek inside'}<span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>}

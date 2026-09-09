@@ -8,6 +8,7 @@ export type RoomWorldProps = {
   roomStyle: RoomStyle
   paused: boolean
   panelOpen: boolean
+  overviewFocus?: boolean
   focusRequest: FocusRequest
   counts: Record<Category, number>
   selected: Category | 'all'

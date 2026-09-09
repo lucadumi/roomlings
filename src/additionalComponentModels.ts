@@ -384,6 +384,224 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       contactSize = [0.4, 0.32]
       break
     }
+    case 'stand-mixer': {
+      box([0.46, 0.16, 0.46], [0, 0.08, 0], paint, 0.045)
+      const bowl = [[0, 0], [0.16, 0], [0.19, 0.05], [0.18, 0.2], [0.14, 0.22], [0, 0.22]] as [number, number][]
+      lathe(bowl, [0.02, 0.16, 0], silver)
+      box([0.14, 0.5, 0.14], [-0.26, 0.33, 0], paint, 0.03)
+      box([0.42, 0.13, 0.16], [-0.02, 0.615, 0], paint, 0.03)
+      box([0.16, 0.24, 0.16], [0.19, 0.48, 0], paint, 0.03)
+      disc(0.05, 0.02, [0.19, 0.36, 0], silver)
+      rod([0.19, 0.36, 0], [0.19, 0.22, 0], 0.012, silver)
+      box([0.05, 0.05, 0.03], [-0.02, 0.53, 0.1], dark, 0.01)
+      break
+    }
+    case 'waffle-maker': {
+      box([0.34, 0.09, 0.28], [0, 0.045, 0], paint, 0.02)
+      box([0.26, 0.02, 0.2], [0, 0.095, 0.02], dark, 0.01)
+      for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
+        box([0.02, 0.008, 0.02], [ix * 0.08, 0.105, 0.02 + iz * 0.06], silver, 0.003)
+      }
+      const lid = box([0.34, 0.06, 0.28], [0.01, 0.14, -0.03], paint, 0.02)
+      lid.rotation.x = -0.32
+      rod([-0.14, 0.155, -0.15], [0.14, 0.155, -0.15], 0.012, silver)
+      box([0.1, 0.03, 0.05], [0, 0.2, 0.06], dark, 0.01)
+      disc(0.014, 0.008, [0.14, 0.09, 0.13], tomato)
+      break
+    }
+    case 'kitchen-scale': {
+      box([0.3, 0.04, 0.24], [0, 0.02, 0], paint, 0.02)
+      box([0.08, 0.006, 0.05], [0, 0.043, 0.075], dark, 0.008)
+      cylinder(0.1, 0.02, [0, 0.05, -0.02], silver, 0.11)
+      const rim = ring(0.1, 0.01, [0, 0.061, -0.02], silver)
+      rim.rotation.x = Math.PI / 2
+      break
+    }
+    case 'cutting-boards': {
+      repaint(wood, lightWood)
+      box([0.5, 0.03, 0.16], [0, 0.015, 0], wood, 0.02)
+      box([0.03, 0.14, 0.16], [-0.22, 0.09, 0], wood, 0.01)
+      box([0.03, 0.14, 0.16], [0.22, 0.09, 0], wood, 0.01)
+      const board1 = box([0.4, 0.34, 0.02], [-0.09, 0.19, 0], wood, 0.015)
+      board1.rotation.z = 0.12
+      const board2 = box([0.38, 0.3, 0.02], [0.1, 0.17, 0.005], lightWood, 0.015)
+      board2.rotation.z = -0.12
+      const hole1 = ring(0.025, 0.006, [-0.09, 0.33, 0.011], wood)
+      hole1.rotation.x = Math.PI / 2
+      const hole2 = ring(0.025, 0.006, [0.1, 0.3, 0.016], lightWood)
+      hole2.rotation.x = Math.PI / 2
+      break
+    }
+    case 'mug-tree': {
+      repaint(wood)
+      cylinder(0.14, 0.03, [0, 0.015, 0], wood, 0.13)
+      cylinder(0.02, 0.5, [0, 0.28, 0], wood)
+      const mugColors: MeshStandardMaterial[] = [apple, citrus, lime, cream]
+      for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2
+        const dx = Math.sin(angle) * 0.1
+        const dz = Math.cos(angle) * 0.1
+        rod([0.02 * Math.sin(angle), 0.42, 0.02 * Math.cos(angle)], [dx, 0.42, dz], 0.013, wood)
+        cup([dx * 1.2, 0.34, dz * 1.2], mugColors[i], mugColors[i])
+      }
+      break
+    }
+    case 'cereal-dispenser': {
+      repaint(wood)
+      box([0.22, 0.05, 0.18], [0, 0.025, 0], wood, 0.02)
+      const hopper = [[0, 0], [0.03, 0], [0.03, 0.05], [0.12, 0.05], [0.12, 0.31], [0.1, 0.33], [0, 0.33]] as [number, number][]
+      lathe(hopper, [0, 0.05, 0], glass)
+      cylinder(0.09, 0.14, [0, 0.24, 0], lightWood, 0.08)
+      disc(0.1, 0.02, [0, 0.38, 0], wood)
+      cylinder(0.025, 0.03, [0, 0.06, 0.1], dark, 0.02)
+      break
+    }
+    case 'egg-basket': {
+      repaint(wood, lightWood)
+      const basket = [[0, 0], [0.12, 0], [0.16, 0.05], [0.17, 0.1], [0.15, 0.14], [0, 0.14]] as [number, number][]
+      lathe(basket, [0, 0, 0], wood)
+      const weave = ring(0.15, 0.006, [0, 0.06, 0], lightWood)
+      weave.rotation.x = Math.PI / 2
+      const handle = ring(0.13, 0.012, [0, 0.14, 0], wood)
+      handle.rotation.x = Math.PI / 2
+      handle.scale.set(1, 1.4, 0.5)
+      const eggPositions: [number, number][] = [[-0.05, 0.02], [0.05, -0.01], [0, 0.06], [-0.03, -0.05], [0.06, 0.04]]
+      for (const [x, z] of eggPositions) {
+        const egg = blob(0.042, [x, 0.1, z], cream)
+        egg.scale.set(1, 1.3, 1)
+      }
+      break
+    }
+    case 'wall-shelf': {
+      repaint(wood)
+      box([0.9, 0.04, 0.22], [0, 0, 0.1], wood, 0.02)
+      box([0.9, 0.05, 0.03], [0, 0, -0.01], wood, 0.015)
+      box([0.03, 0.08, 0.16], [-0.4, -0.04, 0.08], wood, 0.01)
+      box([0.03, 0.08, 0.16], [0.4, -0.04, 0.08], wood, 0.01)
+      const books: [number, MeshStandardMaterial][] = [[-0.28, tomato], [-0.2, dark], [-0.12, leaf], [0.14, apple]]
+      for (const [x, color] of books) box([0.03, 0.16, 0.14], [x, 0.1, 0.12], color, 0.006)
+      box([0.16, 0.03, 0.13], [0.28, 0.035, 0.12], citrus, 0.008)
+      break
+    }
+    case 'ironing-board': {
+      repaint(paint, linen)
+      box([1.4, 0.035, 0.6], [-0.2, 0.8, 0], wood, 0.02)
+      box([1.35, 0.02, 0.62], [-0.2, 0.821, 0], linen, 0.02)
+      const nose = cone(0.3, 0.4, [0.7, 0.8, 0], wood)
+      nose.rotation.z = -Math.PI / 2
+      const footA: Position = [-0.75, 0, -0.25]
+      const footB: Position = [-0.75, 0, 0.25]
+      const attachA: Position = [0.1, 0.78, 0.25]
+      const attachB: Position = [0.1, 0.78, -0.25]
+      rod(footA, attachB, 0.022, silver)
+      rod(footB, attachA, 0.022, silver)
+      rod([-0.75, 0.35, -0.25], [-0.75, 0.35, 0.25], 0.018, silver)
+      disc(0.03, 0.015, footA, dark)
+      disc(0.03, 0.015, footB, dark)
+      box([0.22, 0.11, 0.11], [0, 0.885, 0.15], paint, 0.03)
+      const ironNose = cone(0.05, 0.16, [0.13, 0.885, 0.15], paint)
+      ironNose.rotation.z = -Math.PI / 2
+      box([0.22, 0.02, 0.11], [0, 0.83, 0.15], silver, 0.02)
+      const ironHandle = ring(0.06, 0.012, [0, 0.95, 0.15], dark)
+      ironHandle.scale.set(1, 0.6, 1.3)
+      ironHandle.rotation.x = Math.PI / 2
+      contactSize = [1.8, 0.6]
+      break
+    }
+    case 'toilet-brush': {
+      const holder = [[0, 0], [0.06, 0], [0.065, 0.02], [0.05, 0.28], [0.045, 0.3], [0, 0.3]] as [number, number][]
+      lathe(holder, [0, 0, 0], paint)
+      disc(0.062, 0.012, [0, 0.3, 0], dark)
+      rod([0, 0.28, 0], [0, 0.7, 0], 0.014, silver)
+      cylinder(0.022, 0.05, [0, 0.73, 0], dark, 0.018)
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2
+        rod([0, 0.75, 0], [Math.sin(angle) * 0.045, 0.775, Math.cos(angle) * 0.045], 0.006, leaf)
+      }
+      break
+    }
+    case 'shower-squeegee': {
+      box([0.08, 0.03, 0.04], [0, 0.36, 0.015], silver, 0.01)
+      rod([0, 0.36, 0.03], [0, 0.36, 0.06], 0.012, silver)
+      const handleRing = ring(0.025, 0.008, [0, 0.35, 0.02], silver)
+      handleRing.rotation.x = Math.PI / 2
+      box([0.035, 0.55, 0.035], [0, 0.08, 0.05], paint, 0.012)
+      box([0.55, 0.05, 0.02], [0, -0.22, 0.07], dark, 0.015)
+      box([0.55, 0.09, 0.012], [0, -0.29, 0.075], dark, 0.008)
+      break
+    }
+    case 'tissue-box': {
+      box([0.24, 0.11, 0.14], [0, 0.055, 0], paint, 0.015)
+      const rim = ring(0.06, 0.01, [0, 0.111, 0], cream)
+      rim.rotation.x = Math.PI / 2
+      rim.scale.set(1.4, 1, 0.6)
+      const sheetA = box([0.05, 0.05, 0.008], [0, 0.135, 0], cream, 0.01)
+      sheetA.rotation.z = 0.3
+      const sheetB = box([0.045, 0.045, 0.008], [0.01, 0.14, 0.01], cream, 0.01)
+      sheetB.rotation.z = -0.25
+      sheetB.rotation.x = 0.2
+      break
+    }
+    case 'first-aid-kit': {
+      box([0.26, 0.16, 0.18], [0, 0.08, 0], paint, 0.02)
+      box([0.27, 0.01, 0.19], [0, 0.16, 0], dark, 0.01)
+      box([0.14, 0.02, 0.005], [0, 0.09, 0.091], leaf, 0.005)
+      box([0.02, 0.14, 0.005], [0, 0.09, 0.091], leaf, 0.005)
+      const handle = ring(0.05, 0.012, [0, 0.17, 0], dark)
+      handle.scale.set(1, 0.5, 1.2)
+      handle.rotation.x = Math.PI / 2
+      box([0.03, 0.02, 0.01], [-0.08, 0.05, 0.091], silver, 0.005)
+      box([0.03, 0.02, 0.01], [0.08, 0.05, 0.091], silver, 0.005)
+      break
+    }
+    case 'reed-diffuser': {
+      repaint(wood, lightWood)
+      disc(0.09, 0.015, [0, 0.0075, 0], wood)
+      const bottle = [[0, 0], [0.055, 0], [0.06, 0.09], [0.045, 0.12], [0.02, 0.13], [0.02, 0.16], [0, 0.16]] as [number, number][]
+      lathe(bottle, [0, 0.015, 0], glass)
+      cylinder(0.045, 0.07, [0, 0.05, 0], lightWood, 0.045)
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * Math.PI * 2
+        const dx = Math.sin(angle) * 0.015
+        const dz = Math.cos(angle) * 0.015
+        rod([dx, 0.16, dz], [dx * 8, 0.42, dz * 8], 0.006, lightWood)
+      }
+      break
+    }
+    case 'board-game': {
+      repaint(wood)
+      box([0.5, 0.03, 0.5], [0, 0.015, 0], wood, 0.02)
+      for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) {
+        const isDark = (r + c) % 2 === 0
+        box([0.065, 0.01, 0.065], [-0.175 + c * 0.07, 0.036, -0.175 + r * 0.07], isDark ? dark : cream, 0.004)
+      }
+      const dieA = box([0.045, 0.045, 0.045], [0.15, 0.0525, 0.15], cream, 0.006)
+      dieA.rotation.y = 0.4
+      const dieB = box([0.04, 0.04, 0.04], [0.18, 0.05, -0.13], cream, 0.006)
+      dieB.rotation.y = -0.25
+      for (const [x, z] of [[0.14, 0.13], [0.16, 0.17], [0.18, 0.15]] as [number, number][]) {
+        cylinder(0.006, 0.006, [x, 0.078, z], dark, 0.006)
+      }
+      const tokens: [number, number, MeshStandardMaterial][] = [[-0.18, -0.18, apple], [0.18, -0.18, lime], [-0.18, 0.05, silver]]
+      for (const [x, z, color] of tokens) cylinder(0.022, 0.03, [x, 0.05, z], color, 0.014)
+      break
+    }
+    case 'record-player': {
+      repaint(wood)
+      box([0.42, 0.06, 0.32], [0, 0.03, 0], wood, 0.02)
+      cylinder(0.15, 0.015, [-0.02, 0.068, 0.02], dark, 0.15)
+      cylinder(0.14, 0.006, [-0.02, 0.077, 0.02], dark, 0.14)
+      disc(0.04, 0.008, [-0.02, 0.081, 0.02], tomato)
+      const groove = ring(0.1, 0.003, [-0.02, 0.081, 0.02], silver)
+      groove.rotation.x = Math.PI / 2
+      cylinder(0.006, 0.02, [-0.02, 0.088, 0.02], silver)
+      cylinder(0.02, 0.03, [0.16, 0.075, -0.1], silver, 0.02)
+      rod([0.16, 0.09, -0.1], [0.02, 0.085, 0.06], 0.008, silver)
+      box([0.03, 0.012, 0.02], [0.02, 0.083, 0.06], dark, 0.004)
+      cylinder(0.014, 0.01, [0.15, 0.062, 0.13], silver, 0.014)
+      cylinder(0.014, 0.01, [0.19, 0.062, 0.13], silver, 0.014)
+      break
+    }
     default:
       return null
   }

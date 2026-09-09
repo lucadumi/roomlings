@@ -57,6 +57,10 @@ const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit'
+const pageFocus: Record<Page, FocusRequest['target']> = {
+  overview: 'room', shopping: 'stock', groceries: 'ledger', bills: 'ledger', settle: 'settle',
+  kitchen: 'roommates', budget: 'budget', chores: 'chores', supplies: 'supplies', objects: 'room', 'room-edit': 'room',
+}
 type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help' | 'room-admins'
   | { account: AccountIntent }
   | { transfer: Transfer } | { remove: Expense } | { undo: Settlement }
@@ -66,6 +70,7 @@ type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | '
   | { completeChore: Chore } | { archiveChore: Chore } | { undoChore: ChoreCompletion }
   | { restockItem: ShoppingItemInput }
   | { checkout: { id: string; items: ShoppingItem[] } } | null
+
 const initialInvite = new URLSearchParams(location.hash.slice(1)).get('join') ?? ''
 const initialRecovery = new URLSearchParams(location.hash.slice(1)).has('recover')
 const initialAccountInvite = new URLSearchParams(location.hash.slice(1)).get('account-invite') ?? ''
@@ -117,6 +122,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const [dialog, setDialog] = useState<Dialog>(initialAccountInvite ? { account: 'join' }
     : initialAccount ? { account: initialAccountIntent === 'create' || initialAccountIntent === 'join' ? initialAccountIntent : 'manage' }
       : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
+  const [roomMenuAnchor, setRoomMenuAnchor] = useState<HTMLButtonElement | null>(null)
   const [invitation, setInvitation] = useState(initialInvite)
   const [accountInvitation, setAccountInvitation] = useState(initialAccountInvite)
   const [accessRouteVersion, setAccessRouteVersion] = useState(0)
@@ -603,17 +609,17 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     date.setMonth(date.getMonth() + direction)
     setMonth(localDate(date).slice(0, 7))
   }
-  const visit = (next: Page) => {
+  const visit = (next: Page, focus: FocusRequest['target'] | null = pageFocus[next]) => {
     if (page === 'room-edit' && busy) { setError('Wait for the room change to finish before leaving the editor.'); return }
     if (next !== 'room-edit') { setComponentPreview(null); pendingRoomMutation.current = null }
+    if (next !== 'objects' && next !== 'room-edit') setSelectedComponentId(null)
     setPage(next)
     setFormError('')
     setSearch('')
     setFilter('all')
-    if (next === 'overview') setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
+    if (focus !== null) setFocusRequest((previous) => ({ target: focus, id: previous.id + 1 }))
   }
   const interact = (action: KitchenAction) => {
-    setFocusRequest((previous) => ({ target: action, id: previous.id + 1 }))
     if (action === 'stock') setShoppingView('list')
     const pages: Record<KitchenAction, Page> = { stock: 'shopping', ledger: 'groceries', budget: 'budget', roommates: 'kitchen', settle: 'settle' }
     visit(pages[action])
@@ -622,7 +628,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setChoreFilter({ room: currentRoom, area })
     setChoreView('active')
     setChoreMine(false)
-    visit('chores')
+    visit('chores', area ? null : 'chores')
   }
   const openSupplies = (roomId = currentRoom) => {
     setSupplyRoom(roomId)
@@ -649,7 +655,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setChoreFilter({ room: component.roomId, area: null, componentId: component.id })
     setChoreView('active')
     setChoreMine(false)
-    visit('chores')
+    visit('chores', null)
+    setSelectedComponentId(component.id)
   }
   const createComponentChore = (component: RoomComponent, suggestion?: ComponentChoreSuggestion) => {
     openDialog({ createChore: {
@@ -743,7 +750,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       <RecoveryForm busy={busy} error={footerError} onSubmit={(body) => { void newSession('/recover', body) }} />
     </Modal>
     if (!household || !session) return null
-    if (dialog === 'rooms') return <RoomPicker currentRoom={currentRoom} onClose={close} components={savedComponents} roomStyle={household.roomStyle}
+    if (dialog === 'rooms' && roomMenuAnchor) return <RoomPicker currentRoom={currentRoom} anchor={roomMenuAnchor} onClose={close} components={savedComponents} roomStyle={household.roomStyle}
       ledger={{ counts, memberCount: household.members.filter((member) => !member.inactive).length, expenseCount: household.expenses.length, fundFraction: remaining / household.budget }}
       onSelect={(roomId) => { switchRoom(roomId); setDialog(null) }} />
     if (dialog === 'room-admins') return <Modal title="Household admins." subtitle="Admins customize the rooms and can give another roommate admin access. Ownership and the shared ledger stay unchanged." onClose={close} busy={busy}>
@@ -954,8 +961,13 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
-      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null}
-      busy={busy} onRooms={() => openDialog('rooms')} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
+      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null && dialog !== 'rooms'}
+      overviewFocus={page !== 'overview' && (dialog === 'room-style' || dialog === 'help' || dialog === 'settings' || dialog === 'room-admins')}
+      busy={busy} roomsOpen={dialog === 'rooms'} onRooms={(anchor) => {
+        setRoomMenuAnchor(anchor)
+        if (dialog === 'rooms') setDialog(null)
+        else openDialog('rooms')
+      }} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
       panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : page === 'objects' || page === 'room-edit' ? page : null}
       panelSide={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
       components={page === 'room-edit' && componentPreview?.householdId === household.id && componentPreview.roomId === currentRoom ? componentPreview.components : savedComponents}
@@ -970,11 +982,11 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       {roomAccessError && <button className="text-button" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry room access</button>}
       {error && <button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button>}
     </div>}
-    {page !== 'overview' && (!dialog || page === 'room-edit') && <RoomPanel
+    {page !== 'overview' && (!dialog || dialog === 'rooms' || page === 'room-edit') && <RoomPanel
       title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
       subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
       view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}:${choreFilter.componentId ?? ''}` : page === 'objects' ? `objects:${selectedComponentId ?? ''}` : page}
-      suspended={dialog !== null} busy={page === 'room-edit' && busy}
+      suspended={dialog !== null && dialog !== 'rooms'} busy={page === 'room-edit' && busy}
       side={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
       badge={page === 'objects' || page === 'room-edit' ? <span className={`room-panel-mode ${page === 'room-edit' ? 'editing' : 'live'}`}>{page === 'room-edit' ? 'Private preview' : 'Live room'}</span> : undefined}
       onClose={() => visit('overview')}

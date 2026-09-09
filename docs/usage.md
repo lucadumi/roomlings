@@ -2,7 +2,7 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** and choose a kitchen or bathroom preview card without changing your household or session. Both rooms start at the same close-up scale; **Whole room** zooms out to show the full space. The toolbar remains available in both rooms, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen or bathroom without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. Both rooms start at the same close-up scale; **Whole room** zooms out to show the full space. The toolbar remains available in both rooms, including when 3D cannot load.
 
 | Object | Purpose |
 | --- | --- |
@@ -19,13 +19,17 @@ Open **Rooms** and choose a kitchen or bathroom preview card without changing yo
 
 The fridge visualizes purchases, not food remaining. Export the complete ledger from the receipt book.
 
-The softer Garden pop palette uses warm cream, gentle leafy greens and muted tomato, sunflower and sky-blue accents across the interface, rooms, object finishes and previews. Linen remains the quieter neutral room option. Saved household data and individual finish selections are unchanged.
+The [Sage and clay palette from Coolors](https://coolors.co/ffffff-3d405b-81b29a-f2cc8f-e07a5f) replaces the app's accent colors: slate text, sage, honey and clay details. Primary buttons retain the original brick red (`#b8533b`). Pages, panels and modals stay white rather than using different colors for each feature. The house pot keeps its warm accent. The hero illustration has no backdrop; Explore scenes have white backgrounds and a divider beside the illustration.
 
-Panels, forms and cards carry the toolbar's accent colors: tomato for shopping and people, sky blue for receipts and repayments, sunflower for the house pot, and leafy green for chores and room objects.
+The closing invitation is a white outlined letter with a line-only folded
+corner and a small tree illustration. Its red **Start sharing** button opens the
+existing account flow.
 
-Large low-poly plants sit behind the landing page's outer edges without changing the content grid. Soft clear areas keep the text readable and leave its dotted background intact. Scrolling gives the leaves a gentle gust that settles back into a breeze. The existing **Reduced motion** control pauses both movements. Reduced-motion preferences and unavailable 3D use matching still artwork; very narrow gutters leave the decoration out rather than cropping it.
+The normal-flow header and centered hero fill the first screen, with extra space
+before the next section. Short viewports allow the content to grow without
+clipping. The spending summary stays white; the house-pot button keeps its accent.
 
-Form dropdowns use the same cream and sage styling throughout. Open one to choose an option, use arrow keys or type to find a choice, and press Escape to close just the menu without losing the form.
+Form dropdowns use the same white and sage styling throughout. Open one to choose an option, use arrow keys or type to find a choice, and press Escape to close just the menu without losing the form. Saved household data and individual finish selections are unchanged.
 
 ## Customizing a room
 
@@ -33,7 +37,7 @@ Open the icon-only **Room objects** button, then choose **Edit room** inside its
 
 Select an object in the room or its card. Position buttons choose which existing copy you are using or editing. In Edit room, **Position** moves that copy between compatible locations, and **Add at another position** creates another private-preview placement. The room updates live as you choose; nothing is shared before Apply. Occupied or incompatible positions are disabled. These are designed locations, not unrestricted dragging.
 
-The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. The original kitchen and bathroom remain the defaults. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
+The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The original kitchen and bathroom remain the defaults. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
 
 Change an object's name, finish, supported model and supply suggestions. **Match room colors** uses the household palette, without an extra default-style label. Model controls appear only when there is a real choice, such as a rectangular or round table, bath or shower, different plants, or different coffee machines. Supplies have editable names and suggested quantities, not stock counts.
 

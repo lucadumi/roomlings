@@ -8,9 +8,63 @@ import type { RoomComponent } from '../../shared/roomComponents.ts'
 import { baseCameraOffset, cameraFraming, cameraProjection } from '../../src/camera.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
-import { chooseOption, openRoomEditor, trackDrawing } from './fixtures.ts'
+import { chooseOption, openRoomEditor, openRoomObjects, trackDrawing } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
+
+test('switching menus releases object focus and frames the newly selected menu', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
+  await page.goto(roomPath())
+  const world = page.locator('.kitchen-world')
+  const objects = await openRoomObjects(page)
+  await objects.getByRole('button', { name: 'Open Plant details', exact: true }).click()
+  await expect(world).toHaveAttribute('data-selected-component', 'default-kitchen-plant-floor')
+  await page.getByRole('button', { name: 'Monthly budget', exact: true }).click()
+  await expect(world).not.toHaveAttribute('data-selected-component', /.+/)
+  await expect(world).toHaveAttribute('data-focus', 'budget')
+  await expect(world).toHaveAttribute('data-camera-moving', 'false')
+  await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+  await expect(world).toHaveAttribute('data-focus', 'ledger')
+  await page.getByRole('button', { name: 'Chores', exact: true }).click()
+  await expect(world).toHaveAttribute('data-focus', 'chores')
+  await openRoomObjects(page)
+  await expect(world).toHaveAttribute('data-focus', 'room')
+  await objects.getByRole('button', { name: 'Open Plant details', exact: true }).click()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  await expect(world).not.toHaveAttribute('data-selected-component', /.+/)
+  await expect(world).toHaveAttribute('data-focus', 'room')
+})
+
+for (const roomId of ['kitchen', 'bathroom'] as const) {
+  test(`opening the palette from the ${roomId} editor frames the room and restores the draft focus`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.goto(roomPath(roomId))
+    const editor = await openRoomEditor(page)
+    const name = roomId === 'kitchen' ? 'Plant' : 'Bathroom sink'
+    const id = roomId === 'kitchen' ? 'default-kitchen-plant-floor' : 'default-bathroom-sink'
+    await editor.getByRole('button', { name: `Edit ${name}`, exact: true }).click()
+    await editor.getByLabel('Object name', { exact: true }).fill('Keep this draft')
+    const world = page.locator('.kitchen-world')
+    await expect(world).toHaveAttribute('data-selected-component', id)
+    await world.getByRole('button', { name: 'Zoom in', exact: true }).click()
+    await expect(world.locator('.world-camera-controls')).toContainText('120%')
+    await expect(world).toHaveAttribute('data-camera-moving', 'false')
+    const before = await world.boundingBox()
+    await page.locator('.house-tools').getByRole('button', { name: 'Room style', exact: true }).click()
+    const palette = page.getByRole('dialog')
+    await expect(palette).toBeVisible()
+    await expect(world).toHaveAttribute('data-focus', 'room')
+    await expect(world).toHaveAttribute('data-framing', 'whole')
+    await expect(world).not.toHaveAttribute('data-selected-component', /.+/)
+    await expect(world).toHaveAttribute('data-camera-moving', 'false')
+    expect((await world.boundingBox())!.width).toBeGreaterThan(before!.width)
+    await palette.getByRole('button', { name: 'Close dialog', exact: true }).click()
+    await expect(editor.getByLabel('Object name', { exact: true })).toHaveValue('Keep this draft')
+    await expect(world).toHaveAttribute('data-selected-component', id)
+    await expect(world).toHaveAttribute('data-framing', 'close')
+    await expect(world.locator('.world-camera-controls')).toContainText('120%')
+    expect((await accounts.store.get(owner.household.id))?.roomComponents).toEqual(owner.household.roomComponents)
+  })
+}
 
 async function configureDesignedSlots(accounts: AccountHarness, session: Session) {
   const household = await accounts.store.get(session.household.id)
@@ -141,7 +195,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await expect(page.getByRole('list', { name: 'Installed room objects', exact: true }).getByRole('button')).toHaveCount(new Set(installed.map((component) => component.kind)).size)
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
     await page.getByRole('button', { name: 'Rooms', exact: true }).click()
-    const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
+    const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
     await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('data-preview-source', 'saved')
     await expect.poll(() => picker.locator('img').evaluateAll((images) => images.every((image) =>
       image instanceof HTMLImageElement && image.src.startsWith('data:image/png;') && image.complete && image.naturalWidth > 0))).toBe(true)
@@ -181,10 +235,10 @@ test('configured objects remain reachable without WebGL and saved previews never
   await expect(page.getByRole('region', { name: 'Coffee machine manual state', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
+  const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(2)
   expect(await picker.locator('img').evaluateAll((images) => images.every((image) => !image.getAttribute('src')))).toBe(true)
-  await picker.getByRole('button', { name: 'Open Bathroom', exact: true }).focus()
+  await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).focus()
   await page.keyboard.press('Enter')
   await expect(page.getByText('The 3D bathroom is unavailable.', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Room objects', exact: true }).click()

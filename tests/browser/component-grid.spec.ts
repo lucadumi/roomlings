@@ -26,6 +26,31 @@ async function withoutWebGL(page: Page) {
   })
 }
 
+test('menu status labels sit on the right beside the close button', { tag: '@room' }, async ({ page, emptyHousehold: _owner }) => {
+  await withoutWebGL(page)
+  for (const width of [1440, 320]) {
+    await page.setViewportSize({ width, height: 960 })
+    await page.goto('/kitchen')
+    await page.getByRole('button', { name: 'Room objects', exact: true }).click()
+    for (const label of ['Live room', 'Private preview']) {
+      if (label === 'Private preview') await page.locator('.room-objects-panel').getByRole('button', { name: 'Edit room', exact: true }).click()
+      const header = page.locator('.room-panel-header')
+      await expect(header.locator('.room-panel-mode')).toHaveText(label)
+      const bounds = await header.evaluate((element) => {
+        const title = element.querySelector('h2')!.getBoundingClientRect()
+        const badge = element.querySelector('.room-panel-mode')!.getBoundingClientRect()
+        const close = element.querySelector('[aria-label="Close panel"]')!.getBoundingClientRect()
+        return { titleRight: title.right, badgeLeft: badge.left, badgeRight: badge.right, closeLeft: close.left, closeRight: close.right,
+          badgeCenter: badge.y + badge.height / 2, closeCenter: close.y + close.height / 2 }
+      })
+      expect(bounds.badgeLeft).toBeGreaterThan(bounds.titleRight)
+      expect(bounds.closeLeft - bounds.badgeRight).toBeCloseTo(8, 0)
+      expect(Math.abs(bounds.badgeCenter - bounds.closeCenter)).toBeLessThan(1)
+      expect(bounds.closeRight).toBeLessThanOrEqual(width)
+    }
+  }
+})
+
 test('the object browser is a large left-side grid with real previews and hover/focus details', { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
   const failures: string[] = []
   page.on('pageerror', (error) => failures.push(error.message))

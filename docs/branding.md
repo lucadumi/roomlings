@@ -61,3 +61,16 @@ The wordmark is Fraunces 650, optical size 48, softness 45, wonk 1, with adjuste
 spacing. Font licenses accompany the design sources. Generated presentation files
 and intermediate frames stay out of Git; the runtime assets and approved reference
 images above are retained. No Blender or Python dependency is needed by the app.
+
+## Saved plant illustrations
+
+The tree-and-flowers PNG in `src/assets/garden/` decorates the closing invitation
+letter. It is a static, lazy-loaded illustration, not a background or a WebGL
+scene. The other illustration and both GLB assets remain available for future
+use. Each composition has a transparent 600 by 1000 PNG and a reusable GLB with
+flat normals, named parts and materials.
+
+| Composition | Illustration | 3D asset |
+|---|---|---|
+| Tree and flowers | [left.png](../src/assets/garden/left.png) | [left.glb](../src/assets/garden/left.glb) |
+| Leafy plant and flowers | [right.png](../src/assets/garden/right.png) | [right.glb](../src/assets/garden/right.glb) |

@@ -14,6 +14,8 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 
 The room's objects open these tools, and a toolbar keeps them available without 3D. **Room objects** groups each kind into one preview card, with position choices for repeated objects. Its **Edit room** action lets admins preview and apply a shared layout. Installing or moving an object never creates a purchase, debt or chore. Every balance comes from the same shared ledger.
 
+The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, mug tree, record player, board game and reed diffuser. **Rooms** opens a compact preview menu directly beneath its button.
+
 ## Run locally
 
 Requires Node.js 22.18+.

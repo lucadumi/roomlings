@@ -113,7 +113,10 @@ export function RoomPanel({ title, subtitle, children, onClose, view, suspended 
   }, [])
   return <aside className="room-panel" role="region" aria-labelledby={titleId} aria-busy={busy || undefined} ref={panel} tabIndex={-1}
     data-panel-side={side} inert={suspended} aria-hidden={suspended || undefined} style={suspended ? { display: 'none' } : undefined}>
-    <header className="room-panel-header"><div className="room-panel-title"><h2 id={titleId}>{title}</h2>{badge}</div><button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size={20} /></button></header>
+    <header className="room-panel-header">
+      <div className="room-panel-title"><h2 id={titleId}>{title}</h2></div>
+      <div className="room-panel-actions">{badge}<button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size={20} /></button></div>
+    </header>
     <div className="room-panel-scroll" ref={scroll}>{subtitle && <p className="room-panel-subtitle">{subtitle}</p>}{children}</div>
   </aside>
 }

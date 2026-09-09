@@ -99,14 +99,16 @@ test('landing sections stay compact with spacing after the hero and shared-home 
         titleToContent: element.querySelector('.welcome-feature h3')!.getBoundingClientRect().top
           - element.querySelector('#features-title')!.getBoundingClientRect().bottom,
         sectionMinimums: [...element.querySelectorAll('main > section')].map((section) => getComputedStyle(section).minHeight),
+        headerHeight: element.querySelector('.welcome-header')!.getBoundingClientRect().height,
         otherMargins: [...element.querySelectorAll('main > section')].slice(1).map((section) => getComputedStyle(section).marginTop),
       }
     })
     expect(metrics.words).toBeLessThanOrEqual(230)
     expect(metrics.steps).toBeLessThanOrEqual(maximum)
-    expect(metrics.sectionMinimums).toEqual(['0px', '0px', '0px', '0px', '0px'])
-    expect(metrics.heroGap).toBeGreaterThanOrEqual(24)
-    expect(metrics.heroGap).toBeLessThanOrEqual(56)
+    expect(Math.abs(parseFloat(metrics.sectionMinimums[0]) - (height - metrics.headerHeight))).toBeLessThan(1)
+    expect(metrics.sectionMinimums.slice(1)).toEqual(['0px', '0px', '0px', '0px'])
+    expect(metrics.heroGap).toBeGreaterThanOrEqual(40)
+    expect(metrics.heroGap).toBeLessThanOrEqual(72)
     expect(metrics.featuresGap).toBeGreaterThanOrEqual(16)
     expect(metrics.featuresGap).toBeLessThanOrEqual(32)
     expect(metrics.headingGap).toBe('0px')
@@ -147,7 +149,7 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
 })
 
 test('reduced motion removes the scroll runway and holds a stationary room while the object buttons work', { tag: '@room' }, async ({ page }) => {
-  const drawing = await trackDrawing(page, '.welcome-tour canvas')
+  const drawing = await trackDrawing(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/welcome')
   await openTour(page)
@@ -169,7 +171,7 @@ test('reduced motion removes the scroll runway and holds a stationary room while
 })
 
 test('the tour stops drawing off screen instead of running behind the rest of the landing', { tag: '@room' }, async ({ page }) => {
-  const drawing = await trackDrawing(page, '.welcome-tour canvas')
+  const drawing = await trackDrawing(page)
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/welcome')
   await openTour(page)

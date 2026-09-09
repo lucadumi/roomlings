@@ -15,7 +15,8 @@ import type { RoomComponent } from '../shared/roomComponents.ts'
 
 type Props = {
   roomId: RoomId
-  onRooms: () => void
+  onRooms: (anchor: HTMLButtonElement) => void
+  roomsOpen: boolean
   busy: boolean
   dueChores: Partial<Record<ChoreArea, number>>
   dueChoreCount: number
@@ -36,6 +37,7 @@ type Props = {
   syncState: 'saved' | 'offline'
   inert: boolean
   panelOpen: boolean
+  overviewFocus?: boolean
   panelSide?: 'left' | 'right'
   activeTool: KitchenAction | 'chores' | 'objects' | 'room-edit' | null
   components?: readonly RoomComponent[]
@@ -65,10 +67,11 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 }
 
 export function GameHome({
-  roomId, onRooms, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
+  roomId, onRooms, roomsOpen, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onInvite, onSelect,
   components, editMode, selectedComponentId, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
   panelSide = 'right',
+  overviewFocus = false,
 }: Props) {
   const World = roomViews[roomId]
   const home = useRef<HTMLElement>(null)
@@ -95,7 +98,7 @@ export function GameHome({
   }, [])
   const viewer = household.members.find((member) => member.id === memberId)!
   const activeMembers = household.members.filter((member) => !member.inactive)
-  return <main className="game-home" id="main" ref={home} data-panel-open={panelOpen} data-panel-side={panelSide} data-edit-mode={editMode} inert={inert} aria-hidden={inert || undefined}>
+  return <main className="game-home" id="main" ref={home} data-panel-open={panelOpen && !overviewFocus} data-panel-side={panelSide} data-edit-mode={editMode} inert={inert} aria-hidden={inert || undefined}>
     <header className="game-hud">
       <div className="game-identity">
         <a className="brand" href="/" aria-label="Roomlings home"><Brand decorative /></a>
@@ -114,12 +117,19 @@ export function GameHome({
     <h1 className="sr-only">{household.name}: {roomCatalog[roomId].label}</h1>
     <SceneBoundary key={`${roomId}:${household.id}`}>
       <Suspense fallback={<SceneLoading label={`Opening ${roomCatalog[roomId].label.toLowerCase()}...`} />}>
-        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || (panelOpen && !editMode)} panelOpen={panelOpen} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
+        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || (panelOpen && !editMode)} panelOpen={panelOpen && !overviewFocus} overviewFocus={overviewFocus} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
           components={components ?? getRoomComponents(household)} editMode={editMode} selectedComponentId={selectedComponentId} onComponentSelect={onComponentSelect} />
       </Suspense>
     </SceneBoundary>
     <div className="room-caption">
-      <button className="room-label room-picker-trigger" aria-label="Rooms" aria-haspopup="dialog" disabled={busy || inert} onClick={onRooms}>
+      <button className="room-label room-picker-trigger" aria-label="Rooms" aria-haspopup="menu" aria-expanded={roomsOpen}
+        aria-controls={roomsOpen ? 'room-selection-menu' : undefined} disabled={busy || inert} onClick={(event) => onRooms(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (!roomsOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+            event.preventDefault()
+            onRooms(event.currentTarget)
+          }
+        }}>
         <Grid2X2 size={15} /><strong>Rooms</strong><small>{roomCatalog[roomId].name}</small>
       </button>
       <div className="party-members"><button onClick={() => onAction('roommates')} aria-label="Meet your roommates" aria-pressed={activeTool === 'roommates'}>{activeMembers.slice(0, 4).map((member) => <Avatar member={member} key={member.id} small />)}</button><button className="party-invite" onClick={onInvite} aria-label="Invite a roommate" aria-haspopup="dialog"><Plus size={16} /></button></div>

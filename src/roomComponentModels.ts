@@ -42,6 +42,7 @@ export const componentPlacements: Partial<Record<RoomSlotId, Placement>> = {
   'bathroom-vanity-accessory': { position: [0.92, 1.66, -2.7], scale: 0.48 },
   'bathroom-floor-storage': { position: [0.1, 0.025, 2.15], scale: 0.9 },
   'bathroom-bath-tray': { position: [-2.85, 1.2, -0.8] },
+  'bathroom-toilet-accessory': { position: [3.08, 0.025, -2.55], scale: 0.65 },
 }
 
 export function buildRoomComponentModel(component: RoomComponent, style: RoomStyle): ComponentModel {

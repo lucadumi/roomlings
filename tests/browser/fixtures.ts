@@ -6,11 +6,10 @@ import { roomCatalog } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import type { Store } from '../../server/store.ts'
 
-export async function trackDrawing(page: Page, canvasSelector?: string) {
-  await page.addInitScript(({ canvasSelector }) => {
+export async function trackDrawing(page: Page) {
+  await page.addInitScript(() => {
     let draws = 0
     let shadowDraws = 0
-    const tracked = new WeakSet<WebGL2RenderingContext>()
     const framebuffers = new WeakMap<WebGL2RenderingContext, WebGLFramebuffer | null>()
     const bindFramebuffer = WebGL2RenderingContext.prototype.bindFramebuffer
     Object.defineProperty(WebGL2RenderingContext.prototype, 'bindFramebuffer', {
@@ -23,18 +22,15 @@ export async function trackDrawing(page: Page, canvasSelector?: string) {
       const original = WebGL2RenderingContext.prototype[method]
       Object.defineProperty(WebGL2RenderingContext.prototype, method, {
         value(this: WebGL2RenderingContext, ...args: number[]) {
-          if (!canvasSelector || this.canvas instanceof HTMLCanvasElement && this.canvas.matches(canvasSelector)) tracked.add(this)
-          if (tracked.has(this)) {
-            draws++
-            if (framebuffers.get(this)) shadowDraws++
-          }
+          draws++
+          if (framebuffers.get(this)) shadowDraws++
           return Reflect.apply(original, this, args)
         },
       })
     }
     Object.defineProperty(window, 'roomlingsFrameDrawCalls', { get: () => draws })
     Object.defineProperty(window, 'roomlingsShadowDrawCalls', { get: () => shadowDraws })
-  }, { canvasSelector })
+  })
   return () => page.evaluate(() => ({
     draws: Number(Reflect.get(window, 'roomlingsFrameDrawCalls')),
     shadows: Number(Reflect.get(window, 'roomlingsShadowDrawCalls')),
@@ -107,8 +103,8 @@ export async function closeRoomEditor(page: Page) {
 
 export async function selectRoom(page: Page, roomId: RoomId) {
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
-  await picker.getByRole('button', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
+  const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
+  await picker.getByRole('menuitemradio', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
   await expect(picker).toHaveCount(0)
 }
 
