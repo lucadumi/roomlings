@@ -1,14 +1,14 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { balances, householdSchema } from '../shared/domain.ts'
+import { balances, choreInputSchema, householdSchema } from '../shared/domain.ts'
 import type { Chore, Household } from '../shared/domain.ts'
 import { completeChore } from '../shared/chores.ts'
 import {
   applyRoomComponentPatch, choreComponentFields, RoomComponentError, setRoomComponentState,
 } from '../shared/componentChanges.ts'
 import {
-  availableComponentSlots, componentCatalog, componentChoreMatches, componentKinds, createRoomComponent, defaultRoomComponents,
+  availableComponentSlots, componentCatalog, componentChoreArea, componentChoreMatches, componentKinds, createRoomComponent, defaultRoomComponents,
   getRoomComponents, roomComponentSchema, roomComponentsPatchSchema, roomSlots, suggestedComponentSupplies, validateRoomComponents,
 } from '../shared/roomComponents.ts'
 import type { RoomComponent, RoomComponentChange } from '../shared/roomComponents.ts'
@@ -91,6 +91,61 @@ describe('room component catalog and legacy defaults', () => {
     assert.match(validateRoomComponents(defaults.filter((entry) => entry.id !== defaults[0].id))!, /fitted objects/)
     assert.match(validateRoomComponents([...defaults, component, { ...component, id: randomUUID() }])!, /same designed position/)
     assert.match(validateRoomComponents([...defaults, defaults[0]])!, /distinct identifiers/)
+  })
+
+  it('adds the living room to saved two-room layouts once without resetting any object', () => {
+    const household = home()
+    const oldComponents = defaultRoomComponents().filter((component) => component.roomId !== 'living-room')
+      .map((component) => component.slotId === 'kitchen-plant-floor'
+        ? { ...component, installed: false, name: 'Our old planter', version: 3, finish: 'tomato' as const }
+        : component)
+    const before = structuredClone(oldComponents)
+    const restored = householdSchema.parse({ ...household, roomComponents: oldComponents })
+    assert.deepEqual(oldComponents, before)
+    assert.deepEqual(restored.roomComponents?.filter((component) => component.roomId !== 'living-room'), before)
+    assert.deepEqual(restored.roomComponents?.filter((component) => component.roomId === 'living-room'),
+      defaultRoomComponents().filter((component) => component.roomId === 'living-room'))
+    assert.equal(restored.version, household.version)
+    assert.deepEqual(balances(restored), balances(household))
+    const television = getRoomComponents(restored).find((component) => component.kind === 'tv')!
+    applyRoomComponentPatch(restored, { roomId: 'living-room', changes: [change(television, { installed: false, name: 'Our screen' })] }, now)
+    const reloaded = householdSchema.parse(JSON.parse(JSON.stringify(restored)))
+    assert.deepEqual(reloaded, restored)
+    assert.equal(getRoomComponents(reloaded).find((component) => component.id === television.id)?.installed, false)
+    assert.equal(getRoomComponents(reloaded).filter((component) => component.kind === 'tv').length, 1)
+  })
+
+  it('keeps layouts at the former saved-object limit readable when adding the new defaults', () => {
+    const components = defaultRoomComponents().filter((component) => component.roomId !== 'living-room')
+    while (components.length < 120) {
+      components.push({ ...createRoomComponent('plant', 'kitchen-plant-floor', randomUUID()), installed: false })
+    }
+    const restored = householdSchema.parse({ ...home(), roomComponents: components })
+    assert.equal(restored.roomComponents?.length, 120 + defaultRoomComponents().filter((component) => component.roomId === 'living-room').length)
+    assert.deepEqual(restored.roomComponents?.slice(0, 120), components)
+  })
+
+  it('links living room care and supplies to the right areas without changing other rooms', () => {
+    const household = home()
+    for (const kind of ['sofa', 'coffee-table', 'tv', 'media-unit', 'bookshelf', 'floor-lamp', 'plant', 'rug', 'bins'] as const) {
+      const slot = roomSlots.find((slot) => slot.roomId === 'living-room' && slot.kinds.includes(kind))!
+      const component = createRoomComponent(kind, slot.id, `default-${slot.id}`)
+      const area = componentChoreArea(component)
+      assert.ok(area)
+      assert.equal(choreInputSchema.safeParse({
+        title: 'Living room care', roomId: 'living-room', area, componentId: component.id,
+        dueDate: '2026-09-08', repeatDays: 7, rotation: [household.members[0].id],
+      }).success, true)
+      assert.equal(componentChoreMatches({ roomId: 'living-room', area }, component), true)
+      assert.equal(componentChoreMatches({ roomId: 'bathroom', area }, component), false)
+    }
+    assert.equal(componentChoreArea({ kind: 'plant', roomId: 'kitchen' }), null)
+    assert.deepEqual(suggestedComponentSupplies({ kind: 'supply-shelf', roomId: 'living-room', variant: 'original' }).map((supply) => supply.name),
+      ['Floor cleaner', 'Dusting cloths', 'Rubbish bags'])
+    assert.equal(choreInputSchema.safeParse({
+      title: 'Wrong room area', roomId: 'living-room', area: 'toilet',
+      dueDate: '2026-09-08', repeatDays: 7, rotation: [household.members[0].id],
+    }).success, false)
   })
 
   it('keeps room filters and legacy fixture chores compatible with object identities', () => {

@@ -1,6 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import { openRoomEditor, selectRoom } from './fixtures.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
+import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -15,7 +16,7 @@ test('the Rooms menu shows real previews beneath its button and preserves the ho
   const menu = await picker.boundingBox()
   expect(menu!.y).toBeGreaterThanOrEqual(trigger!.y + trigger!.height)
   expect(menu!.y - trigger!.y - trigger!.height).toBeLessThanOrEqual(12)
-  await expect(picker.locator('img')).toHaveCount(2)
+  await expect(picker.locator('img')).toHaveCount(roomIds.length)
   await expect.poll(() => picker.locator('img').evaluateAll((images) => images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('anchored-rooms-menu.png'), animations: 'disabled' })
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(populatedHousehold.token)

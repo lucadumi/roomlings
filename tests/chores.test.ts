@@ -7,7 +7,7 @@ import {
 } from '../shared/domain.ts'
 import type { Chore, ChoreInput, Household } from '../shared/domain.ts'
 import { canUndoChore, choreAssignee, choreStatus, completeChore, nextChoreDate, undoChoreCompletion } from '../shared/chores.ts'
-import { roomCatalog } from '../shared/rooms.ts'
+import { roomCatalog, roomIds } from '../shared/rooms.ts'
 
 const createdAt = '2026-09-01T12:00:00.000Z'
 const completedAt = '2026-09-08T12:00:00.000Z'
@@ -82,7 +82,7 @@ describe('shared chores schema', () => {
   it('accepts whole-home and room-wide chores while checking every room-specific area', () => {
     const state = household()
     assert.equal(choreInputSchema.safeParse(input(state, { roomId: null, area: null })).success, true)
-    for (const roomId of ['kitchen', 'bathroom'] as const) {
+    for (const roomId of roomIds) {
       assert.equal(choreInputSchema.safeParse(input(state, { roomId, area: null })).success, true)
       for (const area of roomCatalog[roomId].areas) {
         assert.equal(choreInputSchema.safeParse(input(state, { roomId, area: area.id })).success, true)

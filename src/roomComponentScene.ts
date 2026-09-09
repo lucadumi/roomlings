@@ -27,6 +27,10 @@ export const bathroomTargetSlots = {
   sink: 'bathroom-sink', mirror: 'bathroom-mirror', toilet: 'bathroom-toilet', bath: 'bathroom-bath',
   chores: 'bathroom-cleaning-caddy', supplies: 'bathroom-supply-shelf',
 } as const satisfies Record<string, RoomSlotId>
+export const livingRoomTargetSlots = {
+  sofa: 'living-room-sofa', surfaces: 'living-room-coffee-table', plants: 'living-room-plant', bins: 'living-room-bins',
+  chores: 'living-room-cleaning-caddy', supplies: 'living-room-supply-shelf',
+} as const satisfies Record<string, RoomSlotId>
 
 export function installedRoomComponents(components: readonly RoomComponent[] | undefined, roomId: RoomId): RoomComponent[] {
   const ids = new Set<string>()

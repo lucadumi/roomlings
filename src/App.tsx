@@ -717,9 +717,11 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
       onLegacyChange={changeSavedKitchen}
       onOpenLegacy={(kitchen) => switchKitchen(kitchen, true)} />
-    if (dialog === 'help' && currentRoom === 'bathroom') return <Modal title="Your shared bathroom." subtitle="Chores and supplies use the same household as your kitchen." onClose={close}>
+    if (dialog === 'help' && currentRoom !== 'kitchen') return <Modal title={`Your shared ${roomCatalog[currentRoom].name.toLowerCase()}.`} subtitle="Chores and supplies use the same household as your kitchen." onClose={close}>
       <div className="game-guide">
-        <p><Check size={19} /><span><strong>Choose a fixture.</strong> The sink, mirror, bath, toilet and floor open chores for that area.</span></p>
+        <p><Check size={19} /><span><strong>Choose an object.</strong> {currentRoom === 'bathroom'
+          ? 'The sink, mirror, bath, toilet and floor open chores for that area.'
+          : 'The sofa, coffee table, plant, bin and floor open their care routines. Other objects open their supplies and suggested chores.'}</span></p>
         <p><Users size={19} /><span><strong>Share the work.</strong> Assign a person or rotation. Completing a chore records who did it and advances the next turn.</span></p>
         <p><Plus size={19} /><span><strong>Restock supplies.</strong> The supply shelf adds items to the existing shopping list. It does not record a purchase.</span></p>
         <p><Settings2 size={19} /><span><strong>Make the room yours.</strong> Room objects holds supplies, care and manual states. Admins use Edit room to preview appliances, fixtures and decorations before applying a shared change.</span></p>

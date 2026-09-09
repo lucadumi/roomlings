@@ -60,6 +60,46 @@ async function fixture(context: TestContext) {
 const resultHousehold = (data: unknown) => z.object({ household: householdSchema }).parse(data).household
 
 describe('shared room component API', () => {
+  it('shares living room customization, care and shopping without creating another ledger', async (context) => {
+    const api = await fixture(context)
+    const household = await api.current()
+    household.expenses.push({
+      id: randomUUID(), description: 'Shared groceries', amount: 750, category: 'other',
+      participants: [api.owner.memberId, api.roommate.memberId], paidBy: api.roommate.memberId,
+      date: '2026-09-08', createdAt: '2026-09-08T12:00:00.000Z',
+    })
+    await api.store.save(household)
+    const sofa = getRoomComponents(household).find((component) => component.kind === 'sofa')!
+    const patch = { roomId: 'living-room', changes: [change(sofa, { name: 'Our sofa', variant: 'straight', finish: 'tomato' })] }
+    assert.equal((await api.mutate('/household/room-components', patch, api.roommate)).status, 403)
+    const configured = await api.mutate('/household/room-components', patch)
+    assert.equal(configured.status, 200, JSON.stringify(configured.data))
+    assert.equal(getRoomComponents(resultHousehold(configured.data)).find((component) => component.id === sofa.id)?.variant, 'straight')
+    assert.equal((await api.mutate('/household/room-components', patch)).status, 409)
+    const task = await api.mutate('/chores', {
+      title: 'Vacuum our sofa', roomId: 'living-room', area: 'seating', componentId: sofa.id,
+      dueDate: '2026-09-08', repeatDays: 7, rotation: [api.owner.memberId, api.roommate.memberId],
+    }, api.roommate, 'POST')
+    assert.equal(task.status, 200, JSON.stringify(task.data))
+    const chore = resultHousehold(task.data).chores.items[0]
+    const completed = await api.mutate(`/chores/${chore.id}/complete`, { choreVersion: chore.version }, api.roommate, 'POST')
+    assert.equal(completed.status, 200, JSON.stringify(completed.data))
+    const supply = await api.mutate('/shopping/items', {
+      name: 'Upholstery cleaner', quantity: '1 bottle', componentSource: { componentId: sofa.id, supplyId: 'upholstery-cleaner' },
+    }, api.roommate, 'POST')
+    assert.equal(supply.status, 200, JSON.stringify(supply.data))
+    const saved = resultHousehold(supply.data)
+    assert.equal(saved.chores.history[0].roomId, 'living-room')
+    assert.equal(saved.chores.history[0].componentName, 'Our sofa')
+    assert.equal(saved.chores.history[0].completedBy, api.roommate.memberId)
+    assert.equal(saved.shopping.items[0].componentSources?.[0].roomId, 'living-room')
+    assert.deepEqual(saved.expenses, household.expenses)
+    assert.deepEqual(saved.settlements, household.settlements)
+    assert.deepEqual(balances(saved), balances(household))
+    assert.deepEqual(saved.roomComponents?.filter((component) => component.roomId !== 'living-room'),
+      household.roomComponents?.filter((component) => component.roomId !== 'living-room'))
+  })
+
   it('only lets owners and delegated admins configure a shared room, including its overall style', async (context) => {
     const api = await fixture(context)
     const component = createRoomComponent('dishwasher', 'kitchen-undercounter', randomUUID())

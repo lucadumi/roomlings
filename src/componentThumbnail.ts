@@ -8,8 +8,7 @@ import type { RoomStyle } from '../shared/domain.ts'
 import { componentCatalog, componentFinishes, roomSlots } from '../shared/roomComponents.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import type { RoomId } from '../shared/rooms.ts'
-import { buildKitchenModel } from './kitchenModel.ts'
-import { buildBathroomModel } from './bathroomModel.ts'
+import { roomModels } from './roomModels.ts'
 import { buildRoomComponentModel } from './roomComponentModels.ts'
 import type { ComponentBindings } from './roomComponentTypes.ts'
 import { baseCameraOffset, fitRoomBounds } from './camera.ts'
@@ -36,13 +35,13 @@ function fixture(roomId: RoomId, style: RoomStyle): Fixture {
   const cached = fixtures.get(key)
   if (cached) return cached
   const room = new Group()
-  const model = roomId === 'kitchen' ? buildKitchenModel(room, style) : buildBathroomModel(room, style)
+  const model = roomModels[roomId](room, style)
   const bindings = 'scenery' in model ? model.scenery.componentBindings : model.componentBindings
   const value = {
     room, bindings,
     dispose: () => { disposeGeometry(room); model.materials.forEach((material) => material.dispose()) },
   }
-  if (fixtures.size >= 2) {
+  if (fixtures.size >= Object.keys(roomModels).length) {
     const oldest = fixtures.entries().next().value
     if (oldest) { oldest[1].dispose(); fixtures.delete(oldest[0]) }
   }
