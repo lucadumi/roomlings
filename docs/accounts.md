@@ -68,15 +68,27 @@ The creation receipt is saved atomically with the kitchen and membership, surviv
 
 Account-managed invitations last seven days and reveal their secret only when created. Owners can revoke them. Recipients sign in before accepting; reopening an accepted invitation does not add another roommate. Old browser invitation codes cannot bypass account-managed access.
 
+## Room administration
+
+The owner and delegated **admins** can add, remove and configure shared room components and change room style. An owner or admin can grant another active roommate admin rights, or revoke an admin's rights, through **Room admins**. Both actions require confirmation. Admins can also give up their own delegated rights.
+
+Delegation does not transfer ownership. Only the owner can create or revoke account invitations, remove roommates, or transfer ownership. The owner's role cannot be changed through admin controls. All active members, including non-admins, keep ordinary shared ledger, shopping, chores and daily component-state access.
+
+Browser-only identities and account-linked identities use the same member ID and permissions. The original creator's ID is retained separately from client household JSON; a different roommate linking an account first never becomes owner. In account-managed kitchens, the current stored owner takes precedence, including a closed kitchen with no owner. Names, account profile names and submitted role fields are never identity proof.
+
+Leaving, removal and account deletion clear delegated rights in the same transaction that disables membership. A returning roommate retains their historical member ID but rejoins as a member, not an admin. An ownership transfer also removes any old delegation for the new or former owner; it does not leave hidden admin rights that can reappear later.
+
+`GET /api/household/room-access` returns the authenticated `householdId`, `memberId`, household `version`, current `role`, and a roster of member IDs, names, roles and active status. `PATCH /api/household/room-access/:memberId` accepts `{ role: "admin" | "member", version }` and the existing optional `mutationId`/`mutationVersion` pair. It uses the same transaction, version conflicts, mutation receipts and `{ household }` response as other household mutations. Read access again when the household version changes; hiding UI controls is not authorization. The API checks current actor and target membership, rejects owner changes and no-op changes, and never trusts roles supplied in household JSON.
+
 ## Sessions and membership
 
 - Account sessions expire after 30 days, or seven days without use. An account supports up to 50 saved browsers. Account settings support device labels, revocation and sign-out on one or all devices.
 - Signing in again rotates this browser's session instead of adding another saved device. It keeps the same account's selected active kitchen; other browsers stay signed in. Failed sign-ins leave the previous session intact.
 - Returning to the public home page does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
 - Signing out all devices also revokes linked browser sessions. Unrelated saved browser identities stay separate.
-- Owners manage invitations, remove access and transfer ownership. All active roommates can edit the shared ledger.
+- Owners manage invitations, remove access and transfer ownership. Owners and admins configure rooms and manage delegated admin rights. All active roommates can edit the shared ledger.
 - Before leaving a kitchen with other members, its owner must transfer ownership.
-- Leaving or removal revokes access and browser-only recovery codes for that kitchen, and releases shopping claims. Account recovery cannot rejoin it automatically. Financial history remains; leaving does not cancel debts.
+- Leaving or removal revokes access, delegated admin rights and browser-only recovery codes for that kitchen, and releases shopping claims. Account recovery cannot rejoin it automatically. Financial history remains; leaving does not cancel debts.
 - Record outstanding expenses before removing a member. New expenses require active participants, including backdated entries. Review existing future bill participants after membership changes.
 - A kitchen supports 12 active members and 200 retained identities. Returning members keep their original ID but need an invitation created after removal.
 

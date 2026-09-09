@@ -55,9 +55,7 @@ test('the public welcome page explains the product without opening or changing a
   await expect(page.locator('.welcome-feature').nth(1)).toContainText('paid receipts')
   await expect(page.locator('.welcome-feature').nth(2)).toContainText('any device with your account')
   await expect(page.getByRole('heading', { name: 'Your home, shared.', exact: true })).toBeVisible()
-  await expect(page.locator('.journal-list')).toContainText('Room supplies')
-  await expect(page.locator('.journal-list')).toContainText('Toilet paper')
-  await expect(page.locator('.journal-receipt')).toContainText('Ledger export')
+  await expect(page.locator('.welcome-feature-art, .welcome-features img, .welcome-features svg')).toHaveCount(0)
   await expect(page.locator('.welcome-journal')).toBeVisible()
   await expect(page.locator('.welcome-home-illustration')).toBeVisible()
   await expect(page.getByText('A place for everyone.', { exact: true })).toHaveCount(0)
@@ -99,14 +97,16 @@ test('landing sections stay compact with spacing after the hero and shared-home 
         titleToContent: element.querySelector('.welcome-feature h3')!.getBoundingClientRect().top
           - element.querySelector('#features-title')!.getBoundingClientRect().bottom,
         sectionMinimums: [...element.querySelectorAll('main > section')].map((section) => getComputedStyle(section).minHeight),
+        headerHeight: element.querySelector('.welcome-header')!.getBoundingClientRect().height,
         otherMargins: [...element.querySelectorAll('main > section')].slice(1).map((section) => getComputedStyle(section).marginTop),
       }
     })
     expect(metrics.words).toBeLessThanOrEqual(230)
     expect(metrics.steps).toBeLessThanOrEqual(maximum)
-    expect(metrics.sectionMinimums).toEqual(['0px', '0px', '0px', '0px', '0px'])
-    expect(metrics.heroGap).toBeGreaterThanOrEqual(24)
-    expect(metrics.heroGap).toBeLessThanOrEqual(56)
+    expect(Math.abs(parseFloat(metrics.sectionMinimums[0]) - (height - metrics.headerHeight))).toBeLessThan(1)
+    expect(metrics.sectionMinimums.slice(1)).toEqual(['0px', '0px', '0px', '0px'])
+    expect(metrics.heroGap).toBeGreaterThanOrEqual(40)
+    expect(metrics.heroGap).toBeLessThanOrEqual(72)
     expect(metrics.featuresGap).toBeGreaterThanOrEqual(16)
     expect(metrics.featuresGap).toBeLessThanOrEqual(32)
     expect(metrics.headingGap).toBe('0px')

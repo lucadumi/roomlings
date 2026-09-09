@@ -1,6 +1,6 @@
 // TEXT deliberately preserves the original household JSON byte-for-byte on migration.
 // Rules and integer-cent calculations remain in the shared domain helpers.
-export const applicationSchemaVersion = 2
+export const applicationSchemaVersion = 3
 export const accountRecoveryTables = ['account_recovery_settings', 'account_recovery_codes'] as const
 export const accountRecoverySchema = `
 CREATE TABLE IF NOT EXISTS account_recovery_settings (
@@ -12,8 +12,19 @@ CREATE TABLE IF NOT EXISTS account_recovery_codes (
 );
 CREATE INDEX IF NOT EXISTS account_recovery_codes_account ON account_recovery_codes(account_id);
 `
+export const roomAccessTables = ['household_room_owners', 'household_room_admins'] as const
+export const roomAccessSchema = `
+CREATE TABLE IF NOT EXISTS household_room_owners (
+  household_id TEXT PRIMARY KEY REFERENCES households(id), member_id TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS household_room_admins (
+  household_id TEXT NOT NULL REFERENCES households(id), member_id TEXT NOT NULL,
+  PRIMARY KEY(household_id, member_id)
+);
+`
 export const sqliteSchema = `
 CREATE TABLE IF NOT EXISTS households (id TEXT PRIMARY KEY, invite TEXT UNIQUE NOT NULL, state TEXT NOT NULL);
+${roomAccessSchema}
 CREATE TABLE IF NOT EXISTS sessions (
   hash TEXT PRIMARY KEY, household_id TEXT NOT NULL REFERENCES households(id), member_id TEXT NOT NULL,
   id TEXT, label TEXT NOT NULL DEFAULT 'Saved browser', created_at TEXT, last_used_at TEXT
@@ -55,12 +66,14 @@ CREATE TABLE IF NOT EXISTS account_invitation_uses (
 `
 
 export const applicationTables = [
-  'households', 'sessions', 'recovery_codes', 'accounts', ...accountRecoveryTables, 'deleted_account_providers',
+  'households', ...roomAccessTables, 'sessions', 'recovery_codes', 'accounts', ...accountRecoveryTables, 'deleted_account_providers',
   'account_sessions', 'household_accounts', 'account_memberships', 'account_invitations', 'account_invitation_uses',
 ] as const
 
 export const tableColumns = {
   households: ['id', 'invite', 'state'],
+  household_room_owners: ['household_id', 'member_id'],
+  household_room_admins: ['household_id', 'member_id'],
   sessions: ['hash', 'household_id', 'member_id', 'id', 'label', 'created_at', 'last_used_at'],
   recovery_codes: ['household_id', 'member_id', 'hash', 'version', 'updated_at'],
   accounts: ['id', 'provider_id', 'email', 'name', 'created_at', 'deleting'],

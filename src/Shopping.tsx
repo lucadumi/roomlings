@@ -5,6 +5,9 @@ import {
   localDate, money, shoppingCheckoutSchema, shoppingItemEditSchema, shoppingItemInputSchema, shoppingItemLimit,
 } from '../shared/domain.ts'
 import type { Household, ShoppingItem, ShoppingItemInput } from '../shared/domain.ts'
+import { getRoomComponents } from '../shared/roomComponents.ts'
+import type { ComponentSourceSnapshot } from '../shared/roomComponents.ts'
+import { roomCatalog } from '../shared/rooms.ts'
 import { canEditShoppingItem, checkoutItems, inBasket, normalizeShoppingName } from '../shared/shopping.ts'
 import { DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
@@ -13,6 +16,12 @@ import { dateTitle } from './format.ts'
 import './shopping.css'
 
 export type ShoppingView = 'list' | 'basket' | 'history'
+
+function ShoppingSources({ sources }: { sources?: ComponentSourceSnapshot[] }) {
+  if (!sources?.length) return null
+  const labels = [...new Set(sources.map((source) => `${roomCatalog[source.roomId].name}: ${source.componentName}`))]
+  return <p className="shopping-owner">For {labels.join('; ')}</p>
+}
 
 export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, onEdit, onRemove, onClaim, onRelease, onPick, onCheckout, onQuickRecord }: {
   household: Household; memberId: string; view: ShoppingView; onView: (view: ShoppingView) => void; busy: boolean
@@ -51,6 +60,7 @@ export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, 
               <span><strong>{item.name}</strong><small>{item.quantity}</small></span>
             </label>
             {item.notes && <p className="shopping-notes">{item.notes}</p>}
+            <ShoppingSources sources={item.componentSources} />
             <p className="shopping-owner">{item.claimedBy === null ? 'Available to claim'
               : item.pickedUp ? `In ${item.claimedBy === memberId ? 'your' : `${memberName(item.claimedBy)}'s`} basket`
                 : `${item.claimedBy === memberId ? 'You are' : `${memberName(item.claimedBy)} is`} buying this`}</p>
@@ -75,7 +85,7 @@ export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, 
           <h3>{run.name}</h3><p>Recorded by {memberName(run.completedBy)} on {dateTitle(localDate(new Date(run.completedAt)))}.</p>
           {receipt ? <p className="shopping-receipt"><ReceiptText size={15} /><strong>{money(receipt.amount, household.currency)}</strong> paid by {memberName(receipt.paidBy)}</p>
             : <p className="small-muted">Receipt removed. The purchased items remain archived.</p>}
-          <details><summary>{run.items.length} {run.items.length === 1 ? 'item' : 'items'}</summary><ul>{run.items.map((item) => <li key={item.id}><strong>{item.quantity} {item.name}</strong>{item.notes && <span>{item.notes}</span>}</li>)}</ul></details>
+          <details><summary>{run.items.length} {run.items.length === 1 ? 'item' : 'items'}</summary><ul>{run.items.map((item) => <li key={item.id}><strong>{item.quantity} {item.name}</strong>{item.notes && <span>{item.notes}</span>}<ShoppingSources sources={item.componentSources} /></li>)}</ul></details>
         </article>
       })}
       {historyCount < household.shopping.runs.length && <button className="button secondary full" onClick={() => setHistoryCount((count) => count + 20)}>Show more runs</button>}
@@ -97,11 +107,15 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
   const blocked = !!item && (!latest || !canEditShoppingItem(latest, memberId))
   const changed = !!item && !!latest && latest.version !== baseVersion
   const duplicate = preventDuplicate && !!name.trim() && household.shopping.items.some((entry) => entry.id !== item?.id && normalizeShoppingName(entry.name) === normalizeShoppingName(name))
+  const source = item ? undefined : initialItem?.componentSource
+  const sourceComponent = source ? getRoomComponents(household).find((component) => component.id === source.componentId) : undefined
+  const unavailableSource = !!source && (!sourceComponent?.installed || !sourceComponent.supplies.some((supply) => supply.id === source.supplyId))
   return <Form onSubmit={() => {
     if (blocked || changed) { setLocalError('Review the latest shopping item before saving.'); return }
+    if (unavailableSource) { setLocalError('This supply shortcut was removed. Close this form and choose a current supply.'); return }
     if (duplicate) { setLocalError('This supply is already on the shared list. Close this form and review its quantity there.'); return }
     const input = item ? shoppingItemEditSchema.safeParse({ name, quantity, notes, itemVersion: baseVersion })
-      : shoppingItemInputSchema.safeParse({ name, quantity, notes })
+      : shoppingItemInputSchema.safeParse({ name, quantity, notes, ...(source ? { componentSource: source } : {}) })
     if (!input.success) { setLocalError(input.error.issues[0].message); return }
     setLocalError('')
     onSubmit(input.data)
@@ -109,6 +123,9 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
     <label className="field">Item name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} disabled={busy} placeholder="e.g. Oat milk" /></label>
     <label className="field">Quantity<input required maxLength={40} value={quantity} onChange={(event) => setQuantity(event.target.value)} disabled={busy} placeholder="e.g. 2 cartons or 500 g" /></label>
     <label className="field">Notes<textarea maxLength={240} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={busy} placeholder="Brand, preference or anything useful" /></label>
+    {sourceComponent && <p className="field-hint">Supply shortcut for {roomCatalog[sourceComponent.roomId].name}: {sourceComponent.name}. This adds to the shared shopping list, not an inventory.</p>}
+    {item && <ShoppingSources sources={item.componentSources} />}
+    {unavailableSource && <p className="form-error" role="alert">This object or supply shortcut was removed. Close this form and choose a current supply, or add an ordinary shopping item.</p>}
     {blocked && <p className="form-error" role="alert">This item left the list, is in a basket, or is being handled by another roommate. Close this form and review the list.</p>}
     {duplicate && <p className="field-hint">This supply is already on the shared list. Review its existing quantity instead of adding it again.</p>}
     {!blocked && changed && latest && <DraftConflict
@@ -116,7 +133,7 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
       onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
     >This item changed. Latest: {latest.quantity} {latest.name}{latest.notes ? `, ${latest.notes}` : ''}.</DraftConflict>}
     {localError && <p className="form-error" role="alert">{localError}</p>}{error}
-    <button className="button primary full" disabled={busy || blocked || changed || duplicate}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
+    <button className="button primary full" disabled={busy || blocked || changed || duplicate || unavailableSource}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
   </Form>
 }
 

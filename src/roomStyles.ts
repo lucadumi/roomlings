@@ -8,6 +8,26 @@ const surfaces = [
 type Surface = typeof surfaces[number]
 export type RoomStyleMaterials = Record<Surface, MeshStandardMaterial>
 
+export const roomAccents = {
+  tomato: '#e07a5f',
+  tomatoDark: '#985746',
+  gold: '#f2cc8f',
+  leaf: '#81b29a',
+  leafLight: '#b0d0bd',
+  leafDark: '#527861',
+  terracotta: '#c58d71',
+  blue: '#767d9b',
+  sky: '#d0d5df',
+  water: '#c3dccf',
+  orange: '#e9a377',
+  berry: '#3d405b',
+  cream: '#fcf9f1',
+  paper: '#fffaf1',
+  linen: '#f3e5cf',
+  ink: '#3d405b',
+  metal: '#d7d9e1',
+} as const
+
 export const roomPresets: Record<RoomStyle, {
   name: string
   description: string
@@ -15,32 +35,32 @@ export const roomPresets: Record<RoomStyle, {
 }> = {
   original: {
     name: 'Original',
-    description: 'Cream walls, sage checker tiles and the original green fridge.',
+    description: 'Soft white, mint-sage finishes, honey wood and warm clay accents.',
     colors: {
-      wall: '#efe3c8', trim: '#ded0b0', floor: '#e4e7d9', floorAlternate: '#d3dcc6',
-      fridge: '#9eb399', fridgeDoor: '#b1c4a7', fridgeEdge: '#8b9d82',
-      cabinet: '#879f91', cabinetPanel: '#94ac9b', counter: '#f1e9d7',
-      wood: '#bb895c', lightWood: '#d7ad78', woodGrain: '#c69c6b',
+      wall: '#faf7ee', trim: '#ded5c4', floor: '#f4f5ef', floorAlternate: '#d2e2d5',
+      fridge: '#81b29a', fridgeDoor: '#acd0ba', fridgeEdge: '#5d8b73',
+      cabinet: '#5d8973', cabinetPanel: '#83b099', counter: '#fffdf7',
+      wood: '#ba9164', lightWood: '#e4bf88', woodGrain: '#c5a375',
     },
   },
   sage: {
     name: 'Sage',
     description: 'Forest cabinets, sage walls, ivory finishes and honey oak.',
     colors: {
-      wall: '#90a681', trim: '#657f59', floor: '#f1e6cb', floorAlternate: '#859677',
-      fridge: '#e4ddc6', fridgeDoor: '#fff0d1', fridgeEdge: '#b8ad92',
-      cabinet: '#385c42', cabinetPanel: '#4c7954', counter: '#f3ead4',
-      wood: '#966238', lightWood: '#c18b4e', woodGrain: '#754627',
+      wall: '#b1cabb', trim: '#7b9c89', floor: '#faf8f1', floorAlternate: '#90b29b',
+      fridge: '#ede9db', fridgeDoor: '#fffdf5', fridgeEdge: '#b4ae9d',
+      cabinet: '#426450', cabinetPanel: '#5a836b', counter: '#fcfaf4',
+      wood: '#a27c51', lightWood: '#d0ab73', woodGrain: '#856644',
     },
   },
   clay: {
     name: 'Clay',
     description: 'Burnt-clay cabinets, a tomato fridge and bold sand-and-clay tiles.',
     colors: {
-      wall: '#f2debe', trim: '#ca9d73', floor: '#efcfa2', floorAlternate: '#ac5c3b',
-      fridge: '#ad422d', fridgeDoor: '#d25635', fridgeEdge: '#823d2d',
-      cabinet: '#af6440', cabinetPanel: '#ce8051', counter: '#fff0d4',
-      wood: '#945832', lightWood: '#c68d51', woodGrain: '#734124',
+      wall: '#e0af89', trim: '#c28f6e', floor: '#f7e3c5', floorAlternate: '#ca9676',
+      fridge: '#cb7057', fridgeDoor: '#e49376', fridgeEdge: '#a75b46',
+      cabinet: '#c78a69', cabinetPanel: '#e0ae88', counter: '#fffaf0',
+      wood: '#af815b', lightWood: '#dcba87', woodGrain: '#8e6848',
     },
   },
   linen: {

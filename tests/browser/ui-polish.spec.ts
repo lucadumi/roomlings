@@ -33,6 +33,7 @@ test.describe('UI polish', () => {
     await expect(world).toHaveAttribute('data-evening', 'false')
     await expect.poll(opacity).toBe(0)
     await expect.poll(transition).toBe('none')
+    await expect(world).toHaveCSS('transition-property', 'none')
     const daylight = await home.evaluate((element) => getComputedStyle(element).backgroundImage)
     expect(await home.evaluate((element) => getComputedStyle(element, '::after').backgroundImage)).not.toBe('none')
 
@@ -43,6 +44,7 @@ test.describe('UI polish', () => {
 
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await expect.poll(transition).toBe('opacity')
+    await expect(world).not.toHaveCSS('transition-property', 'none')
     expect(await home.evaluate((element) => Number.parseFloat(getComputedStyle(element, '::after').transitionDuration))).toBeGreaterThan(0)
     await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
     await expect(world).toHaveAttribute('data-evening', 'false')

@@ -69,10 +69,42 @@ export async function openGroceryForm(page: Page) {
   await expect(page.getByRole('dialog', { name: 'What is in the bag?', exact: true })).toBeVisible()
 }
 
+export async function openRoomObjects(page: Page) {
+  const objects = page.locator('.room-objects-panel')
+  if (!await objects.isVisible()) await page.getByRole('button', { name: 'Room objects', exact: true }).click()
+  await expect(objects).toBeVisible()
+  return objects
+}
+
+export async function openRoomEditor(page: Page) {
+  const editor = page.locator('.room-editor')
+  if (!await editor.isVisible()) {
+    const objects = await openRoomObjects(page)
+    await objects.getByRole('button', { name: 'Edit room', exact: true }).click()
+  }
+  await expect(editor).toBeVisible()
+  return editor
+}
+
+export async function openRoomColors(page: Page) {
+  const editor = await openRoomEditor(page)
+  await editor.getByRole('button', { name: 'Room colors', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
+export async function closeRoomEditor(page: Page) {
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const editor = page.locator('.room-editor')
+  if (await editor.isVisible()) await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(editor).toHaveCount(0)
+}
+
 export async function selectRoom(page: Page, roomId: RoomId) {
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
-  const picker = page.getByRole('dialog', { name: 'Rooms', exact: true })
-  await picker.getByRole('button', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
+  const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
+  await picker.getByRole('menuitemradio', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
   await expect(picker).toHaveCount(0)
 }
 

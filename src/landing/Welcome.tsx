@@ -1,9 +1,10 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowRight, ArrowUpRight, Check, CheckCheck, Plus } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
+import invitationPlant from '../assets/garden/left.png'
 import { roomPath } from '../roomNavigation.ts'
 import './welcome.css'
 
@@ -20,10 +21,23 @@ const features = [
 ]
 
 export default function Welcome({ accessNotice, paused = false }: { accessNotice?: ReactNode; paused?: boolean }) {
+  const page = useRef<HTMLDivElement>(null)
+  const header = useRef<HTMLElement>(null)
   const systemReduced = useSyncExternalStore(subscribeToMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches, () => false)
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
   const createPath = `${roomPath()}#account=create`
+
+  useLayoutEffect(() => {
+    const root = page.current
+    const bar = header.current
+    if (!root || !bar) return
+    const measure = () => root.style.setProperty('--welcome-header-height', `${bar.getBoundingClientRect().height}px`)
+    const observer = new ResizeObserver(measure)
+    observer.observe(bar)
+    measure()
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     const previousTitle = document.title
@@ -58,9 +72,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
     }
   }, [])
 
-  return <div className="welcome" data-motion={reducedMotion ? 'reduced' : 'full'} data-edition="journal" id="welcome-top">
+  return <div className="welcome" ref={page} data-motion={reducedMotion ? 'reduced' : 'full'} data-edition="journal" id="welcome-top">
     <a className="welcome-skip" href="#welcome-content">Skip to content</a>
-    <header className="welcome-header welcome-container">
+    <header className="welcome-header welcome-container" ref={header}>
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning">
         <Brand variant="featured" decorative />
       </a>
@@ -98,10 +112,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           <h2 id="features-title">Your home, shared.</h2>
         </div>
         <div className="welcome-journal">
-          {features.map(({ number, title, description }, index) => <article className={`welcome-feature welcome-feature-${number}`} key={number}>
+          {features.map(({ number, title, description }) => <article className={`welcome-feature welcome-feature-${number}`} key={number}>
             <span className="welcome-feature-number" aria-hidden="true">{number}</span>
             <div className="welcome-feature-copy"><h3>{title}</h3><p>{description}</p></div>
-            <div className="welcome-feature-art" aria-hidden="true">{index === 0 ? <ShoppingNote /> : index === 1 ? <ReceiptNote /> : <EnvelopeNote />}</div>
           </article>)}
         </div>
       </section>
@@ -119,7 +132,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       </section>
 
       <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
-        <div><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
+        <img className="welcome-invitation-plant" src={invitationPlant} alt="" aria-hidden="true"
+          width={600} height={1000} loading="lazy" decoding="async" draggable={false} />
+        <div className="welcome-invitation-copy"><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
         <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
       </section>
     </main>
@@ -139,33 +154,5 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <span>Contact</span>
       </div>
     </footer>
-  </div>
-}
-
-function ShoppingNote() {
-  return <div className="journal-shopping">
-    <div className="journal-list"><strong>Room supplies</strong>
-      <span className="journal-list-item"><Check size={14} />Dish soap</span>
-      <span className="journal-list-item"><Check size={14} />Toilet paper</span>
-      <span className="journal-list-item"><span className="journal-checkbox" />Sponges</span>
-    </div>
-    <span className="journal-pencil" />
-  </div>
-}
-
-function ReceiptNote() {
-  return <div className="journal-receipt">
-    <span className="journal-paper-label">SHARED LEDGER</span>
-    <span>Grocery receipts</span>
-    <span>Monthly bills</span>
-    <span>Ledger export</span>
-  </div>
-}
-
-function EnvelopeNote() {
-  return <div className="journal-envelope">
-    <div className="journal-letter"><span>Your share</span><CheckCheck size={20} strokeWidth={1.4} /></div>
-    <div className="journal-envelope-front" />
-    <span className="journal-envelope-seal"><Check size={14} /></span>
   </div>
 }

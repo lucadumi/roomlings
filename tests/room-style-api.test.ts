@@ -114,12 +114,16 @@ describe('shared room style API', () => {
     assert.equal(roomStyleSchema.safeParse(undefined).success, false)
   })
 
-  it('shares every supported preset with roommates and saves exactly once per confirmation', async (context) => {
+  it('lets admins share every supported preset and saves exactly once per confirmation', async (context) => {
     const owner = await create()
     const joined = await api.call('/join', { inviteCode: owner.household.inviteCode, name: 'Ben' })
     assert.equal(joined.status, 201)
     const roommate: Session = await joined.json()
-    let before = roommate.household
+    const promoted = await api.call(`/household/room-access/${roommate.memberId}`, {
+      role: 'admin', version: roommate.household.version,
+    }, owner.token, 'PATCH')
+    assert.equal(promoted.status, 200)
+    let before: Household = (await promoted.json()).household
     const save = context.mock.method(store, 'save')
     assert.deepEqual(await current(owner), before)
     assert.equal(save.mock.callCount(), 0)
@@ -178,7 +182,11 @@ describe('shared room style API', () => {
     const joined = await api.call('/join', { inviteCode: owner.household.inviteCode, name: 'Ben' })
     assert.equal(joined.status, 201)
     const roommate: Session = await joined.json()
-    const before = roommate.household
+    const promoted = await api.call(`/household/room-access/${roommate.memberId}`, {
+      role: 'admin', version: roommate.household.version,
+    }, owner.token, 'PATCH')
+    assert.equal(promoted.status, 200)
+    const before: Household = (await promoted.json()).household
     const save = context.mock.method(store, 'save')
     const responses = await Promise.all([
       patch({ roomStyle: 'sage', version: before.version }, owner.token),

@@ -42,9 +42,10 @@ export const roomCatalog: Record<RoomId, RoomDefinition> = {
   },
 }
 
-export function choreLocationLabel(roomId: RoomId | null, area: ChoreArea | null = null): string {
+export function choreLocationLabel(roomId: RoomId | null, area: ChoreArea | null = null, componentName?: string): string {
   if (roomId === null) return 'Whole home'
   const room = roomCatalog[roomId]
+  if (componentName) return `${room.name}: ${componentName}`
   const detail = room.areas.find((item) => item.id === area)
   return detail ? `${room.name}: ${detail.label}` : room.name
 }

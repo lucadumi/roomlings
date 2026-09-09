@@ -112,10 +112,11 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
       const cardHeight = card.getBoundingClientRect().height
       const height = `${cardHeight}px`
       if (element.style.getPropertyValue('--welcome-tour-height') !== height) element.style.setProperty('--welcome-tour-height', height)
-      const flowing = reducedMotion || cardHeight + 48 > window.innerHeight
+      const stickyTop = parseFloat(getComputedStyle(element).scrollMarginTop)
+      const flowing = reducedMotion || cardHeight + stickyTop + 24 > window.innerHeight
       element.dataset.flow = String(flowing)
       if (!flowing) {
-        const start = window.scrollY + element.getBoundingClientRect().top - parseFloat(getComputedStyle(card).top)
+        const start = window.scrollY + element.getBoundingClientRect().top - stickyTop
         const travel = element.getBoundingClientRect().height - cardHeight
         if (travel > 0) progress.current = scrollProgress(window.scrollY, [start, start + travel])
       }

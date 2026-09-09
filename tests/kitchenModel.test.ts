@@ -6,7 +6,7 @@ import type { BufferGeometry, Object3D } from 'three'
 import type { Category, RoomStyle } from '../shared/domain.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
-import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
+import { applyRoomStyle, roomAccents, roomPresets } from '../src/roomStyles.ts'
 import { kitchenUtilityAnchors } from '../src/room.ts'
 
 function modelFor(context: TestContext, style: RoomStyle = 'original') {
@@ -266,11 +266,11 @@ describe('shared kitchen model', () => {
     })
     for (const material of [scenery.sky, scenery.windowDisc, scenery.bulb]) assert.ok(registry.has(material))
     const palette: { category: Category; color: string }[] = [
-      { category: 'produce', color: 'd35739' },
+      { category: 'produce', color: roomAccents.tomato.slice(1) },
       { category: 'dairy', color: 'f8f3de' },
-      { category: 'pantry', color: 'e0bb5a' },
-      { category: 'drinks', color: '72979b' },
-      { category: 'other', color: '9b677b' },
+      { category: 'pantry', color: roomAccents.gold.slice(1) },
+      { category: 'drinks', color: roomAccents.blue.slice(1) },
+      { category: 'other', color: roomAccents.berry.slice(1) },
     ]
     for (const { category, color } of palette) {
       const material = foodMaterials[category]

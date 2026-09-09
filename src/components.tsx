@@ -72,28 +72,37 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
   </div>
 }
 
-export function RoomPanel({ title, subtitle, children, onClose, view }: {
-  title: string; subtitle: string; children: ReactNode; onClose: () => void; view?: string
+export function RoomPanel({ title, subtitle, children, onClose, view, suspended = false, busy = false, side = 'right', badge }: {
+  title: string; subtitle: string; children: ReactNode; onClose: () => void; view?: string; suspended?: boolean; busy?: boolean; side?: 'left' | 'right'; badge?: ReactNode
 }) {
   const panel = useRef<HTMLElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
   const returnFocus = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const closeRef = useRef(onClose)
+  const suspendedRef = useRef(suspended)
+  const busyRef = useRef(busy)
+  const previousView = useRef({ title, view, suspended })
   closeRef.current = onClose
+  suspendedRef.current = suspended
+  busyRef.current = busy
   useEffect(() => {
+    const resuming = previousView.current.suspended && previousView.current.title === title && previousView.current.view === view
+    previousView.current = { title, view, suspended }
+    if (suspended) return
     const active = document.activeElement
+    if (resuming && active instanceof HTMLElement && panel.current?.contains(active)) return
     if (active instanceof HTMLElement && active !== document.body && !panel.current?.contains(active)) returnFocus.current = active
-    // A dialog temporarily unmounts the panel and its focused controls.
+    // Restore a room control even when an earlier dialog removed the original trigger.
     if (!returnFocus.current) returnFocus.current = document.querySelector<HTMLButtonElement>('.game-dock button[aria-pressed="true"]')
     if (scroll.current) scroll.current.scrollTop = 0
     panel.current?.focus({ preventScroll: true })
-  }, [title, view])
+  }, [title, view, suspended])
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !event.defaultPrevented) {
+      if (event.key === 'Escape' && !event.defaultPrevented && !suspendedRef.current) {
         event.preventDefault()
-        closeRef.current()
+        if (!busyRef.current) closeRef.current()
       }
     }
     document.addEventListener('keydown', escape)
@@ -102,9 +111,13 @@ export function RoomPanel({ title, subtitle, children, onClose, view }: {
       if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true })
     }
   }, [])
-  return <aside className="room-panel" role="region" aria-labelledby={titleId} ref={panel} tabIndex={-1}>
-    <header className="room-panel-header"><h2 id={titleId}>{title}</h2><button type="button" className="icon-button control-surface" aria-label="Close panel" onClick={onClose}><X size={20} /></button></header>
-    <div className="room-panel-scroll" ref={scroll}><p className="room-panel-subtitle">{subtitle}</p>{children}</div>
+  return <aside className="room-panel" role="region" aria-labelledby={titleId} aria-busy={busy || undefined} ref={panel} tabIndex={-1}
+    data-panel-side={side} inert={suspended} aria-hidden={suspended || undefined} style={suspended ? { display: 'none' } : undefined}>
+    <header className="room-panel-header">
+      <div className="room-panel-title"><h2 id={titleId}>{title}</h2></div>
+      <div className="room-panel-actions">{badge}<button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size={20} /></button></div>
+    </header>
+    <div className="room-panel-scroll" ref={scroll}>{subtitle && <p className="room-panel-subtitle">{subtitle}</p>}{children}</div>
   </aside>
 }
 

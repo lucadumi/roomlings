@@ -39,9 +39,9 @@ export async function request<T>(path: string, options: {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     if (response.status >= 500) {
-      throw new RequestError(response.status, 'The kitchen server is temporarily unavailable. Your request was not confirmed; wait a moment and try again.', 'SERVER_UNAVAILABLE')
+      throw new RequestError(response.status, 'The server is temporarily unavailable. Your request was not confirmed; wait a moment and try again.', 'SERVER_UNAVAILABLE')
     }
-    throw new RequestError(response.status, 'The kitchen server returned an unreadable response. Please try again.')
+    throw new RequestError(response.status, 'The server returned an unreadable response. Please try again.')
   }
   if (!response.ok) {
     const parsed = z.object({ error: z.string(), code: z.string().optional() }).safeParse(data)

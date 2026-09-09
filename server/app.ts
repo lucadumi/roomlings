@@ -12,12 +12,18 @@ import {
 import type { Bill, Chore, Expense, Household, ShoppingItem } from '../shared/domain.ts'
 import { billOccurrence, reviseBill, setBillPaused } from '../shared/bills.ts'
 import { ChoreError, completeChore, undoChoreCompletion } from '../shared/chores.ts'
-import { canEditShoppingItem, checkoutItems } from '../shared/shopping.ts'
+import { canEditShoppingItem, checkoutItems, normalizeShoppingName } from '../shared/shopping.ts'
+import {
+  applyRoomComponentPatch, choreComponentFields, requireInstalledComponent, RoomComponentError, setRoomComponentState,
+} from '../shared/componentChanges.ts'
+import { componentStateInputSchema, roomComponentIdSchema, roomComponentLimit, roomComponentsPatchSchema } from '../shared/roomComponents.ts'
+import type { ComponentSourceSnapshot } from '../shared/roomComponents.ts'
 import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
 import type { Store } from './store.ts'
 import { ApiError } from './errors.ts'
 import { accountCookieName, installAccounts } from './accounts-api.ts'
 import type { AccountOptions } from './accounts-api.ts'
+import { installRoomAccess } from './room-access.ts'
 
 const createSchema = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema })
 const joinSchema = z.object({ inviteCode: z.string().min(8).max(80), name: nameSchema })
@@ -57,6 +63,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     next()
   })
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next() })
+  app.use('/api/household/room-components', express.json({ limit: '256kb' }))
   app.use('/api', express.json({ limit: '32kb' }))
   app.use('/api', rateLimit(120, 60_000, 'A lot is happening in this kitchen. Wait a minute and try again.'))
 
@@ -147,6 +154,20 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     if (chore.version !== version) throw new ApiError(409, 'This chore changed. Review its latest details and try again.')
     return chore
   }
+  const requireRoomAdmin = async (household: Household, memberId: string) => {
+    if (await store.accounts.roomRole(household, memberId) === 'member') {
+      throw new ApiError(403, 'Only a household admin can change the room. Ask an admin to give you editing access.')
+    }
+  }
+  installRoomAccess(app, store, authenticated, mutate)
+
+  app.patch('/api/household/room-components', async (req, res) => (await mutate(req, res, async (household, memberId) => {
+    await requireRoomAdmin(household, memberId)
+    applyRoomComponentPatch(household, roomComponentsPatchSchema.parse(req.body), new Date().toISOString())
+  })))
+  app.patch('/api/room-components/:id/state', async (req, res) => (await mutate(req, res, (household, memberId) => {
+    setRoomComponentState(household, roomComponentIdSchema.parse(req.params.id), componentStateInputSchema.parse(req.body), memberId, new Date().toISOString())
+  })))
 
   app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
   app.post('/api/households', async (req, res) => {
@@ -228,12 +249,31 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     household.expenses.splice(index, 1)
   })))
   app.post('/api/shopping/items', async (req, res) => (await mutate(req, res, (household, memberId) => {
-    const input = shoppingItemInputSchema.parse(req.body)
+    const { componentSource, ...input } = shoppingItemInputSchema.parse(req.body)
+    let source: ComponentSourceSnapshot | undefined
+    if (componentSource) {
+      const component = requireInstalledComponent(household, componentSource.componentId)
+      if (!component.supplies.some((supply) => supply.id === componentSource.supplyId)) {
+        throw new ApiError(409, 'This supply is no longer configured for the object. Review its current supplies before restocking.')
+      }
+      source = { ...componentSource, roomId: component.roomId, componentName: component.name }
+      const existing = household.shopping.items.find((item) => normalizeShoppingName(item.name) === normalizeShoppingName(input.name))
+      if (existing) {
+        if (existing.componentSources?.some((saved) => saved.componentId === componentSource.componentId && saved.supplyId === componentSource.supplyId)) {
+          throw new ApiError(409, 'This supply is already on the shared list. Review its existing quantity instead of adding it again.')
+        }
+        if ((existing.componentSources?.length ?? 0) >= roomComponentLimit) throw new ApiError(409, 'This item has reached its room-source limit. Use the existing shared-list entry.')
+        existing.componentSources = [...existing.componentSources ?? [], source]
+        changeShoppingItem(existing)
+        return
+      }
+    }
     if (household.shopping.items.length >= shoppingItemLimit) throw new ApiError(409, 'The shopping list is full. Finish a run or remove unused items first.')
     const now = new Date().toISOString()
     household.shopping.items.push({
       ...input, id: randomUUID(), createdBy: memberId, createdAt: now, updatedAt: now,
       version: 0, claimedBy: null, pickedUp: false,
+      ...(source ? { componentSources: [source] } : {}),
     })
   })))
   app.patch('/api/shopping/items/:id', async (req, res) => (await mutate(req, res, (household, memberId) => {
@@ -287,18 +327,21 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     household.shopping.runs.unshift({
       id: input.checkoutId, expenseId: expense.id, name: expense.description,
       completedBy: memberId, completedAt: expense.createdAt,
-      items: selected.map(({ id, name, quantity, notes, createdBy, createdAt }) => ({ id, name, quantity, notes, createdBy, createdAt })),
+      items: selected.map(({ id, name, quantity, notes, createdBy, createdAt, componentSources }) => ({
+        id, name, quantity, notes, createdBy, createdAt, ...(componentSources ? { componentSources } : {}),
+      })),
     })
   })))
   app.post('/api/chores', async (req, res) => (await mutate(req, res, (household, memberId) => {
     const input = choreInputSchema.parse(req.body)
+    const componentFields = choreComponentFields(household, input)
     requireRoommates(household, input.rotation)
     if (household.chores.items.length >= choreLimit) {
       throw new ApiError(409, 'This home has reached its limit of 200 chores. Edit an existing chore instead; archived chores and history are retained.')
     }
     const now = new Date().toISOString()
     household.chores.items.push({
-      ...input, id: randomUUID(), createdBy: memberId, createdAt: now, updatedAt: now,
+      ...input, ...componentFields, id: randomUUID(), createdBy: memberId, createdAt: now, updatedAt: now,
       version: 0, occurrence: 0, archived: false,
     })
   })))
@@ -307,7 +350,8 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     const chore = findChore(household, req.params.id, choreVersion)
     if (chore.archived) throw new ApiError(409, 'Restore this archived chore before editing it.')
     requireRoommates(household, input.rotation)
-    Object.assign(chore, input, { version: chore.version + 1, updatedAt: new Date().toISOString() })
+    const componentFields = choreComponentFields(household, { ...input, componentId: input.componentId === undefined ? chore.componentId : input.componentId })
+    Object.assign(chore, input, componentFields, { version: chore.version + 1, updatedAt: new Date().toISOString() })
   })))
   app.patch('/api/chores/:id/archive', async (req, res) => (await mutate(req, res, (household) => {
     const input = choreArchiveSchema.parse(req.body)
@@ -315,6 +359,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     if (chore.archived === input.archived) {
       throw new ApiError(409, input.archived ? 'This chore is already archived.' : 'This chore is already active.')
     }
+    if (!input.archived && chore.componentId) requireInstalledComponent(household, chore.componentId)
     chore.archived = input.archived
     chore.version++
     chore.updatedAt = new Date().toISOString()
@@ -330,7 +375,8 @@ export function createApp(store: Store, options: AccountOptions = {}) {
       throw new ApiError(409, 'This chore occurrence has already been completed. Refresh its history.')
     }
     const now = new Date()
-    const result = completeChore(chore, household.members, memberId, randomUUID(), now.toISOString(), billingDate(household.billingTimeZone, now))
+    const current = chore.componentId ? { ...chore, ...choreComponentFields(household, chore) } : chore
+    const result = completeChore(current, household.members, memberId, randomUUID(), now.toISOString(), billingDate(household.billingTimeZone, now))
     household.chores.items = household.chores.items.map((entry) => entry.id === chore.id ? result.chore : entry)
     household.chores.history.unshift(result.completion)
   })))
@@ -400,7 +446,8 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     if (index === -1) throw new ApiError(404, 'That repayment is no longer in the ledger.')
     household.settlements.splice(index, 1)
   })))
-  app.patch('/api/household/room-style', async (req, res) => (await mutate(req, res, (household) => {
+  app.patch('/api/household/room-style', async (req, res) => (await mutate(req, res, async (household, memberId) => {
+    await requireRoomAdmin(household, memberId)
     const { roomStyle } = z.object({ roomStyle: roomStyleSchema }).parse(req.body)
     household.roomStyle = roomStyle
   })))
@@ -419,7 +466,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: error.issues[0]?.message ?? 'Please check the form fields.' })
-    } else if (error instanceof ChoreError) {
+    } else if (error instanceof ChoreError || error instanceof RoomComponentError) {
       res.status(error.status).json({ error: error.message })
     } else if (error instanceof ApiError) {
       res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) })

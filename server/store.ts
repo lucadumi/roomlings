@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
 import { householdSchema, memberColors, nameSchema } from '../shared/domain.ts'
+import { defaultRoomComponents } from '../shared/roomComponents.ts'
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
@@ -63,6 +64,7 @@ export class Store {
     const state = receipt ? { ...checked, accountCreationReceipt: receipt } : checked
     await this.db.prepare('INSERT INTO households (id, invite, state) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET invite = excluded.invite, state = excluded.state')
       .run(checked.id, checked.inviteCode, JSON.stringify(state))
+    await this.accounts.syncRoomAccess(checked)
   }
 
   private tokenHash(token: string) { return createHash('sha256').update(token).digest('hex') }
@@ -166,6 +168,7 @@ export class Store {
       expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
       shopping: { items: [], runs: [] },
       chores: { items: [], history: [] },
+      roomComponents: defaultRoomComponents(),
     }
     await this.save(household)
     return (await this.session(household, memberId))

@@ -2,7 +2,7 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** and choose a kitchen or bathroom preview card without changing your household or session. Both rooms start at the same close-up scale; **Whole room** zooms out to show the full space. The toolbar remains available in both rooms, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen or bathroom without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. Both rooms start at the same close-up scale; **Whole room** zooms out to show the full space. The toolbar remains available in both rooms, including when 3D cannot load.
 
 | Object | Purpose |
 | --- | --- |
@@ -11,21 +11,61 @@ Open **Rooms** and choose a kitchen or bathroom preview card without changing yo
 | House pot | See the remaining monthly grocery budget. Bills do not reduce this pot. |
 | Envelope | Record or undo repayments. All balances come from the shared ledger. |
 | Noticeboard | Manage roommates, invitations, account access and saved kitchens. |
-| Room style | Apply Original, Sage, Clay or Linen for everyone. |
+| Room style | Admins choose shared room colors. Individual objects can match the room or use their own finish. |
+| Room objects | Browse installed objects, restock their supplies, set up care and record manual states. |
+| Edit room | Admins preview installed objects and their configuration, then apply the changes for everyone. |
 | Chores | View this room, the whole home or all rooms; assign tasks and record completed turns. |
 | Supply shelf | Add low supplies to the existing shopping list, without inventing an inventory. |
 
 The fridge visualizes purchases, not food remaining. Export the complete ledger from the receipt book.
 
-Form dropdowns use the same cream and sage styling throughout. Open one to choose an option, use arrow keys or type to find a choice, and press Escape to close just the menu without losing the form.
+The [Sage and clay palette from Coolors](https://coolors.co/ffffff-3d405b-81b29a-f2cc8f-e07a5f) replaces the app's accent colors: slate text, sage, honey and clay details. Primary buttons retain the original brick red (`#b8533b`). Pages, panels and modals stay white rather than using different colors for each feature. The house pot keeps its warm accent. The hero illustration has no backdrop; Explore scenes have white backgrounds and a divider beside the illustration.
+
+The closing invitation is a white outlined letter with a line-only folded
+corner and a small tree illustration. Its red **Start sharing** button opens the
+existing account flow.
+
+The normal-flow header and centered hero fill the first screen, with extra space
+before the next section. Short viewports allow the content to grow without
+clipping. The spending summary stays white; the house-pot button keeps its accent.
+
+Form dropdowns use the same white and sage styling throughout. Open one to choose an option, use arrow keys or type to find a choice, and press Escape to close just the menu without losing the form. Saved household data and individual finish selections are unchanged.
+
+## Customizing a room
+
+Open the icon-only **Room objects** button, then choose **Edit room** inside its menu. The existing room-style, help and house-rule controls remain available. The object browser is a large preview grid on the left, with the room beside it. Hover over a preview or focus its controls for details. Repeated objects share one card: Plant opens its placed positions instead of appearing twice in the menu.
+
+Select an object in the room or its card. Position buttons choose which existing copy you are using or editing. In Edit room, **Position** moves that copy between compatible locations, and **Add at another position** creates another private-preview placement. The room updates live as you choose; nothing is shared before Apply. Occupied or incompatible positions are disabled. These are designed locations, not unrestricted dragging.
+
+The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The original kitchen and bathroom remain the defaults. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
+
+Change an object's name, finish, supported model and supply suggestions. **Match room colors** uses the household palette, without an extra default-style label. Model controls appear only when there is a real choice, such as a rectangular or round table, bath or shower, different plants, or different coffee machines. Supplies have editable names and suggested quantities, not stock counts.
+
+Changes in the editor are a private preview until **Apply for everyone** succeeds. Cancel leaves the saved room unchanged. A failed save keeps the draft, and a conflicting edit requires review before retrying. Changing a manual state while an admin is editing cannot be silently overwritten by an older configuration draft.
+
+The catalog marks **Available to add**, **Placed**, and **Unavailable**, with availability filters above the grid. Available includes objects with another free position, even if one copy is already placed. An unsaved addition is **In preview**, not placed. Some positions need a compatible fixture: remove a placed bath tray before changing its bathtub to a shower. An object removed only in your draft is available in that preview, not yet removed from the shared home.
+
+Some fitted fixtures and the existing household tools stay in place, but their appearance and relevant options can still be customized. Moving an optional object within its room keeps its identity, manual state, supplies and chore links. Removing it also keeps its saved identity and settings, but connected chores must be archived or kept as room chores. Shopping items, paid receipts and completed turns are never deleted by removal. Restore the object before restoring its archived object-specific chores.
+
+Use **Household admins** from the roommate tools or the editor to see who can manage the rooms. An admin can grant or revoke another roommate's admin access, but cannot demote the owner. Ownership transfer and the existing owner-only account powers remain separate. All active roommates can use the objects, shared shopping and chores without editing the room.
+
+## Object supplies, care and states
+
+**Room objects** uses the same preview grid and works with or without 3D. Its thumbnails use the actual object models, a consistent camera, soft grounding and the room's lighting. One shared renderer creates cached previews rather than opening a WebGL context per card; vector previews remain available without WebGL. Optional appliances also open their details when selected in the room; the original fridge, kettle and household shortcuts retain their familiar interactions. From an object's details, review supplies, open its chores or use a suggested chore as a starting point for a schedule and rotation.
+
+The **Components** page is marked **Live room** for everyday use of placed objects. **Edit room** is marked **Private preview** for adding, removing and changing appearance. These are separate workflows: everyday supplies, chores and manual states use the shared home, while layout edits require Apply or Cancel.
+
+Supply shortcuts use the existing shared list. If an item is already listed, review that quantity instead of adding another copy. Restocking from an object records its source; when the same supply serves multiple objects, an existing quantity or shopper's claim is not overwritten. Source names remain with purchased-item history and in the ledger export, even if an object is later renamed or removed.
+
+An appliance state is a roommate's manual update, not a sensor reading. Marking a dishwasher **Running** or **Ready to empty** does not start a real appliance, consume supplies, finish a chore, start a timer or record a payment. Objects without meaningful operational states do not get artificial status controls. Record completed chores separately so their assignments and history remain accurate.
 
 ## Chores and restocking
 
-Add a chore with a room or whole-home scope, an optional area, a due date and a one-off or recurring schedule. One assigned person keeps the task; multiple people rotate in the chosen order. The next turn advances only after a saved completion. Any active roommate can do the task, and history records who actually completed it.
+Add a chore with a room or whole-home scope, an optional area or installed object, a due date and a one-off or recurring schedule. One assigned person keeps the task; multiple people rotate in the chosen order. The next turn advances only after a saved completion. Any active roommate can do the task, and history records who actually completed it.
 
 Dates use the household time zone. Late recurring completions advance to the next future scheduled date, without creating fake missed completions. Former roommates are skipped in rotations; if no active assignee remains, the task is unassigned until edited.
 
-History retains the original task title, room and scheduled date. Undo restores the previous scheduled turn only if there has been no later edit or completion. Archived tasks keep their history and can be restored.
+History retains the original task title, room, object name where applicable, and scheduled date. Undo restores the previous scheduled turn only if there has been no later edit or completion. Archived tasks keep their history and can be restored when their object is installed.
 
 Bathroom fixtures open their related chores; the cleaning caddy opens the room's list. The kitchen has the same chore controls alongside its existing finance tools. Restocking pre-fills a shopping item for review and avoids adding a supply already on the active list. It never records a paid expense.
 
@@ -33,7 +73,7 @@ Bills use the creator's time zone. Edits preserve earlier months and paid occurr
 
 ## Shared changes and retries
 
-Roommates see the same saved household. If a shopping item, chore, monthly bill or house rule changes while you edit it, the form keeps your draft and asks you to use the latest values or explicitly keep your draft. Bill payment forms also require review when the unpaid schedule changes.
+Roommates see the same saved household. If an object, shopping item, chore, monthly bill or house rule changes while you edit it, the form keeps your draft and asks you to use the latest values or explicitly keep your draft. Bill payment forms also require review when the unpaid schedule changes.
 
 An interrupted response does not mean the server rejected a save. Retrying the same change confirms an already-saved result without adding another expense, bill, chore, shopping item or repayment. If you changed the draft after an earlier save succeeded, review the saved record before starting a new change. Shopping checkouts retain their own run identifier and purchased-item history.
 
@@ -61,7 +101,11 @@ The compact footer links to the home guide, room exploration and questions. Its 
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
 
-Room IDs, chore areas and restocking suggestions are registered in `shared/rooms.ts`; `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms there instead of adding placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
+Room IDs and legacy chore areas are registered in `shared/rooms.ts`. The component catalog, fixed positions, supported variants, manual states and default supply/chore suggestions live in `shared/roomComponents.ts`; configuration and state rules live in `shared/componentChanges.ts`. `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms and components instead of placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
+
+New households persist their original component layout. Older JSON without `roomComponents` resolves to deterministic original fixtures without rewriting the stored household or replacing browser sessions. The first saved component change materializes that layout. Component IDs survive removal, and historical shopping/chore references remain valid independently of the currently configured supply list.
+
+Configuration updates use `PATCH /api/household/room-components` with a room ID, changed configurations and each object's reviewed version. The existing household version and mutation receipt protect the whole atomic update. `PATCH /api/room-components/:id/state` records an allowed manual state for an installed object. Only admins may change configuration or the shared room style; all active members may update a supported manual state. Household room previews use saved configuration; public landing previews stay curated and never read personal household data.
 
 Use `src/Dropdown.tsx` for form selects. It preserves raw values, including empty whole-home and one-off choices, while Radix handles menu positioning, keyboard navigation and touch interaction.
 

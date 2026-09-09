@@ -6,14 +6,17 @@ import {
   PCFShadowMap, PlaneGeometry, PointLight, Raycaster, Scene, SRGBColorSpace, Vector2, Vector3, WebGLRenderer,
 } from 'three'
 import type { BufferGeometry } from 'three'
+import { roomSlots } from '../shared/roomComponents.ts'
 import { bathroomFocusForRequest, bathroomFraming, bathroomLabels, bathroomTargets, bathroomTourFraming, buildBathroomModel } from './bathroomModel.ts'
 import type { BathroomFocus, BathroomTarget } from './bathroomModel.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection } from './camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
-import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
+import { createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
-import { applyRoomStyle } from './roomStyles.ts'
+import {
+  bathroomTargetSlots, componentAccessibleName, componentAtSlot, componentLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible,
+} from './roomComponentScene.ts'
 import type { RoomWorldProps } from './roomViewTypes.ts'
 import './bathroom.css'
 
@@ -27,7 +30,11 @@ type BathroomControls = {
   reset: () => void
 }
 
-type BathroomWorldProps = Pick<RoomWorldProps, 'roomStyle' | 'paused' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'> & {
+type BathroomHit = BathroomTarget | { componentId: string }
+
+type BathroomWorldProps = Pick<RoomWorldProps,
+  'roomStyle' | 'paused' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'
+  | 'components' | 'editMode' | 'selectedComponentId' | 'onComponentSelect' | 'overviewFocus'> & {
   focusRequest: { target: SceneFocus | BathroomFocus; id: number }
   preview?: boolean
   motionReduced?: boolean
@@ -37,26 +44,37 @@ type BathroomWorldProps = Pick<RoomWorldProps, 'roomStyle' | 'paused' | 'panelOp
 
 export default function BathroomWorld({
   roomStyle, paused, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
-  preview = false, motionReduced, onStatus, tour,
+  preview = false, motionReduced, onStatus, tour, components, editMode = false, selectedComponentId = null, onComponentSelect, overviewFocus = false,
 }: BathroomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<BathroomTarget, HTMLButtonElement>())
+  const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<BathroomControls | null>(null)
-  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, motionReduced, onStatus, tour })
-  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, motionReduced, onStatus, tour }
+  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, motionReduced, onStatus, tour, components, editMode, selectedComponentId, onComponentSelect, overviewFocus })
+  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, motionReduced, onStatus, tour, components, editMode, selectedComponentId, onComponentSelect, overviewFocus }
   const [focused, setFocused] = useState<BathroomFocus>(() => bathroomFocusForRequest(focusRequest.target))
   const [zoom, setZoom] = useState(1)
   const [evening, setEvening] = useState(false)
   const [fittingRoom, setFittingRoom] = useState(preview)
   const [showLabels, setShowLabels] = useState(true)
-  const [hovered, setHovered] = useState<BathroomTarget | null>(null)
+  const [hovered, setHovered] = useState<BathroomHit | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [renderingPaused, setRenderingPaused] = useState(false)
+  const installed = installedRoomComponents(components, 'bathroom')
+  const objectLabels = installed.filter((component) => editMode || !roomSlots.find((slot) => slot.id === component.slotId)?.defaultKind)
+  const selectedComponent = installed.find((component) => component.id === selectedComponentId)
+  const hoveredComponent = hovered && typeof hovered !== 'string' ? installed.find((component) => component.id === hovered.componentId) : undefined
 
-  const activate = (target: BathroomTarget) => {
+  const activate = (target: BathroomHit) => {
     if (preview && state.current.paused) return
+    if (typeof target !== 'string') { state.current.onComponentSelect?.(target.componentId); return }
+    if (state.current.editMode) {
+      const component = target === 'floor' ? undefined : componentAtSlot(state.current.components, bathroomTargetSlots[target])
+      if (component) state.current.onComponentSelect?.(component.id)
+      return
+    }
     controls.current?.focusOn(target)
     if (target === 'supplies') state.current.onRestock()
     else state.current.onOpenChores(target === 'chores' ? null : target)
@@ -93,14 +111,17 @@ export default function BathroomWorld({
     const room = new Group()
     scene.add(room)
     const model = buildBathroomModel(room, state.current.roomStyle)
+    const shadowTexture = createContactShadowTexture()
+    const componentScene = createRoomComponentScene(room, 'bathroom', {
+      bindings: model.componentBindings, fixtures: model.componentFixtures, styleMaterials: model.styleMaterials, shadowTexture,
+    })
+    componentScene.update(state.current.components, state.current.roomStyle, state.current.editMode ? state.current.selectedComponentId : null)
     batchStaticMeshes(room, new Set())
     const { group: lighting, sunlight, skyLight, fill } = createRoomLights()
     const lamp = new PointLight('#ffe6bc', 0, 8, 2)
     lamp.position.set(0.15, 3.9, -2.7)
     room.add(lamp)
     scene.add(lighting)
-    const shadowTexture = createContactShadowTexture()
-    const contacts = addContactShadows(room, shadowTexture, model.contacts)
     const shadowMaterial = new MeshBasicMaterial({
       map: shadowTexture, color: '#535d45', opacity: 0.2, transparent: true, depthWrite: false, toneMapped: false,
     })
@@ -133,8 +154,8 @@ export default function BathroomWorld({
     let pitch = 0
     let halfHeight = 1
     let lightMix = 0
-    let displayedStyle = state.current.roomStyle
     let lastFocusId = state.current.focusRequest.id
+    let lastSelectedComponentId: string | null = null
     let moved = false
     let startX = 0
     let startY = 0
@@ -218,9 +239,16 @@ export default function BathroomWorld({
       const delta = frameSeconds(last, now)
       last = now
       const latest = state.current
-      if (displayedStyle !== latest.roomStyle) {
-        applyRoomStyle(model.styleMaterials, latest.roomStyle)
-        displayedStyle = latest.roomStyle
+      const componentUpdate = componentScene.update(latest.components, latest.roomStyle, latest.editMode && !latest.overviewFocus ? latest.selectedComponentId : null)
+      shadowsDirty ||= componentUpdate.shadowsChanged
+      if (lastSelectedComponentId !== latest.selectedComponentId) {
+        lastSelectedComponentId = latest.selectedComponentId
+        if (lastSelectedComponentId) {
+          currentControls.wholeRoom = false
+          currentControls.zoom = 1
+          setFittingRoom(false)
+          setZoom(1)
+        }
       }
       if (latest.focusRequest.id !== lastFocusId) {
         lastFocusId = latest.focusRequest.id
@@ -243,14 +271,22 @@ export default function BathroomWorld({
       room.rotation.y = rotation
       room.updateMatrixWorld(true)
       pitch = snap ? targetPitch : dampTo(pitch, targetPitch, 9, delta)
-      const framedFocus = preview && (latest.motionReduced ?? reducedMotion.matches) ? 'room' : currentControls.focus
-      const bounds = framedFocus === 'room' ? model.bounds : model.actorBounds.get(framedFocus)!
-      const framing = preview && latest.tour
+      const framedFocus = latest.overviewFocus || (preview && (latest.motionReduced ?? reducedMotion.matches)) ? 'room' : currentControls.focus
+      const focusedComponent = framedFocus === 'room' || framedFocus === 'floor'
+        ? undefined : componentScene.componentAtSlot(bathroomTargetSlots[framedFocus])
+      const bounds = framedFocus === 'room' ? componentScene.bounds
+        : focusedComponent ? componentScene.getBounds(focusedComponent.id)! : model.actorBounds.get(framedFocus)!
+      const selectedBounds = !latest.overviewFocus && !preview && !currentControls.wholeRoom && latest.selectedComponentId
+        ? componentScene.getBounds(latest.selectedComponentId) : undefined
+      const framing = selectedBounds
+        ? fitRoomBounds(area.width, area.height, selectedBounds, room.rotation.y, pitch)
+        : preview && latest.tour
         ? reduced ? cameraFraming(area.width, area.height, 'room', true)
           : bathroomTourFraming(area.width, area.height, displayedProgress, model.bounds, model.actorBounds, latest.tour.stops)
         : bathroomFraming(area.width, area.height, bounds, room.rotation.y, pitch, {
-          closeRoom: !preview && currentControls.focus === 'room' && !currentControls.wholeRoom,
+          closeRoom: !latest.overviewFocus && !preview && currentControls.focus === 'room' && !currentControls.wholeRoom,
         })
+      if (selectedBounds) framing.halfHeight = Math.max(2.05, framing.halfHeight)
       if (preview) {
         container.dataset.cameraAngle = baseCameraOffset.join(',')
         container.dataset.cameraScale = framing.halfHeight.toFixed(6)
@@ -260,7 +296,8 @@ export default function BathroomWorld({
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
       halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      camera.zoom = snap ? currentControls.zoom : dampTo(camera.zoom, currentControls.zoom, 9, delta, 0.002)
+      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
       camera.position.copy(cameraCenter).add(offset.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
       camera.lookAt(cameraCenter)
       const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
@@ -283,9 +320,27 @@ export default function BathroomWorld({
       shadowsDirty = false
       if (!initialized) latest.onStatus?.('ready')
       initialized = true
-      for (const [target, anchor] of model.anchors) {
+      for (const [target, originalAnchor] of model.anchors) {
         const button = labels.current.get(target)
         if (!button) continue
+        const component = target === 'floor' ? undefined : componentScene.componentAtSlot(bathroomTargetSlots[target])
+        const anchor = component ? componentScene.anchors.get(component.id)! : originalAnchor
+        if (!isSceneObjectVisible(anchor, room)) { button.style.visibility = 'hidden'; continue }
+        anchor.getWorldPosition(projected).project(camera)
+        const x = (projected.x * 0.5 + 0.5) * viewport.width
+        const y = (-projected.y * 0.5 + 0.5) * viewport.height
+        const insetX = Math.max(18, button.offsetWidth / 2)
+        const insetY = Math.max(18, button.offsetHeight / 2)
+        button.style.left = `${x}px`
+        button.style.top = `${y}px`
+        button.style.transform = 'translate(-50%, -50%)'
+        button.style.visibility = projected.z > -1 && projected.z < 1
+          && x > area.x + insetX && x < area.x + area.width - insetX
+          && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
+      }
+      for (const [id, button] of componentLabels.current) {
+        const anchor = componentScene.anchors.get(id)
+        if (!anchor || !isSceneObjectVisible(anchor, room)) { button.style.visibility = 'hidden'; continue }
         anchor.getWorldPosition(projected).project(camera)
         const x = (projected.x * 0.5 + 0.5) * viewport.width
         const y = (-projected.y * 0.5 + 0.5) * viewport.height
@@ -299,7 +354,7 @@ export default function BathroomWorld({
           && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
       }
       const moving = room.rotation.y !== targetRotation || pitch !== targetPitch
-        || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== currentControls.zoom
+        || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom
         || !!latest.tour && !reduced && displayedProgress !== latest.tour.progress.current
       setCameraMoving(moving)
       drawing = false
@@ -307,16 +362,21 @@ export default function BathroomWorld({
       else setRenderingPaused(true)
     }
 
-    const hitTarget = (event: PointerEvent): BathroomTarget | null => {
+    const hitTarget = (event: PointerEvent): BathroomHit | null => {
       const rect = canvas.getBoundingClientRect()
       if (!initialized || contextLost || document.hidden || !visible || (preview && state.current.paused) || !rect.width || !rect.height) return null
       pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1)
       raycaster.setFromCamera(pointer, camera)
-      const hit = raycaster.intersectObject(room, true).find(({ object }) => {
-        for (let item = object; item !== room && item.parent; item = item.parent) if (!item.visible) return false
-        return true
-      })
+      const hit = raycaster.intersectObject(room, true).find(({ object }) => isSceneObjectVisible(object, room))
       let object = hit?.object
+      const component = object ? componentScene.componentForObject(object) : null
+      if (component) {
+        const target = (Object.entries(bathroomTargetSlots) as [Exclude<BathroomTarget, 'floor'>, string][])
+          .find(([, slot]) => slot === component.slotId)?.[0]
+        if (state.current.editMode || !target) return state.current.onComponentSelect ? { componentId: component.id } : null
+        return target
+      }
+      if (state.current.editMode) return null
       while (object && object !== room) {
         const target = bathroomTargets.find((candidate) => candidate === object?.userData.bathroomTarget)
         if (target) return target
@@ -456,11 +516,11 @@ export default function BathroomWorld({
         window.removeEventListener('pointercancel', releaseOutside)
       }
       canvas.removeEventListener('webglcontextlost', onContextLost)
+      componentScene.dispose()
       const geometries = new Set<BufferGeometry>()
       scene.traverse((object) => { if (object instanceof Mesh) geometries.add(object.geometry) })
       geometries.forEach((geometry) => geometry.dispose())
       model.materials.forEach((material) => material.dispose())
-      contacts.material.dispose()
       shadowMaterial.dispose()
       shadowTexture.dispose()
       sunlight.shadow.dispose()
@@ -472,7 +532,7 @@ export default function BathroomWorld({
     }
   }, [])
 
-  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced])
+  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, selectedComponentId, overviewFocus])
 
   const changeZoom = (direction: number) => {
     const current = controls.current
@@ -497,25 +557,38 @@ export default function BathroomWorld({
   </div>
 
   return (
-    <div className="kitchen-world bathroom-world" data-room-style={roomStyle} data-evening={evening} data-focus={focused}
-      data-framing={fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}>
+    <div className="kitchen-world bathroom-world" data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused}
+      data-framing={overviewFocus || fittingRoom ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}
+      data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined}>
       <div className="bathroom-scene-area" ref={stage} aria-hidden="true" />
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable}
-        aria-label="Interactive low-poly shared bathroom. Select the sink, mirror, toilet, bath or floor for chores, the cleaning caddy for room chores, or the shelf to restock supplies. Drag to turn, scroll or pinch to zoom." />
+        aria-label={editMode
+          ? 'Bathroom editing preview. Select an object to edit its settings in its fixed position, or use the room objects list. Drag to turn, scroll or pinch to zoom.'
+          : 'Interactive low-poly shared bathroom. Select the sink, mirror, toilet, bath or floor for chores, the cleaning caddy for room chores, or the shelf to restock supplies. Drag to turn, scroll or pinch to zoom.'} />
       {unavailable ? <div className="bathroom-unavailable" role="status"><Bath size={34} /><strong>The 3D bathroom is unavailable.</strong><p>You can still manage chores and restock supplies with the room controls.</p></div> : <>
         <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label="Objects in your bathroom">
-          {bathroomTargets.map((target) => {
+          {!editMode && bathroomTargets.filter((target) => target === 'floor' || componentAtSlot(components, bathroomTargetSlots[target])).map((target) => {
+            const component = target === 'floor' ? undefined : componentAtSlot(components, bathroomTargetSlots[target])
             const due = target === 'chores' || target === 'supplies' ? undefined : dueChores[target]
-            const label = `${bathroomLabels[target]}${due && due > 0 ? ` (${due} due)` : ''}`
+            const base = target === 'bath' && component?.variant === 'shower' ? 'Shower chores' : bathroomLabels[target]
+            const label = `${componentLabel(component, base)}${due && due > 0 ? ` (${due} due)` : ''}`
             return <button key={target} type="button" ref={(button) => { if (button) labels.current.set(target, button); else labels.current.delete(target) }}
-              className={`world-hotspot hotspot-${target}`} data-bathroom-target={target} data-selected={focused === target}
+              className={`world-hotspot hotspot-${target}`} data-bathroom-target={target} data-component-id={component?.id} data-selected={focused === target}
               aria-label={label} onClick={() => activate(target)} onMouseEnter={() => setHovered(target)} onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(target)} onBlur={() => setHovered(null)}>
               <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span>
             </button>
           })}
+          {onComponentSelect && objectLabels.map((component) => <button type="button" key={component.id}
+            ref={(button) => { if (button) componentLabels.current.set(component.id, button); else componentLabels.current.delete(component.id) }}
+            className="world-hotspot hotspot-component" data-component-id={component.id} data-component-kind={component.kind}
+            data-selected={!overviewFocus && selectedComponentId === component.id} aria-label={`${editMode ? 'Edit' : 'Open'} ${componentAccessibleName(component, installed)}`}
+            onClick={() => activate({ componentId: component.id })} onMouseEnter={() => setHovered({ componentId: component.id })}
+            onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
+            <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
+          </button>)}
         </div>
-        <div className="world-view-label"><span className="view-label-dot" />{focused === 'room' ? 'The bathroom' : bathroomLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
+        <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? 'The bathroom' : selectedComponent && !fittingRoom ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? 'The bathroom' : bathroomLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
           <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.9} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
           <span>{Math.round(zoom * 100)}%</span>
@@ -525,10 +598,13 @@ export default function BathroomWorld({
           <button type="button" className="icon-button" onClick={() => setShowLabels(!showLabels)} aria-label={showLabels ? 'Hide object labels' : 'Show object labels'} aria-pressed={showLabels} title="Object labels">{showLabels ? <Eye size={18} /> : <EyeOff size={18} />}</button>
           <button type="button" className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Bathroom lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button>
         </div>
-        <div className="world-interaction-hint"><Move size={13} />{hovered === 'supplies' ? 'Restock bathroom supplies' : hovered ? hovered === 'chores' ? 'Open room chores' : bathroomLabels[hovered] : 'Drag to turn. Select an object for chores or supplies.'}</div>
+        <div className="world-interaction-hint"><Move size={13} />{hovered && typeof hovered !== 'string'
+          ? `${editMode ? 'Edit' : 'Open'} ${hoveredComponent ? componentAccessibleName(hoveredComponent, installed) : 'room object'}`
+          : hovered === 'supplies' ? 'Restock bathroom supplies' : hovered ? hovered === 'chores' ? 'Open room chores' : bathroomLabels[hovered]
+            : editMode ? 'Select an object to edit. Positions stay fixed.' : 'Drag to turn. Select an object for chores or supplies.'}</div>
       </>}
-      <button type="button" className="world-fridge-toggle" onClick={() => activate('chores')}><ClipboardList size={15} />Room chores</button>
-      <button type="button" className="world-kettle-toggle" onClick={() => activate('supplies')}><PackagePlus size={16} /><span>Restock supplies</span></button>
+      {!editMode && <button type="button" className="world-fridge-toggle" onClick={() => activate('chores')}><ClipboardList size={15} />Room chores</button>}
+      {!editMode && <button type="button" className="world-kettle-toggle" onClick={() => activate('supplies')}><PackagePlus size={16} /><span>Restock supplies</span></button>}
     </div>
   )
 }

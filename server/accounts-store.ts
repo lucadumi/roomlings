@@ -8,6 +8,8 @@ import {
 import type {
   AccountInvitationResult, AccountRecoveryResult, AccountRecoverySignIn, AccountRecoveryState, AccountState, CreateAccountHousehold, HouseholdAccess,
 } from '../shared/accounts.ts'
+import { delegatedRoomRoleSchema, roomAccessSchema } from '../shared/roomAccess.ts'
+import type { DelegatedRoomRole, RoomAccess, RoomRole } from '../shared/roomAccess.ts'
 import { activeMemberLimit, memberColors, retainedMemberLimit } from '../shared/domain.ts'
 import type { Household } from '../shared/domain.ts'
 import type { Store } from './store.ts'
@@ -42,6 +44,10 @@ export class AccountStore {
         return operation(session, ...args)
       })
     this.isManaged = transactional(db, this.isManaged.bind(this))
+    this.syncRoomAccess = transactional(db, this.syncRoomAccess.bind(this))
+    this.roomAccess = transactional(db, this.roomAccess.bind(this))
+    this.roomRole = transactional(db, this.roomRole.bind(this))
+    this.setRoomRole = transactional(db, this.setRoomRole.bind(this))
     this.authenticate = transactional(db, this.authenticate.bind(this))
     this.signIn = transactional(db, this.signIn.bind(this))
     this.recoverAccount = transactional(db, this.recoverAccount.bind(this))
@@ -85,6 +91,58 @@ export class AccountStore {
 
   async isManaged(householdId: string) {
     return !!(await this.db.prepare('SELECT 1 FROM household_accounts WHERE household_id = ?').get(householdId))
+  }
+
+  async syncRoomAccess(household: Household): Promise<Household> {
+    const current = await this.store.get(household.id)
+    if (!current) throw forbidden()
+    await this.db.prepare('INSERT INTO household_room_owners (household_id, member_id) VALUES (?, ?) ON CONFLICT(household_id) DO NOTHING')
+      .run(current.id, current.members[0].id)
+    const active = current.members.filter((member) => !member.inactive).map((member) => member.id)
+    await this.db.prepare(`DELETE FROM household_room_admins WHERE household_id = ?${
+      active.length ? ` AND member_id NOT IN (${active.map(() => '?').join(', ')})` : ''
+    }`).run(current.id, ...active)
+    return current
+  }
+
+  async roomAccess(household: Household, memberId: string): Promise<RoomAccess> {
+    const current = await this.syncRoomAccess(household)
+    const managed = await this.db.prepare('SELECT owner_member_id FROM household_accounts WHERE household_id = ?').get(current.id)
+    const original = await this.db.prepare('SELECT member_id FROM household_room_owners WHERE household_id = ?').get(current.id)
+    // A managed kitchen with no owner is closed, not an invitation to restore its creator's authority.
+    const owner = managed ? managed.owner_member_id : original?.member_id
+    const admins = new Set((await this.db.prepare('SELECT member_id FROM household_room_admins WHERE household_id = ?')
+      .all(current.id)).map((row) => String(row.member_id)))
+    const linked = new Map((await this.db.prepare(`SELECT m.member_id, m.active, a.deleting FROM account_memberships m
+      JOIN accounts a ON a.id = m.account_id WHERE m.household_id = ?`).all(current.id))
+      .map((row) => [String(row.member_id), row.active === 1 && row.deleting === 0]))
+    const members = current.members.map((member) => {
+      const active = !member.inactive && linked.get(member.id) !== false
+      const role: RoomRole = !active ? 'member' : member.id === owner ? 'owner' : admins.has(member.id) ? 'admin' : 'member'
+      return { memberId: member.id, name: member.name, role, active }
+    })
+    const actor = members.find((member) => member.memberId === memberId && member.active)
+    if (!actor) throw forbidden()
+    return roomAccessSchema.parse({ householdId: current.id, memberId, version: current.version, role: actor.role, members })
+  }
+
+  async roomRole(household: Household, memberId: string): Promise<RoomRole> {
+    return (await this.roomAccess(household, memberId)).role
+  }
+
+  async setRoomRole(household: Household, memberId: string, targetId: string, role: DelegatedRoomRole): Promise<void> {
+    const checked = delegatedRoomRoleSchema.parse(role)
+    const access = await this.roomAccess(household, memberId)
+    if (access.role === 'member') throw new ApiError(403, 'Only a household owner or admin can change admin permissions.')
+    const target = access.members.find((member) => member.memberId === targetId && member.active)
+    if (!target) throw new ApiError(404, 'Choose an active roommate in this kitchen.')
+    if (target.role === 'owner') throw new ApiError(409, 'The owner cannot be changed through admin permissions. Use the ownership transfer instead.')
+    if (target.role === checked) throw new ApiError(409, checked === 'admin' ? 'That roommate is already an admin.' : 'That roommate is already a member.')
+    if (checked === 'admin') {
+      await this.db.prepare('INSERT INTO household_room_admins (household_id, member_id) VALUES (?, ?)').run(access.householdId, targetId)
+    } else {
+      await this.db.prepare('DELETE FROM household_room_admins WHERE household_id = ? AND member_id = ?').run(access.householdId, targetId)
+    }
   }
 
   private async purgeSessions() {
@@ -208,15 +266,17 @@ export class AccountStore {
   }
 
   private async memberships(accountId: string): Promise<AccountState['memberships']> {
-    const rows = (await this.db.prepare(`SELECT m.household_id, m.member_id, h.owner_member_id, k.state FROM account_memberships m
+    const rows = (await this.db.prepare(`SELECT m.household_id, m.member_id, h.owner_member_id, k.state, r.member_id AS admin_member_id FROM account_memberships m
       JOIN household_accounts h ON h.household_id = m.household_id
+      LEFT JOIN household_room_admins r ON r.household_id = m.household_id AND r.member_id = m.member_id
       JOIN households k ON k.id = m.household_id WHERE m.account_id = ? AND m.active = 1`).all(accountId))
     return rows.flatMap((row) => {
       const household = parseStoredHousehold(String(row.state))
       if (!household?.members.some((member) => member.id === row.member_id && !member.inactive)) return []
       return [{
         householdId: household.id, householdName: household.name, memberId: String(row.member_id),
-        currency: household.currency, role: row.owner_member_id === row.member_id ? 'owner' as const : 'member' as const,
+        currency: household.currency,
+        role: row.owner_member_id === row.member_id ? 'owner' as const : row.admin_member_id ? 'admin' as const : 'member' as const,
       }]
     })
   }
@@ -253,7 +313,8 @@ export class AccountStore {
       WHERE m.account_id = ? AND m.household_id = ? AND m.active = 1 AND a.deleting = 0`).get(session.accountId, id))
     const household = membership ? (await this.store.get(id)) : null
     if (!membership || !household?.members.some((member) => member.id === membership.member_id && !member.inactive)) throw forbidden()
-    return { household, memberId: String(membership.member_id), sessionId: session.id, role: membership.owner_member_id === membership.member_id ? 'owner' as const : 'member' as const }
+    const memberId = String(membership.member_id)
+    return { household, memberId, sessionId: session.id, role: await this.roomRole(household, memberId) }
   }
 
   async select(session: AccountSession, householdId: string) {
@@ -315,7 +376,7 @@ export class AccountStore {
     const { household, memberId, role } = (await this.household(session, householdId))
     const linked = new Set((await this.db.prepare(`SELECT m.member_id FROM account_memberships m JOIN accounts a ON a.id = m.account_id
       WHERE m.household_id = ? AND m.active = 1 AND a.deleting = 0`).all(householdId)).map((row) => String(row.member_id)))
-    const owner = (await this.owner(householdId))
+    const roomAccess = await this.roomAccess(household, memberId)
     const invitations = role === 'owner' ? (await this.db.prepare('SELECT id, created_at, expires_at, revoked_at, uses FROM account_invitations WHERE household_id = ? ORDER BY created_at DESC, id')
       .all(householdId)).map((row) => ({
         id: String(row.id), createdAt: String(row.created_at), expiresAt: String(row.expires_at),
@@ -323,9 +384,8 @@ export class AccountStore {
       })) : []
     return householdAccessSchema.parse({
       household, memberId, role, invitations,
-      members: household.members.map((member) => ({
-        memberId: member.id, name: member.name, role: member.id === owner ? 'owner' : 'member',
-        linked: linked.has(member.id), active: !member.inactive,
+      members: roomAccess.members.map((member) => ({
+        ...member, linked: linked.has(member.memberId),
       })),
     })
   }
@@ -345,8 +405,10 @@ export class AccountStore {
       if (other && other.member_id !== member.id) throw new ApiError(409, 'Your account already has a different roommate identity in this kitchen.')
       if (!existing) {
         if ((await this.memberships(session.accountId)).length >= 50) throw new ApiError(409, 'This account already has 50 kitchens. Leave one before linking another.')
+        await this.syncRoomAccess(household)
+        const creator = await this.db.prepare('SELECT member_id FROM household_room_owners WHERE household_id = ?').get(household.id)
         await this.db.prepare('INSERT INTO household_accounts (household_id, owner_member_id) VALUES (?, ?) ON CONFLICT(household_id) DO NOTHING')
-          .run(household.id, household.members[0].id)
+          .run(household.id, creator!.member_id)
         await this.db.prepare('INSERT INTO account_memberships (household_id, member_id, account_id) VALUES (?, ?, ?)')
           .run(household.id, member.id, session.accountId)
         await this.changed(household)
@@ -446,6 +508,7 @@ export class AccountStore {
         throw new ApiError(409, 'A roommate already uses that name. Choose a different name to keep the ledger clear.')
       }
       const memberId = existing ? String(existing.member_id) : randomUUID()
+      await this.db.prepare('DELETE FROM household_room_admins WHERE household_id = ? AND member_id = ?').run(householdId, memberId)
       if (existing) {
         const member = household.members.find((member) => member.id === memberId)!
         member.inactive = false
@@ -472,6 +535,7 @@ export class AccountStore {
         throw new ApiError(400, 'Choose an active roommate who has linked a verified account.')
       }
       await this.db.prepare('UPDATE household_accounts SET owner_member_id = ? WHERE household_id = ?').run(target, householdId)
+      await this.db.prepare('DELETE FROM household_room_admins WHERE household_id = ? AND member_id IN (?, ?)').run(householdId, memberId, target)
       await this.changed(household)
       return (await this.access(session, householdId))
     }))
@@ -482,6 +546,7 @@ export class AccountStore {
     member.inactive = true
     if (pseudonymize) member.name = `Former roommate ${household.members.indexOf(member) + 1}`
     await this.db.prepare('UPDATE account_memberships SET active = 0 WHERE household_id = ? AND member_id = ?').run(household.id, memberId)
+    await this.db.prepare('DELETE FROM household_room_admins WHERE household_id = ? AND member_id = ?').run(household.id, memberId)
     // Consume existing links for this account; only a new owner-issued invitation can restore access.
     await this.db.prepare(`INSERT INTO account_invitation_uses (invitation_id, account_id)
       SELECT i.id, m.account_id FROM account_invitations i JOIN account_memberships m ON m.household_id = i.household_id
