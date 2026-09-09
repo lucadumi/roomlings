@@ -152,7 +152,12 @@ test('the closing invitation is a white outlined letter with a static plant and 
     await letter.screenshot({ path: testInfo.outputPath(`outlined-letter-${width}.png`), animations: 'disabled' })
   }
   await action.click()
-  await expect(page.getByRole('dialog', { name: 'Your place, on every device.', exact: true })).toBeVisible()
+  const signIn = page.getByRole('dialog', { name: 'Your place, on every device.', exact: true })
+  await expect(signIn).toBeVisible()
+  await expect(signIn.getByLabel('Email address', { exact: true })).toBeEnabled()
+  await expect(signIn.getByRole('button', { name: 'Send sign-in code', exact: true })).toBeEnabled()
+  await expect(page.getByText('Checking saved access...', { exact: true })).toHaveCount(0)
+  await page.unrouteAll({ behavior: 'wait' })
 })
 
 test('the normal header and centered hero fill the first screen with clear section links', async ({ page }) => {
