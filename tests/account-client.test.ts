@@ -5,7 +5,7 @@ import { householdSchema } from '../shared/domain.ts'
 import type { Session } from '../shared/domain.ts'
 import type { AccountKitchenSession, AccountMembership } from '../shared/accounts.ts'
 import {
-  forgetAccountKitchens, getAccountState, readAccessMode, readToken, rememberKitchen,
+  errorMessage, forgetAccountKitchens, getAccountState, readAccessMode, readToken, rememberKitchen,
   request, RequestError, sameKitchenSession, savedKitchens,
   updateSavedKitchen,
 } from '../src/api.ts'
@@ -96,7 +96,10 @@ describe('account-aware client access', () => {
     await assert.rejects(request('/account', { method: 'DELETE', body: {} }), (error: unknown) =>
       error instanceof RequestError && error.status === 401 && error.message === 'Verify your email again.')
     mock.method(globalThis, 'fetch', async () => { throw new TypeError('Connection failed') })
-    await assert.rejects(request('/account'), (error: unknown) => error instanceof RequestError && error.status === 0)
+    await assert.rejects(request('/account'), (error: unknown) =>
+      error instanceof RequestError && error.status === 0 && error.message === 'Connection lost. Try again.')
+    await assert.rejects(request('/account', { method: 'DELETE' }), (error: unknown) =>
+      error instanceof RequestError && error.status === 0 && error.message === 'Connection lost. Request not confirmed. Try again.')
   })
 
   it('retains lifecycle error codes so pending deletion is not mistaken for a completed sign-out', async () => {
@@ -116,8 +119,12 @@ describe('account-aware client access', () => {
       })
       await assert.rejects(request('/account/code', { body: { email: 'example@example.com' } }), (error: unknown) =>
         error instanceof RequestError && error.status === status && error.code === 'SERVER_UNAVAILABLE'
-        && error.message.includes('request was not confirmed'))
+        && error.message === 'Server unavailable. Request not confirmed. Try again.')
       assert.equal(calls, 1)
+      await assert.rejects(request('/household/room-access'), (error: unknown) =>
+        error instanceof RequestError && error.status === status && error.code === 'SERVER_UNAVAILABLE'
+        && error.message === 'Server unavailable. Try again.')
+      assert.equal(calls, 2)
     }
   })
 
@@ -130,7 +137,28 @@ describe('account-aware client access', () => {
       && error.message === 'Email delivery is temporarily unavailable.')
     mock.method(globalThis, 'fetch', async () => new Response('<html>Not JSON</html>'))
     await assert.rejects(request('/account'), (error: unknown) =>
-      error instanceof RequestError && error.status === 200 && error.message.includes('unreadable response'))
+      error instanceof RequestError && error.status === 200 && error.message === 'Unreadable server response. Try again.')
+    await assert.rejects(request('/expenses', { body: {} }), (error: unknown) =>
+      error instanceof RequestError && error.status === 200 && error.message === 'Unreadable server response. Request not confirmed. Try again.')
+  })
+
+  it('keeps malformed or blank error responses visible without claiming a write failed', async () => {
+    for (const body of [{ error: '   ' }, { message: 'Unexpected shape' }, { error: '', code: 'ACCOUNT_DELETION_PENDING' }]) {
+      mock.method(globalThis, 'fetch', async () => Response.json(body, { status: 503 }))
+      await assert.rejects(request('/expenses', { body: {} }), (error: unknown) =>
+        error instanceof RequestError && error.status === 503 && error.message === 'Unexpected response. Request not confirmed. Try again.'
+        && error.code === ('code' in body ? body.code : undefined))
+    }
+  })
+
+  it('uses concise fallbacks for schema diagnostics without hiding useful request errors', () => {
+    const result = householdSchema.safeParse({})
+    assert.ok(!result.success)
+    assert.equal(errorMessage(result.error, 'Save not confirmed. Try again.'), 'Save not confirmed. Try again.')
+    assert.equal(errorMessage(new RequestError(409, 'Review the latest room.'), 'Could not save.'), 'Review the latest room.')
+    assert.equal(errorMessage(new Error('  Choose an active payer.  '), 'Could not save.'), 'Choose an active payer.')
+    assert.equal(errorMessage(new Error(''), 'Could not save.'), 'Could not save.')
+    assert.equal(errorMessage(null, 'Could not save.'), 'Could not save.')
   })
 
   it('does not put account session credentials or CSRF tokens in browser storage', () => {

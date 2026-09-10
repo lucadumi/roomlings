@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import {
   ArrowRight, Check, CheckCheck,
   ChevronLeft, ChevronRight, CircleHelp, Download, Home, KeyRound, Leaf, Link,
-  Plus, ReceiptText, RefreshCw, Search, Settings2, Snowflake, Trash2, Users, Wallet, X,
+  Plus, ReceiptText, RefreshCw, Search, Settings2, Snowflake, Trash2, Users, Wallet,
 } from 'lucide-react'
 import {
   balances, billingDate, categories, categoryLabels, currencies, escapeCsv, householdSchema, localDate,
@@ -20,7 +20,7 @@ import { canUndoChore, choreAssignee, choreStatus } from '../shared/chores.ts'
 import { choreLocationLabel, roomCatalog, roomIdSchema } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import {
-  forgetAccountKitchens, getAccountState, getHousehold, preferAccountAccess, readAccessMode,
+  errorMessage, forgetAccountKitchens, getAccountState, getHousehold, preferAccountAccess, readAccessMode,
   readToken, rememberKitchen, request, RequestError, sameKitchenSession, savedKitchens, sessionSchema,
   updateSavedKitchen,
 } from './api.ts'
@@ -52,9 +52,12 @@ import { roomAccessSchema } from '../shared/roomAccess.ts'
 import type { RoomAccess } from '../shared/roomAccess.ts'
 import { RoomEditor, RoomObjectsPanel } from './RoomComponents.tsx'
 import { RoomAdminPanel } from './RoomAdminPanel.tsx'
+import { Feedback, FeedbackAction } from './Feedback.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
+const browserStorageMessage = 'Could not save browser access. Keep this tab open.'
+const browserAccessEndedMessage = 'Browser access ended. Sign in or recover your access.'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit'
 const pageFocus: Record<Page, FocusRequest['target']> = {
@@ -161,7 +164,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const changeSavedKitchen = useCallback((token: string, change: SavedKitchenChange) => {
     setSaved((previous) => previous.map((kitchen) => kitchen.token === token ? { ...kitchen, ...change } : kitchen))
     try { setSaved(updateSavedKitchen(token, change)) } catch {
-      setError('Browser access changed, but this browser could not save the updated kitchen shortcut. Keep this tab open until browser storage is available.')
+      setError(browserStorageMessage)
     }
   }, [])
 
@@ -186,10 +189,10 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       accountRef.current = accountState
       setAccount(accountState)
       try { setSaved(savedKitchens()) } catch {
-        setError('This browser could not read its saved kitchen shortcuts. Account sign-in and recovery remain available.')
+        setError('Saved kitchens unavailable. Sign in or recover your access.')
       }
       if (accountState?.deletionPending) {
-        setError('Account deletion is pending. Account kitchen access is disabled.')
+        setError('Account deletion pending. Account access is disabled.')
         setDialog({ account: 'manage' })
         return
       }
@@ -205,40 +208,40 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         if (accountState?.account) {
           if (restored.expiredBrowser) preferAccountAccess()
           setError((previous) => previous || (restored.expiredBrowser
-            ? 'Your older browser-only access ended. Choose, create or link a kitchen from your signed-in account.'
+            ? 'Browser access ended. Choose a kitchen from your account.'
             : 'Choose, create or link a kitchen from your account.'))
           setDialog((previous) => previous ?? { account: 'manage' })
         } else {
-          if (restored.expiredBrowser) setError((previous) => previous || 'Your browser access is no longer active. Sign in or recover your existing identity to reopen the room.')
+          if (restored.expiredBrowser) setError((previous) => previous || browserAccessEndedMessage)
           if (isRoomEntry()) setDialog((previous) => previous ?? { account: 'manage' })
         }
         return
       }
       setBillMonth(billingDate(next.household.billingTimeZone).slice(0, 7))
       setShoppingView('list')
-      if (restored.expiredBrowser) setNotice(`Your older browser-only access ended. Opened ${next.household.name} through your signed-in account.`)
+      if (restored.expiredBrowser) setNotice(`Opened ${next.household.name} through your signed-in account.`)
       if (enteringRoom.current && !initialAccount && !initialAccountInvite && !initialInvite && !initialRecovery) {
         enteringRoom.current = false
         setDialog(null)
       }
       try { setSaved(rememberKitchen(next)) } catch {
-        setError('Your browser could not save this kitchen session. Keep this tab open until browser storage is available.')
+        setError(browserStorageMessage)
       }
     })().catch((failure: unknown) => {
       if (startupAttempt.current !== attempt) return
-      setError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
+      setError(errorMessage(failure, 'Could not open the kitchen. Try again.'))
       if (isRoomEntry() && failure instanceof RequestError && failure.status === 401) {
         enteringRoom.current = true
         setDialog({ account: 'manage' })
-        setError('Your browser access is no longer active. Sign in or recover your existing identity to reopen the room.')
+        setError(browserAccessEndedMessage)
         try { setSaved(savedKitchens()) } catch {
-          setError('Sign in to reopen your home. This browser also could not read its saved kitchen shortcuts.')
+          setError('Saved kitchens unavailable. Sign in to reopen your home.')
         }
       }
       if (failure instanceof RequestError && failure.code === 'ACCOUNT_DELETION_PENDING') {
         setDialog({ account: 'manage' })
         try { setSaved(savedKitchens()) } catch {
-          setError('Account deletion is pending. This browser also could not load its saved kitchen shortcuts.')
+          setError('Account deletion pending. Saved kitchens are unavailable.')
         }
       }
     }).finally(() => {
@@ -325,7 +328,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       .then((data) => {
         const next = roomAccessSchema.parse(data)
         if (controller.signal.aborted || !sameKitchenSession(sessionRef.current, current)) return
-        if (next.householdId !== current.household.id || next.memberId !== current.memberId) throw new Error('The room permissions did not match this household. Refresh access before editing.')
+        if (next.householdId !== current.household.id || next.memberId !== current.memberId) throw new Error('Room access is out of date. Retry before editing.')
         if (next.version < (sessionRef.current?.household.version ?? 0)) return
         setRoomAccess((previous) => previous?.householdId === next.householdId && previous.memberId === next.memberId && previous.version > next.version ? previous : next)
         setRoomAccessError('')
@@ -335,7 +338,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           expireSession(current, failure.message, true)
           return
         }
-        setRoomAccessError(failure instanceof Error ? failure.message : 'Room editing permissions could not be loaded.')
+        setRoomAccessError(errorMessage(failure, 'Could not load room access. Try again.'))
       })
     return () => controller.abort()
   }, [session?.token, session?.memberId, session?.household.id, session?.household.version, roomAccessRetry, expireSession])
@@ -396,7 +399,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     initialSession = Promise.resolve({ session: next })
     setError('')
     try { setSaved(rememberKitchen(next)) } catch {
-      setError('Your browser could not remember this kitchen. Keep this tab open until browser storage is available.')
+      setError(browserStorageMessage)
     }
     if (!keepDialog) history.replaceState(null, '', `${location.pathname}${location.search}`)
     setMonth(localDate().slice(0, 7))
@@ -422,13 +425,14 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     const pending = path === '/household/room-components' ? pendingRoomMutation : pendingMutation
     setBusy(true)
     setFormError('')
+    setNotice('')
     if (inline) setError('')
     try {
       let mutation: { mutationId: string; mutationVersion: number } | undefined
       if (path !== '/shopping/checkout') {
         const key = JSON.stringify([epoch, session.household.id, session.memberId, path, method ?? 'POST', inline ? body : null])
         if (pending.current?.key !== key) {
-          if (!globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to safely save a kitchen change.')
+          if (!globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to save changes.')
           pending.current = { key, id: crypto.randomUUID(), version: session.household.version }
         }
         mutation = { mutationId: pending.current.id, mutationVersion: pending.current.version }
@@ -441,7 +445,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const household = householdSchema.parse(result.household)
       setSession((previous) => previous && sameKitchenSession(previous, session) && household.version >= previous.household.version ? { ...previous, household } : previous)
       pending.current = null
-      setNotice(result.replayed ? 'Your earlier change was already saved. The latest kitchen is now shown.' : success)
+      setNotice(result.replayed ? 'Change already saved. Showing the latest room.' : success)
       if (!inline) setDialog(null)
       setSyncState('saved')
       if (!result.replayed && path === '/bills') setBillMonth(household.bills[0].startMonth)
@@ -459,7 +463,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         expireSession(session, failure.message, true)
         return false
       }
-      const message = failure instanceof Error ? failure.message : 'The change could not be saved.'
+      const message = errorMessage(failure, 'Save not confirmed. Try again.')
       if (path === '/household/room-components' && failure instanceof RequestError && failure.code === 'MUTATION_PAYLOAD_CHANGED') pending.current = null
       if (failure instanceof RequestError && (failure.status === 0 || failure.status >= 500)) setSyncState('offline')
       if (inline) setError(message)
@@ -501,7 +505,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       setBusy(false)
       setPage('overview')
       setStockEvent(null)
-      setError(kind === 'deleting' ? 'Account deletion is pending. Account kitchen access is disabled.' : 'Sign in to return to your account.')
+      setError(kind === 'deleting' ? 'Account deletion pending. Account access is disabled.' : 'Sign in to return to your account.')
     } else if (kind === 'select' || (next.account && identityChanged) || (!current && next.session)) {
       if (next.session) adoptSession(next.session, true)
       else {
@@ -530,11 +534,11 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       if (preserveLegacy && current) setSaved(rememberKitchen(current))
       else if (kind === 'signed-out' || kind === 'deleting' || kind === 'select' || (next.account && identityChanged)) preferAccountAccess()
     } catch {
-      setError('Account access changed, but this browser could not update its saved kitchen shortcuts. Check browser storage before closing the tab.')
+      setError(browserStorageMessage)
     }
   }
   const openDialog = (next: Dialog) => {
-    if (busy && page === 'room-edit') { setError('Wait for the room change to finish before opening another tool.'); return }
+    if (busy && page === 'room-edit') { setError('Room save in progress. Wait before switching tools.'); return }
     setFormError('')
     if ((account?.configured || account?.account) && (next === 'create' || next === 'join' || next === 'invite')) {
       setDialog({ account: next === 'create' ? 'create' : next === 'join' ? 'join' : 'manage' })
@@ -565,7 +569,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     link.download = 'roomlings-ledger.csv'
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setNotice('Your whole ledger has been exported.')
+    setNotice('Ledger export ready.')
   }
 
   const newSession = async (endpoint: string, body: Record<string, unknown>) => {
@@ -578,11 +582,11 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const next = sessionSchema.parse(await request(endpoint, { body }))
       if (startupAttempt.current !== attempt) return
       adoptSession(next)
-      setNotice(endpoint === '/recover' ? 'Welcome back. Your original roommate identity has been restored.'
-        : endpoint === '/join' ? 'You are in. Welcome to the kitchen!' : 'A fresh start for your shared kitchen.')
+      setNotice(endpoint === '/recover' ? 'Roommate access restored.'
+        : endpoint === '/join' ? 'Kitchen joined.' : 'Kitchen created.')
     } catch (failure) {
       if (startupAttempt.current !== attempt) return
-      setFormError(failure instanceof Error ? failure.message : 'Your kitchen could not be opened.')
+      setFormError(errorMessage(failure, 'Could not open the kitchen. Try again.'))
     } finally { if (startupAttempt.current === attempt) setBusy(false) }
   }
 
@@ -593,13 +597,13 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const next = await getHousehold(kitchen.token)
       if (sessionEpoch.current !== epoch) return false
       adoptSession({ token: kitchen.token, ...next })
-      setNotice(`Welcome back to ${next.household.name}.`)
+      setNotice(`Opened ${next.household.name}.`)
       return true
     } catch (failure) {
       if (sessionEpoch.current !== epoch) return false
       if (failure instanceof RequestError && failure.status === 401) changeSavedKitchen(kitchen.token, { expired: true })
       if (surfaceInDialog) throw failure
-      setError(failure instanceof Error ? failure.message : 'That kitchen could not be opened.')
+      setError(errorMessage(failure, 'Could not open the kitchen. Try again.'))
       return false
     } finally { if (sessionEpoch.current === epoch) setBusy(false) }
   }
@@ -610,7 +614,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setMonth(localDate(date).slice(0, 7))
   }
   const visit = (next: Page, focus: FocusRequest['target'] | null = pageFocus[next]) => {
-    if (page === 'room-edit' && busy) { setError('Wait for the room change to finish before leaving the editor.'); return }
+    if (page === 'room-edit' && busy) { setError('Room save in progress. Wait before leaving the editor.'); return }
     if (next !== 'room-edit') { setComponentPreview(null); pendingRoomMutation.current = null }
     if (next !== 'objects' && next !== 'room-edit') setSelectedComponentId(null)
     setPage(next)
@@ -639,7 +643,10 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     visit('objects')
   }
   const editRoom = (id: string | null = null) => {
-    if (!canEditRooms) { setError(roomAccessError || 'Ask a household admin for room editing access.'); return }
+    if (!canEditRooms) {
+      if (!roomAccessError) setError('Ask an admin for room editing access.')
+      return
+    }
     if (page !== 'room-edit') pendingRoomMutation.current = null
     setSelectedComponentId(id)
     setFormError('')
@@ -708,7 +715,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       }
       setDialog(null)
     }
-    const footerError = formError && <p className="form-error" role="alert">{formError}</p>
+    const footerError = formError && <Feedback>{formError}</Feedback>
     const accountIntent = typeof dialog === 'object' && 'account' in dialog ? dialog.account
       : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
         ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
@@ -758,13 +765,13 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         ? <RoomAdminPanel access={roomAccess} busy={busy || !!roomAccessError}
           onChange={(memberId, role) => { void action(`/household/room-access/${memberId}`, { role }, role === 'admin' ? 'Room admin access granted.' : 'Room admin access removed.', 'PATCH') }} />
         : <p className="field-hint" role="status">Loading household permissions...</p>}
-      {roomAccessError && <p className="form-error" role="alert">{roomAccessError}<button type="button" className="text-button" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry room access</button></p>}
+      {roomAccessError && <Feedback actions={<FeedbackAction aria-label="Retry room access" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry</FeedbackAction>}>{roomAccessError}</Feedback>}
       {footerError}
     </Modal>
     if (typeof dialog === 'object' && 'createChore' in dialog) return <Modal title="Add a household chore." subtitle="Choose a room, schedule and who takes turns." onClose={close} busy={busy}>
       <ChoreForm household={household} memberId={session.memberId} initialRoom={dialog.createChore.roomId} initialArea={dialog.createChore.area} busy={busy} error={footerError}
         initialComponentId={dialog.createChore.componentId} initialTitle={dialog.createChore.title} initialRepeatDays={dialog.createChore.repeatDays}
-        onSubmit={(body) => { void action('/chores', body, 'Chore added to your household.') }} />
+        onSubmit={(body) => { void action('/chores', body, 'Chore added.') }} />
     </Modal>
     if (typeof dialog === 'object' && 'editChore' in dialog) return <Modal title="Edit a household chore." subtitle="Completed turns stay in history. Changes apply to the scheduled task." onClose={close} busy={busy}>
       <ChoreForm household={household} memberId={session.memberId} chore={dialog.editChore} initialRoom={dialog.editChore.roomId} busy={busy} error={footerError}
@@ -785,11 +792,11 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           {snapshot.dueDate && <p>Scheduled for {dateTitle(snapshot.dueDate, billingDate(household.billingTimeZone))}.</p>}
           {completing && <p>{assignee ? `Assigned to ${assignee.name}. ` : 'Unassigned. '}Completion will be recorded by {memberName(session.memberId)}.</p>}
         </div>
-        {!allowed ? <p className="form-error" role="alert">This chore changed. Close the dialog and review its latest state before continuing.</p> : footerError}
+        {!allowed ? <Feedback>Chore changed. Close this dialog and review it.</Feedback> : footerError}
         <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
           <button className="button primary" disabled={busy || !allowed} onClick={() => {
-            if (completing) void action(`/chores/${snapshot.id}/complete`, { choreVersion: snapshot.version }, 'Chore completed. The next turn is up to date.')
-            else void action(`/chores/${snapshot.id}/archive`, { choreVersion: snapshot.version, archived: !snapshot.archived }, snapshot.archived ? 'Chore restored.' : 'Chore archived. Its history is retained.', 'PATCH')
+            if (completing) void action(`/chores/${snapshot.id}/complete`, { choreVersion: snapshot.version }, 'Chore completed.')
+            else void action(`/chores/${snapshot.id}/archive`, { choreVersion: snapshot.version, archived: !snapshot.archived }, snapshot.archived ? 'Chore restored.' : 'Chore archived.', 'PATCH')
           }}>{label}</button>
         </div>
       </Modal>
@@ -800,25 +807,25 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const allowed = !!completion && canUndoChore(chore, completion)
       return <Modal title="Undo this chore completion?" subtitle="Restore the previous due date and turn. A later edit or completion cannot be overwritten." onClose={close} busy={busy}>
         <div className="chore-confirmation"><h3>{dialog.undoChore.title}</h3><p>{choreLocationLabel(dialog.undoChore.roomId, dialog.undoChore.area, dialog.undoChore.componentName)}</p><p>Scheduled for {dateTitle(dialog.undoChore.dueDate, billingDate(household.billingTimeZone))}.</p></div>
-        {!allowed ? <p className="form-error" role="alert">This completion can no longer be undone because the chore changed.</p> : footerError}
+        {!allowed ? <Feedback>Chore changed. This completion can no longer be undone.</Feedback> : footerError}
         <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep completion</button>
           <button className="button primary" disabled={busy || !allowed} onClick={() => {
-            if (chore) void action(`/chores/completions/${dialog.undoChore.id}/undo`, { choreVersion: chore.version }, 'Completion undone. The previous turn is restored.')
+            if (chore) void action(`/chores/completions/${dialog.undoChore.id}/undo`, { choreVersion: chore.version }, 'Chore completion undone.')
           }}>Undo completion</button>
         </div>
       </Modal>
     }
     if (typeof dialog === 'object' && 'restockItem' in dialog) return <Modal title="Restock a household supply." subtitle="Review the quantity before adding it to the shared shopping list." onClose={close} busy={busy}>
       <ShoppingItemForm household={household} memberId={session.memberId} initialItem={dialog.restockItem} preventDuplicate busy={busy} error={footerError}
-        onSubmit={(body) => { void action('/shopping/items', body, 'Supply saved on the shared shopping list.') }} />
+        onSubmit={(body) => { void action('/shopping/items', body, 'Supply added to shopping list.') }} />
     </Modal>
     if (dialog === 'access' && session.token !== null) return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
       onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session, message)} />
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
-      <ExpenseForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/expenses', body, 'Fridge stocked. Groceries shared. All saved.') }} />
+      <ExpenseForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/expenses', body, 'Grocery run saved.') }} />
     </Modal>
     if (dialog === 'shopping-add') return <Modal title="Add to the shared list." subtitle="Tell your roommates what home needs. No expense is created yet." onClose={close} busy={busy}>
-      <ShoppingItemForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/shopping/items', body, 'Item added to the shared shopping list.') }} />
+      <ShoppingItemForm household={household} memberId={session.memberId} busy={busy} error={footerError} onSubmit={(body) => { void action('/shopping/items', body, 'Shopping item added.') }} />
     </Modal>
     if (typeof dialog === 'object' && 'editShopping' in dialog) return <Modal title="Edit a shopping item." subtitle="Keep quantities and notes clear for whoever is buying it." onClose={close} busy={busy}>
       <ShoppingItemForm household={household} memberId={session.memberId} item={dialog.editShopping} busy={busy} error={footerError} onSubmit={(body) => { void action(`/shopping/items/${dialog.editShopping.id}`, body, 'Shopping item updated.', 'PATCH') }} />
@@ -831,24 +838,24 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       return <Modal title={release ? 'Release this shopping claim?' : 'Remove this shopping item?'}
         subtitle={item ? `${item.quantity} ${item.name}. ${release ? 'This returns it to the shared list and clears its basket status. Coordinate with the shopper before buying it again.' : 'This only changes the list, not your ledger.'}` : 'This item is no longer on the list.'}
         onClose={close} busy={busy}>
-        {!allowed ? <p className="form-error" role="alert">The item changed. Close this dialog and review its current status.</p> : footerError}
+        {!allowed ? <Feedback>Item changed. Close this dialog and review it.</Feedback> : footerError}
         <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
           {item && <button className="button primary" disabled={busy || !allowed} onClick={() => {
             if (release) void action(`/shopping/items/${id}/claim`, { itemVersion: item.version, claimed: false }, 'Shopping claim released.')
-            else void action(`/shopping/items/${id}`, { itemVersion: item.version }, 'Item removed from the shopping list.', 'DELETE')
+            else void action(`/shopping/items/${id}`, { itemVersion: item.version }, 'Shopping item removed.', 'DELETE')
           }}>{release ? 'Release claim' : 'Remove item'}</button>}
         </div>
       </Modal>
     }
     if (typeof dialog === 'object' && 'checkout' in dialog) return <Modal title="Finish this shopping run." subtitle="Confirm the actual total, payer and split. Nothing is archived until the receipt is saved." onClose={close} busy={busy}>
       <ShoppingCheckoutForm household={household} memberId={session.memberId} checkoutId={dialog.checkout.id} initialItems={dialog.checkout.items} busy={busy} error={footerError}
-        onSubmit={(body) => { void action('/shopping/checkout', body, 'Shopping run saved. Items archived and the fridge stocked.') }} />
+        onSubmit={(body) => { void action('/shopping/checkout', body, 'Shopping run saved.') }} />
     </Modal>
     if (dialog === 'bill-create') return <Modal title="A regular part of home." subtitle="Add a monthly bill. Creating a schedule does not create a debt or move money." onClose={close} busy={busy}>
-      <BillForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/bills', body, 'Monthly bill created. Record a payment when someone has paid it.') }} />
+      <BillForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/bills', body, 'Monthly bill created.') }} />
     </Modal>
     if (typeof dialog === 'object' && 'editBill' in dialog) return <Modal title="Edit a monthly bill." subtitle="Update the default amount, due day and people sharing it." onClose={close} busy={busy}>
-      <BillForm household={household} bill={dialog.editBill} busy={busy} error={footerError} onSubmit={(body) => { void action(`/bills/${dialog.editBill.id}`, body, 'Monthly bill updated. Recorded payments are unchanged.', 'PATCH') }} />
+      <BillForm household={household} bill={dialog.editBill} busy={busy} error={footerError} onSubmit={(body) => { void action(`/bills/${dialog.editBill.id}`, body, 'Monthly bill updated.', 'PATCH') }} />
     </Modal>
     if (typeof dialog === 'object' && 'payBill' in dialog) {
       const bill = household.bills.find((bill) => bill.id === dialog.payBill.billId)
@@ -857,8 +864,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         : current.payment ? 'A payment is already recorded for this bill and month. Close this form to see the recorded expense.' : ''
       return <Modal title="Record a bill payment." subtitle="Only record money that has actually been paid. Roomlings does not move money." onClose={close} busy={busy}>
         <BillPaymentForm household={household} memberId={session.memberId} item={current ?? dialog.payBill} busy={busy} blocked={!!blocked}
-          error={blocked ? <p className="form-error" role="alert">{blocked}</p> : footerError}
-          onSubmit={(body) => { void action(`/bills/${dialog.payBill.billId}/payments`, body, 'Bill payment recorded once in the shared ledger.') }} />
+          error={blocked ? <Feedback>{blocked}</Feedback> : footerError}
+          onSubmit={(body) => { void action(`/bills/${dialog.payBill.billId}/payments`, body, 'Bill payment recorded.') }} />
       </Modal>
     }
     if (typeof dialog === 'object' && 'pauseBill' in dialog) {
@@ -868,31 +875,31 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           : 'Resume from this month, or the first scheduled month if later. Skipped months will not be added back.'}
         onClose={close} busy={busy}>
         {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
-          <button className="button primary" disabled={busy} onClick={() => { void action(`/bills/${bill.id}/pause`, { paused }, paused ? 'Monthly bill paused for future months.' : 'Monthly bill resumed. Skipped months stay skipped.') }}>{paused ? 'Pause monthly bill' : 'Resume monthly bill'}</button>
+          <button className="button primary" disabled={busy} onClick={() => { void action(`/bills/${bill.id}/pause`, { paused }, paused ? 'Monthly bill paused.' : 'Monthly bill resumed.') }}>{paused ? 'Pause monthly bill' : 'Resume monthly bill'}</button>
         </div>
       </Modal>
     }
     if (dialog === 'settings') return <Modal title="A few house rules." subtitle="A shared budget keeps everyone on the same page." onClose={close} busy={busy}>
-      <SettingsForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/household', body, 'Your house rules have been updated.', 'PATCH') }} />
+      <SettingsForm household={household} busy={busy} error={footerError} onSubmit={(body) => { void action('/household', body, 'House rules saved.', 'PATCH') }} />
     </Modal>
     if (dialog === 'room-style') return <Modal title="Make the room feel like home." subtitle="One shared look for your household. Your groceries, bills and balances stay the same." onClose={close} busy={busy}>
       <RoomStyleForm current={household.roomStyle} busy={busy} canEdit={canEditRooms} error={footerError} onClose={close}
-        onSubmit={(roomStyle) => { void action('/household/room-style', { roomStyle }, 'Room style saved for everyone.', 'PATCH') }} />
+        onSubmit={(roomStyle) => { void action('/household/room-style', { roomStyle }, 'Room style saved.', 'PATCH') }} />
     </Modal>
     if (dialog === 'invite') return <Modal title="Better with roommates." subtitle="This private invitation lets a roommate join and edit your kitchen. Only share it with people you trust." onClose={close} busy={busy}>
-      <Invite household={household} busy={busy} error={footerError} onRotate={() => { void action('/invite/rotate', {}, 'A fresh invitation is ready. The previous link no longer works.') }} />
+      <Invite household={household} busy={busy} error={footerError} onRotate={() => { void action('/invite/rotate', {}, 'Invitation replaced. The old link no longer works.') }} />
     </Modal>
     if (typeof dialog === 'object' && 'transfer' in dialog) {
       const { transfer } = dialog
       return <Modal title="Call it even." subtitle="Only record this after the money has actually been paid. Roomlings calculates repayments; it does not move money." onClose={close} busy={busy}>
         <div className="payment-summary"><span>{memberName(transfer.from)} <ArrowRight size={16} /> {memberName(transfer.to)}</span><strong>{money(transfer.amount, household.currency)}</strong></div>
-        {footerError}<button className="button primary full" disabled={busy} onClick={() => { void action('/settlements', { ...transfer }, 'Payment recorded. A little less owing, a little more sharing.') }}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}Yes, record payment</button>
+        {footerError}<button className="button primary full" disabled={busy} onClick={() => { void action('/settlements', { ...transfer }, 'Payment recorded.') }}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}Yes, record payment</button>
       </Modal>
     }
     if (typeof dialog === 'object' && 'remove' in dialog) return <Modal title={dialog.remove.bill ? 'Undo this bill payment record?' : 'Remove this grocery run?'}
       subtitle={dialog.remove.bill ? 'This removes the expense record and recalculates balances. It does not return money or undo roommate repayments.'
         : `"${dialog.remove.description}" will be removed from everyone's ledger. Existing payments will stay and balances will be recalculated.${dialog.remove.shoppingRunId ? ' Its purchased items stay archived.' : ''}`} onClose={close} busy={busy}>
-      {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/expenses/${dialog.remove.id}`, {}, dialog.remove.bill ? 'Bill payment record removed. Balances have been recalculated.' : 'Grocery run removed. Balances have been recalculated.', 'DELETE') }}>{busy ? 'Removing...' : dialog.remove.bill ? 'Undo bill payment record' : 'Remove grocery run'}</button></div>
+      {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/expenses/${dialog.remove.id}`, {}, dialog.remove.bill ? 'Bill payment record removed.' : 'Grocery run removed.', 'DELETE') }}>{busy ? 'Removing...' : dialog.remove.bill ? 'Undo bill payment record' : 'Remove grocery run'}</button></div>
     </Modal>
     if (typeof dialog === 'object' && 'undo' in dialog) return <Modal title="Undo this recorded payment?" subtitle="This only changes the shared ledger. It will not return money that has already been transferred." onClose={close} busy={busy}>
       {footerError}<div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Keep it</button><button className="button primary" disabled={busy} onClick={() => { void action(`/settlements/${dialog.undo.id}`, {}, 'Recorded payment undone.', 'DELETE') }}>{busy ? 'Saving...' : 'Undo payment record'}</button></div>
@@ -905,7 +912,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       <Suspense fallback={<SceneLoading label="Opening your home..." />}>
         <Welcome paused={!!dialog} accessNotice={loading
           ? <p className="inline loading-status" role="status"><LoadingIcon size={20} />Checking saved access...</p>
-          : error ? <><p className="form-error" role="alert">{error}</p><div className="button-row"><button className="button secondary" onClick={initialize}>Try again</button><button className="text-button" onClick={() => openDialog('recover')}>Recover access</button></div></> : null} />
+          : error ? <Feedback actions={<><FeedbackAction onClick={initialize}>Retry</FeedbackAction><FeedbackAction onClick={() => openDialog('recover')}>Recover access</FeedbackAction></>}>{error}</Feedback> : null} />
       </Suspense>
     </div>{renderDialog()}
   </div>
@@ -977,10 +984,13 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       onAction={interact} onInvite={() => openDialog('invite')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
-    {(error || (roomAccessError && !dialog)) && <div className="error-banner" role="alert">
-      <span>{error || roomAccessError}{error && roomAccessError && error !== roomAccessError ? ` ${roomAccessError}` : ''}</span>
-      {roomAccessError && <button className="text-button" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry room access</button>}
-      {error && <button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button>}
+    {(notice || (!dialog && (error || roomAccessError))) && <div className="app-feedback">
+      {!dialog && error && <Feedback className="error-banner" onDismiss={() => setError('')}>{error}</Feedback>}
+      {!dialog && roomAccessError && <Feedback className="error-banner"
+        actions={<FeedbackAction aria-label="Retry room access" onClick={() => setRoomAccessRetry((attempt) => attempt + 1)}>Retry</FeedbackAction>}>
+        {roomAccessError}
+      </Feedback>}
+      {notice && <Feedback tone="success" className="toast" onDismiss={() => setNotice('')} dismissLabel="Dismiss notification">{notice}</Feedback>}
     </div>}
     {page !== 'overview' && (!dialog || dialog === 'rooms' || page === 'room-edit') && <RoomPanel
       title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
@@ -992,14 +1002,14 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       onClose={() => visit('overview')}
     ><div className="game-panel-content">
         {page === 'room-edit' && <RoomEditor key={`${household.id}:${currentRoom}`} household={household} roomId={currentRoom} busy={busy} canEdit={canEditRooms}
-          error={formError ? <p className="form-error" role="alert">{formError}</p> : !canEditRooms ? <p className="form-error" role="alert">Room editing access is unavailable. Your draft is still here; an admin must restore your access before you can apply it.</p> : null}
+          error={formError ? <Feedback>{formError}</Feedback> : !canEditRooms ? <Feedback>Editing access unavailable. Your draft is still here; ask an admin to restore access.</Feedback> : null}
           selectedComponentId={selectedComponentId} onSelect={setSelectedComponentId} onPreview={previewComponents}
-          onSubmit={(patch) => action('/household/room-components', patch, 'Room updated for everyone.', 'PATCH')}
-          onClose={() => visit('overview')} onManageAdmins={() => openDialog('room-admins')} onRoomColors={() => openDialog('room-style')} />}
+          onSubmit={(patch) => action('/household/room-components', patch, 'Room saved.', 'PATCH')}
+          onBack={() => openRoomObjects()} onClose={() => visit('overview')} onManageAdmins={() => openDialog('room-admins')} onRoomColors={() => openDialog('room-style')} />}
         {page === 'objects' && <RoomObjectsPanel household={household} roomId={currentRoom} selectedComponentId={selectedComponentId} busy={busy} canEdit={canEditRooms}
           onSelect={setSelectedComponentId} onEdit={editRoom} onRestock={(item) => openDialog({ restockItem: item })}
           onShopping={() => { setShoppingView('list'); visit('shopping') }} onCreateChore={createComponentChore} onOpenChores={openComponentChores}
-          onState={(component, state) => { void action(`/room-components/${component.id}/state`, { componentVersion: component.version, state }, 'Object state saved for everyone.', 'PATCH', true) }}
+          onState={(component, state) => { void action(`/room-components/${component.id}/state`, { componentVersion: component.version, state }, 'Object state saved.', 'PATCH', true) }}
           onUse={useRoomComponent} onHelp={() => openDialog('help')} />}
         {page === 'chores' && <ChoresPanel household={household} memberId={session.memberId} filter={choreFilter} onFilter={setChoreFilter} view={choreView} onView={setChoreView} mine={choreMine} onMine={setChoreMine} busy={busy}
           onAdd={() => {
@@ -1053,7 +1063,6 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           </button>)}</div>}
           <p className="small-muted">{session.token === null ? 'Sign in with your account on any device. Account and membership manages your kitchens and sessions.' : 'Kitchen sessions are saved in this browser. Use the same browser to return as your existing roommate identity.'}</p></section></div>}
     </div></RoomPanel>}
-    {notice && <div className="toast" role="status"><Check size={17} /><span>{notice}</span><button className="icon-button" onClick={() => setNotice('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {renderDialog()}
   </div>
 }
@@ -1074,7 +1083,7 @@ function JoinForm({ initialInvite, busy, error, onSubmit }: { initialInvite: str
   }}>
     <label className="field">Invitation link or code<input required value={invite} onChange={(event) => setInvite(event.target.value)} placeholder="Paste your invitation" disabled={busy} /></label>
     <label className="field">Your name<input required maxLength={50} value={name} onChange={(event) => setName(event.target.value)} placeholder="A name your roommates know" disabled={busy} /></label>
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <ArrowRight size={17} />}Join the kitchen</button>
+    {localError && <Feedback>{localError}</Feedback>}{error}<button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <ArrowRight size={17} />}Join the kitchen</button>
   </Form>
 }
 
@@ -1104,7 +1113,7 @@ function SettingsForm({ household, busy, error, onSubmit }: { household: Househo
       }}
       onKeep={() => { setReviewed({ name: household.name, budget: household.budget, currency: household.currency }); setLocalError('') }}
     >The house rules changed. Review the latest values before saving your draft.</DraftConflict>}
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}<button className="button primary full" disabled={busy || changed}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
+    {localError && <Feedback>{localError}</Feedback>}{error}<button className="button primary full" disabled={busy || changed}>{busy ? 'Saving...' : 'Save the house rules'}<Check size={17} /></button>
   </Form>
 }
 

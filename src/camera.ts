@@ -114,3 +114,8 @@ export function fitRoomBounds(width: number, height: number, bounds: Box3, rotat
     halfHeight: Math.max(1.25, vertical + 0.18, (horizontal + 0.18) * height / width) * 1.08,
   }
 }
+
+export function roomCameraZoom(zoom: number, closeRoom: boolean): number {
+  if (!Number.isFinite(zoom) || zoom <= 0) throw new Error('Room camera zoom needs a positive finite value.')
+  return closeRoom ? zoom * 1.2 : zoom
+}

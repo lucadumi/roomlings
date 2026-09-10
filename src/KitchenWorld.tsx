@@ -14,7 +14,7 @@ import { roomSlots } from '../shared/roomComponents.ts'
 import { kitchenUtilities, kitchenUtilityAnchors, sceneAnchors } from './room.ts'
 import type { KitchenAction, KitchenUtility, SceneAction } from './room.ts'
 import { buildKitchenModel } from './kitchenModel.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels } from './camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels, roomCameraZoom } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
@@ -466,6 +466,7 @@ export default function KitchenWorld({
       cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
       const area = latest.panelOpen ? framingArea : { x: 0, y: 0, width: viewport.width, height: viewport.height }
       const selectedBounds = !latest.overviewFocus && !currentControls.wholeRoom && latest.selectedComponentId ? componentScene.getBounds(latest.selectedComponentId) : undefined
+      const closeRoom = !latest.overviewFocus && !currentControls.wholeRoom && currentControls.focus === 'room' && !selectedBounds
       const framing = selectedBounds
         ? fitRoomBounds(area.width, area.height, selectedBounds, room.rotation.y, cameraPitch)
         : cameraFraming(area.width, area.height, latest.overviewFocus ? 'room' : currentControls.focus, latest.overviewFocus || currentControls.wholeRoom, {
@@ -481,7 +482,7 @@ export default function KitchenWorld({
       camera.position.copy(desiredCamera)
       camera.lookAt(cameraCenter)
       halfHeight = reducedMotion.matches ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const desiredZoom = roomCameraZoom(latest.overviewFocus ? 1 : currentControls.zoom, closeRoom)
       camera.zoom = reducedMotion.matches ? desiredZoom : dampTo(camera.zoom, desiredZoom, 8, delta, 0.002)
       const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
       camera.left = projection.left

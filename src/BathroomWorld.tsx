@@ -10,7 +10,7 @@ import { roomSlots } from '../shared/roomComponents.ts'
 import { bathroomFocusForRequest, bathroomFraming, bathroomLabels, bathroomTargets, bathroomTourFraming, buildBathroomModel } from './bathroomModel.ts'
 import type { BathroomFocus, BathroomTarget } from './bathroomModel.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds } from './camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, roomCameraZoom } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
@@ -278,13 +278,14 @@ export default function BathroomWorld({
         : focusedComponent ? componentScene.getBounds(focusedComponent.id)! : model.actorBounds.get(framedFocus)!
       const selectedBounds = !latest.overviewFocus && !preview && !currentControls.wholeRoom && latest.selectedComponentId
         ? componentScene.getBounds(latest.selectedComponentId) : undefined
+      const closeRoom = !latest.overviewFocus && !preview && currentControls.focus === 'room' && !currentControls.wholeRoom && !selectedBounds
       const framing = selectedBounds
         ? fitRoomBounds(area.width, area.height, selectedBounds, room.rotation.y, pitch)
         : preview && latest.tour
         ? reduced ? cameraFraming(area.width, area.height, 'room', true)
           : bathroomTourFraming(area.width, area.height, displayedProgress, model.bounds, model.actorBounds, latest.tour.stops)
         : bathroomFraming(area.width, area.height, bounds, room.rotation.y, pitch, {
-          closeRoom: !latest.overviewFocus && !preview && currentControls.focus === 'room' && !currentControls.wholeRoom,
+          closeRoom,
         })
       if (selectedBounds) framing.halfHeight = Math.max(2.05, framing.halfHeight)
       if (preview) {
@@ -296,7 +297,7 @@ export default function BathroomWorld({
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
       halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const desiredZoom = roomCameraZoom(latest.overviewFocus ? 1 : currentControls.zoom, closeRoom)
       camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
       camera.position.copy(cameraCenter).add(offset.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
       camera.lookAt(cameraCenter)

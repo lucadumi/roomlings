@@ -7,6 +7,7 @@ import { SceneLoading } from './Branding.tsx'
 import './style.css'
 import './game.css'
 import { resolveEntry } from './roomNavigation.ts'
+import { Feedback } from './Feedback.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const App = lazy(() => import('./App.tsx').then(({ App }) => ({ default: App })))
@@ -24,7 +25,7 @@ function Entry() {
   const entry = resolveEntry(url.pathname, url.hash)
   return <Suspense fallback={<SceneLoading label="Opening Roomlings..." />}>
     {entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
-      ? <Welcome accessNotice={<p className="form-error" role="alert">That room is not available. Sign in to open your home.</p>} />
+      ? <Welcome accessNotice={<Feedback>Room unavailable. Sign in to open your home.</Feedback>} />
       : <App roomId={entry.roomId} />}
   </Suspense>
 }

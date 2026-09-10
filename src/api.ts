@@ -2,6 +2,7 @@ import { householdSchema } from '../shared/domain.ts'
 import type { Household } from '../shared/domain.ts'
 import { accountStateSchema } from '../shared/accounts.ts'
 import type { AccountMembership, AccountState, KitchenSession } from '../shared/accounts.ts'
+import { requestFailureMessage } from '../shared/requestMessages.ts'
 import { z } from 'zod'
 
 export class RequestError extends Error {
@@ -10,14 +11,19 @@ export class RequestError extends Error {
   constructor(status: number, message: string, code?: string) { super(message); this.status = status; this.code = code }
 }
 
+export function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && !(error instanceof z.ZodError) && error.message.trim() ? error.message.trim() : fallback
+}
+
 export async function request<T>(path: string, options: {
   token?: string | null; csrfToken?: string | null; householdId?: string
   body?: unknown; method?: string; signal?: AbortSignal
 } = {}): Promise<T> {
+  const method = options.method ?? (options.body === undefined ? 'GET' : 'POST')
   let response: Response
   try {
     response = await fetch(`/api${path}`, {
-      method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+      method,
       credentials: 'same-origin',
       headers: {
         'X-Roomlings-Request': '1',
@@ -31,7 +37,7 @@ export async function request<T>(path: string, options: {
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
-    throw new RequestError(0, 'The kitchen is offline. Your saved expenses are safe; reconnect and try again.')
+    throw new RequestError(0, requestFailureMessage('connection', method))
   }
   let data: unknown
   try {
@@ -39,13 +45,14 @@ export async function request<T>(path: string, options: {
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error
     if (response.status >= 500) {
-      throw new RequestError(response.status, 'The server is temporarily unavailable. Your request was not confirmed; wait a moment and try again.', 'SERVER_UNAVAILABLE')
+      throw new RequestError(response.status, requestFailureMessage('unavailable', method), 'SERVER_UNAVAILABLE')
     }
-    throw new RequestError(response.status, 'The server returned an unreadable response. Please try again.')
+    throw new RequestError(response.status, requestFailureMessage('unreadable', method))
   }
   if (!response.ok) {
-    const parsed = z.object({ error: z.string(), code: z.string().optional() }).safeParse(data)
-    throw new RequestError(response.status, parsed.success ? parsed.data.error : 'The kitchen could not complete that request.', parsed.success ? parsed.data.code : undefined)
+    const parsed = z.object({ error: z.unknown().optional(), code: z.string().optional() }).safeParse(data)
+    const message = parsed.success && typeof parsed.data.error === 'string' ? parsed.data.error.trim() : ''
+    throw new RequestError(response.status, message || requestFailureMessage('unexpected', method), parsed.success ? parsed.data.code : undefined)
   }
   return data as T
 }

@@ -6,6 +6,7 @@ import type { Category, Household } from '../shared/domain.ts'
 import { Form, SplitParticipants } from './components.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { LoadingIcon } from './Branding.tsx'
+import { Feedback } from './Feedback.tsx'
 
 export function ExpenseForm({
   household, memberId, busy, error, onSubmit, children, initialDescription = '', initialCategory = 'produce',
@@ -24,10 +25,10 @@ export function ExpenseForm({
   const [localError, setLocalError] = useState('')
   const cents = parseMoney(amount)
   return <Form onSubmit={() => {
-    if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
+    if (!cents) { setLocalError('Enter a positive amount with up to two decimal places.'); return }
     if (!participants.length) { setLocalError('Choose at least one roommate to split with.'); return }
     if (household.members.some((member) => member.inactive && (member.id === paidBy || participants.includes(member.id)))) {
-      setLocalError('A selected roommate has left this kitchen. Choose an active payer and remove former roommates from this new grocery split.')
+      setLocalError('Choose an active payer and remove former roommates.')
       return
     }
     if (submitDisabled) { setLocalError('Review the selected items before recording this run.'); return }
@@ -43,7 +44,7 @@ export function ExpenseForm({
       setCategory(selected)
     }} disabled={busy}>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}</Dropdown></label></div>
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+    {localError && <Feedback>{localError}</Feedback>}{error}
     <button className="button primary full" disabled={busy || submitDisabled}>{busy ? <LoadingIcon size={17} tone="light" /> : <Plus size={17} />}{busy ? 'Adding to the kitchen...' : submitLabel}</button>
     <p className="form-footnote">Shared equally, with any spare cents split fairly.</p>
   </Form>

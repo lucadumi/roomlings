@@ -177,7 +177,7 @@ test('keeps recovery input through failures, distinguishes kitchen codes and ret
   expect((await browserAccountRequest(page, '/account/logout', { all: false })).status).toBe(200)
   await page.reload()
   await enterRecovery(page, generated.codes[0])
-  await expect(dialog.getByRole('alert')).toContainText('invalid, already used or revoked')
+  await expect(dialog.getByRole('alert')).toHaveText('Recovery code invalid or used. Try another code.')
   await expect(dialog.getByLabel('Account recovery code', { exact: true })).toHaveValue(generated.codes[0])
 })
 

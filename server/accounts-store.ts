@@ -14,7 +14,7 @@ import { activeMemberLimit, memberColors, retainedMemberLimit } from '../shared/
 import type { Household } from '../shared/domain.ts'
 import type { Store } from './store.ts'
 import type { VerifiedAccount } from './provider.ts'
-import { ApiError } from './errors.ts'
+import { ApiError, apiMessages } from './errors.ts'
 import { parseStoredHousehold } from './retired-household.ts'
 
 export const accountAbsoluteLifetime = 30 * 24 * 60 * 60_000
@@ -22,7 +22,7 @@ export const accountIdleLifetime = 7 * 24 * 60 * 60_000
 export const accountReauthLifetime = 10 * 60_000
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 const forbidden = () => new ApiError(403, 'You do not have active access to this kitchen.')
-const conflict = () => new ApiError(409, 'A roommate just changed the kitchen. Refresh it and try again.')
+const conflict = () => new ApiError(409, apiMessages.householdChanged)
 
 export type AccountSession = {
   id: string; accountId: string; selectedHouseholdId: string | null
@@ -81,7 +81,7 @@ export class AccountStore {
       JOIN accounts a ON a.id = s.account_id WHERE s.id = ? AND s.account_id = ?`).get(session.id, session.accountId)
     if (!current) throw new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
     if (current.deleting && !allowDeleting) {
-      throw new ApiError(409, 'Account deletion is pending. Access remains disabled.', 'ACCOUNT_DELETION_PENDING')
+      throw new ApiError(409, apiMessages.deletionPending, 'ACCOUNT_DELETION_PENDING')
     }
   }
 
@@ -172,7 +172,7 @@ export class AccountStore {
         throw new ApiError(401, 'That account was deleted. Request a fresh email code to create a new account.', 'INVALID_EMAIL_CODE')
       }
       let row = (await this.db.prepare('SELECT id, deleting FROM accounts WHERE provider_id = ?').get(identity.providerId))
-      if (row?.deleting) throw new ApiError(409, 'Account deletion is pending. Access stays disabled until it completes.', 'ACCOUNT_DELETION_PENDING')
+      if (row?.deleting) throw new ApiError(409, apiMessages.deletionPending, 'ACCOUNT_DELETION_PENDING')
       const now = new Date(this.now()).toISOString()
       if (!row) {
         const id = randomUUID()
@@ -255,7 +255,7 @@ export class AccountStore {
       const codeHash = hash(code)
       const row = await this.db.prepare(`SELECT c.account_id FROM account_recovery_codes c
         JOIN accounts a ON a.id = c.account_id WHERE c.hash = ? AND a.email = ? AND a.deleting = 0`).get(codeHash, email)
-      const invalid = () => new ApiError(401, 'That account recovery code is invalid, already used or revoked.', 'INVALID_ACCOUNT_RECOVERY_CODE')
+      const invalid = () => new ApiError(401, 'Recovery code invalid or used. Try another code.', 'INVALID_ACCOUNT_RECOVERY_CODE')
       if (!row) throw invalid()
       const accountId = String(row.account_id)
       const issued = await this.issueSession(accountId, label)
@@ -488,7 +488,7 @@ export class AccountStore {
     return (await this.transaction(async () => {
       const invitation = (await this.db.prepare('SELECT * FROM account_invitations WHERE hash = ?').get(hash(code)))
       if (!invitation || invitation.revoked_at !== null || Date.parse(String(invitation.expires_at)) <= this.now()) {
-        throw new ApiError(410, 'That invitation is expired, revoked, or invalid. Ask the kitchen owner for a new one.')
+        throw new ApiError(410, 'Invitation invalid or expired. Ask the owner for a new link.')
       }
       const householdId = String(invitation.household_id)
       const household = (await this.store.get(householdId))
@@ -496,13 +496,13 @@ export class AccountStore {
       const existing = (await this.db.prepare('SELECT member_id, active FROM account_memberships WHERE household_id = ? AND account_id = ?').get(householdId, session.accountId))
       if (existing?.active) return (await this.select(session, householdId))
       const used = (await this.db.prepare('SELECT 1 FROM account_invitation_uses WHERE invitation_id = ? AND account_id = ?').get(invitation.id, session.accountId))
-      if (used) throw new ApiError(410, 'This invitation cannot restore removed access. Ask the owner for a fresh invitation.')
+      if (used) throw new ApiError(410, 'Invitation cannot restore removed access. Ask the owner for a new link.')
       if ((await this.memberships(session.accountId)).length >= 50) throw new ApiError(409, 'This account already has 50 kitchens. Leave one before joining another.')
       if (household.members.filter((member) => !member.inactive).length >= activeMemberLimit) {
-        throw new ApiError(409, 'This kitchen already has 12 active roommates. An existing roommate must leave before another can join.')
+        throw new ApiError(409, '12 active roommates already. A roommate must leave before another can join.')
       }
       if (!existing && household.members.length >= retainedMemberLimit) {
-        throw new ApiError(409, 'This kitchen has reached its 200-identity history limit. Export the ledger and create a new kitchen to add a new roommate.')
+        throw new ApiError(409, '200-identity history limit reached. Export the ledger and create a new kitchen.')
       }
       if (household.members.some((member) => member.id !== existing?.member_id && member.name.toLocaleLowerCase() === memberName.toLocaleLowerCase())) {
         throw new ApiError(409, 'A roommate already uses that name. Choose a different name to keep the ledger clear.')

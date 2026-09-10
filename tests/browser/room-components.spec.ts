@@ -65,6 +65,63 @@ async function openObject(page: Page, name: string) {
   return panel
 }
 
+test('supply cards use compact adaptive columns and preserve their shopping sources', { tag: '@room' }, async ({ page, accounts, request, emptyHousehold: owner }) => {
+  const machine = await install(request, accounts, owner, 'washing-machine', 'kitchen-undercounter')
+  const table = getRoomComponents(await current(accounts, owner)).find((component) => component.slotId === 'kitchen-table')!
+  await change(request, accounts, owner, '/household/room-components', {
+    roomId: 'kitchen', changes: [configuration(table, {
+      supplies: [...table.supplies, { id: 'shared-detergent', name: 'Laundry detergent', quantity: '2 bottles' }],
+    })],
+  })
+  await page.goto('/kitchen')
+  const objects = await openObject(page, 'Washing machine')
+  const grid = objects.locator('.restock-grid')
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(grid).toHaveCSS('display', 'grid')
+    const layout = await grid.evaluate((element) => ({
+      columns: getComputedStyle(element).gridTemplateColumns.split(' ').length, width: element.getBoundingClientRect().width,
+    }))
+    expect(layout.columns).toBe(width === 1440 ? 3 : layout.width >= 268 ? 2 : 1)
+    for (const title of await grid.getByRole('heading', { level: 3 }).all()) await expect(title).toHaveCSS('font-size', '14px')
+    expect(await grid.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await grid.locator('.restock-item').evaluateAll((cards) => cards.every((card) => card.scrollWidth <= card.clientWidth))).toBe(true)
+  }
+
+  await objects.getByRole('button', { name: 'Restock Fabric softener', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Add to shopping list', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(objects.getByRole('article', { name: 'Fabric softener', exact: true })).toContainText('On the list')
+
+  await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
+  await page.getByRole('button', { name: 'Restock room supplies', exact: true }).click()
+  const supplies = page.getByRole('region', { name: 'Kitchen supplies', exact: true })
+  const laundry = supplies.getByRole('article', { name: 'Laundry detergent', exact: true })
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(laundry.getByRole('heading')).toHaveCSS('font-size', '14px')
+    const layout = await supplies.locator('.restock-grid').evaluate((element) => ({
+      columns: getComputedStyle(element).gridTemplateColumns.split(' ').length, width: element.getBoundingClientRect().width,
+    }))
+    expect(layout.columns).toBe(width === 1440 || layout.width >= 268 ? 2 : 1)
+    expect(await supplies.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await chooseOption(laundry.getByRole('combobox', { name: 'Supply shortcut for Laundry detergent', exact: true }), `${machine.id}:laundry-detergent`)
+  await laundry.getByRole('button', { name: 'Restock Laundry detergent', exact: true }).click()
+  await expect(dialog.getByLabel('Quantity', { exact: true })).toHaveValue(machine.supplies.find((supply) => supply.id === 'laundry-detergent')!.quantity)
+  await dialog.getByRole('button', { name: 'Add to shopping list', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(laundry).toContainText('On the list')
+  await expect(laundry.getByRole('button', { name: 'Restock Laundry detergent', exact: true })).toHaveCount(0)
+  const saved = await current(accounts, owner)
+  expect(saved.shopping.items.find((item) => item.name === 'Laundry detergent')?.componentSources).toEqual([{
+    componentId: machine.id, supplyId: 'laundry-detergent', roomId: 'kitchen', componentName: machine.name,
+  }])
+  expect(saved.expenses).toEqual([])
+  expect(saved.settlements).toEqual([])
+})
+
 test('room drafts cancel cleanly and keep their model, finish, supplies and identifier after a failed apply', async ({ page, accounts, emptyHousehold: owner }) => {
   const original = await current(accounts, owner)
   await page.goto('/kitchen')

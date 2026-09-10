@@ -1,11 +1,19 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseCameraOffset, cameraFraming, cameraProjection } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, roomCameraZoom } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
 
 describe('room-first camera framing', () => {
+  it('uses the former 120 percent scale as the default 100 percent room view', () => {
+    assert.equal(roomCameraZoom(1, true), 1.2)
+    for (const zoom of [0.65, 1, 1.2, 1.9]) {
+      assert.ok(Math.abs(roomCameraZoom(zoom, true) / zoom - 1.2) < 1e-12)
+      assert.equal(roomCameraZoom(zoom, false), zoom)
+    }
+    for (const zoom of [0, -1, NaN, Infinity]) assert.throws(() => roomCameraZoom(zoom, true), /positive finite/)
+  })
   it('starts phones more than twice as close as the whole-room overview', () => {
     const close = cameraFraming(390, 636, 'room', false)
     const whole = cameraFraming(390, 636, 'room', true)

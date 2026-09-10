@@ -144,10 +144,10 @@ test('rechecks a rejected startup on explicit retry instead of reusing the expir
     status: 401, json: { error: 'The saved browser access was rejected.' },
   }))
   await page.goto('/kitchen')
-  await expect(page.getByRole('alert')).toContainText('no longer active')
+  await expect(page.getByRole('alert')).toContainText('Browser access ended')
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]')[0].expired)).toBe(true)
   await page.unroute('**/api/household')
-  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]')[0].expired)).toBeUndefined()
 })

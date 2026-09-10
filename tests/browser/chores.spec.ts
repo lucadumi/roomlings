@@ -180,7 +180,7 @@ test('failed saves retain drafts and a roommate completion cannot be recorded tw
   const latest = (await readHome(accounts, owner.household.id)).chores.items[0]
   await roommateChange(accounts, roommate, `/chores/${latest.id}/complete`, { choreVersion: latest.version })
   await dialog.getByRole('button', { name: 'Record completion', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toContainText('This chore changed')
+  await expect(dialog.getByRole('alert')).toContainText('Chore changed')
   await expect(dialog.getByRole('button', { name: 'Record completion', exact: true })).toBeDisabled()
   const saved = await readHome(accounts, owner.household.id)
   expect(saved.chores.history).toHaveLength(1)

@@ -11,7 +11,7 @@ import type { AccountSession } from './accounts-store.ts'
 import { accountAbsoluteLifetime } from './accounts-store.ts'
 import type { AccountProvider } from './provider.ts'
 import type { Store } from './store.ts'
-import { ApiError } from './errors.ts'
+import { ApiError, apiMessages } from './errors.ts'
 
 export type AccountOptions = {
   provider?: AccountProvider
@@ -20,7 +20,7 @@ export type AccountOptions = {
 }
 export const accountCookieName = 'roomlings_session'
 const isMutation = (req: Request) => !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
-const unavailable = () => new ApiError(503, 'Account sign-in is not configured. The server owner must configure Supabase verified-email codes.', 'AUTH_NOT_CONFIGURED')
+const unavailable = () => new ApiError(503, 'Sign-in is not configured. Contact the server owner.', 'AUTH_NOT_CONFIGURED')
 const noSession = () => new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
 
 function limit(maximum: number, duration: number, key: (req: Request) => string): RequestHandler {
@@ -32,7 +32,7 @@ function limit(maximum: number, duration: number, key: (req: Request) => string)
     const attempt = attempts.get(value) ?? { count: 0, expires: now + duration }
     attempt.count++
     attempts.set(value, attempt)
-    if (attempt.count > maximum) return next(new ApiError(429, 'Too many sign-in attempts. Wait a few minutes and try again.'))
+    if (attempt.count > maximum) return next(new ApiError(429, apiMessages.tooManyAttempts))
     next()
   }
 }
@@ -101,14 +101,14 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     if (!session) throw noSession()
     if (isMutation(req)) csrf(req, session)
     if (session.deleting && !allowDeleting) {
-      throw new ApiError(409, 'Account deletion is pending. Kitchen access is disabled; retry deletion to finish.', 'ACCOUNT_DELETION_PENDING')
+      throw new ApiError(409, apiMessages.deletionPending, 'ACCOUNT_DELETION_PENDING')
     }
     return session
   }
   const invokeProvider = async <T>(operation: () => Promise<T>): Promise<T> => {
     try { return await operation() } catch (error) {
       if (error instanceof ApiError) throw error
-      throw new ApiError(503, 'The email account provider is unavailable. Please try again.', 'AUTH_PROVIDER_UNAVAILABLE')
+      throw new ApiError(503, apiMessages.signInUnavailable, 'AUTH_PROVIDER_UNAVAILABLE')
     }
   }
   const configured: RequestHandler = (req, _res, next) => {
@@ -136,7 +136,7 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     limit(30, 10 * 60_000, ip), limit(10, 10 * 60_000, email), async (req, res) => {
       const input = verifyAccountCodeSchema.parse(req.body)
       const identity = await invokeProvider(() => provider!.verifyCode(input.email, input.code))
-      if (!identity.providerId || identity.email !== input.email) throw new ApiError(401, 'The verified email did not match the requested account.')
+      if (!identity.providerId || identity.email !== input.email) throw new ApiError(401, 'Email verification did not match this account.')
       await respondSignedIn(req, res, () => store.accounts.signIn(identity, input.name, input.label))
     })
   app.post('/api/account/recover',
@@ -234,7 +234,7 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
       await invokeProvider(() => provider!.deleteUser(providerId))
       await store.accounts.finishDeletion(session.accountId)
     } catch {
-      throw new ApiError(503, 'Your kitchen access is disabled. Account deletion is queued for retry; retry this action to finish sooner.', 'ACCOUNT_DELETION_PENDING')
+      throw new ApiError(503, `${apiMessages.deletionPending} Retry deletion to finish sooner.`, 'ACCOUNT_DELETION_PENDING')
     }
     clearCookie(res)
     res.json(signedOut())

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { ApiError } from './errors.ts'
+import { ApiError, apiMessages } from './errors.ts'
 
 export type VerifiedAccount = { providerId: string; email: string }
 export interface AccountProvider {
@@ -25,7 +25,7 @@ export function createSupabaseProvider(config: SupabaseConfig, fetcher: typeof f
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { fetch: timedFetch },
   })
-  const unavailable = () => new ApiError(503, 'Email sign-in is temporarily unavailable. Please try again.', 'AUTH_PROVIDER_UNAVAILABLE')
+  const unavailable = () => new ApiError(503, apiMessages.signInUnavailable, 'AUTH_PROVIDER_UNAVAILABLE')
   const bounded = async <T>(operation: () => Promise<T>): Promise<T> => {
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
@@ -46,14 +46,14 @@ export function createSupabaseProvider(config: SupabaseConfig, fetcher: typeof f
     async sendCode(email) {
       await bounded(async () => {
         const { error } = await client().auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
-        if (error?.status === 429) throw new ApiError(429, 'Please wait before requesting another email code.')
+        if (error?.status === 429) throw new ApiError(429, apiMessages.tooManyAttempts)
         if (error) throw unavailable()
       })
     },
     async verifyCode(email, code) {
       return bounded(async () => {
         const { data, error } = await client().auth.verifyOtp({ email, token: code, type: 'email' })
-        if (error?.status === 429) throw new ApiError(429, 'Too many sign-in attempts. Wait and request a fresh code.')
+        if (error?.status === 429) throw new ApiError(429, apiMessages.tooManyAttempts)
         const rejectedProof = ['otp_expired', 'invalid_credentials', 'user_not_found'].includes(error?.code ?? '')
         if (error && (error.status === undefined || error.status >= 500 || error.status === 0
           || (!rejectedProof && [401, 404].includes(error.status))
@@ -62,7 +62,7 @@ export function createSupabaseProvider(config: SupabaseConfig, fetcher: typeof f
         }
         const user = data.user
         if (error || !data.session || !user?.id || !user.email_confirmed_at || user.email?.trim().toLowerCase() !== email) {
-          throw new ApiError(401, 'That email code is invalid or expired. Request a fresh code.', 'INVALID_EMAIL_CODE')
+          throw new ApiError(401, 'Email code invalid or expired. Request a new code.', 'INVALID_EMAIL_CODE')
         }
         return { providerId: user.id, email }
       })

@@ -8,7 +8,6 @@
 .access-section h3 { margin: 0 0 12px; color: var(--section-ink); font-size: 1.3125rem; }
 .access-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .access-heading h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 1.3125rem; }
-.access-notice { padding: 12px; margin-bottom: 16px; border: 1px solid var(--control-border); border-radius: var(--control-radius); background: var(--control-surface); color: var(--ink); font-size: 0.75rem; line-height: 1.7; }
 .access-checkbox { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; margin-bottom: 20px; color: var(--leaf-ink); font-size: 0.75rem; line-height: 1.7; cursor: pointer; }
 .access-checkbox input { margin-top: 4px; width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--sage); }
 .device-list { list-style: none; margin: 0 0 18px; padding: 0; }

@@ -287,7 +287,7 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await page.getByLabel('Total (EUR)').fill('8.70')
   await page.getByRole('button', { name: 'Add & split the groceries' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(page.getByRole('status')).toContainText('Fridge stocked')
+  await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
   await frameRoom(page)
   await clickRoomPoint(page, [0.96, 1.64, 1.65])
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
