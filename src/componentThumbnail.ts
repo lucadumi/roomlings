@@ -14,6 +14,7 @@ import { buildRoomComponentModel } from './roomComponentModels.ts'
 import type { ComponentBindings } from './roomComponentTypes.ts'
 import { baseCameraOffset, fitRoomBounds } from './camera.ts'
 import { addContactShadows, createContactShadowTexture, createRoomLights } from './lighting.ts'
+import { componentPlacements } from './roomLayout.ts'
 
 type Fixture = { room: Group; bindings: ComponentBindings; dispose: () => void }
 const fixtures = new Map<string, Fixture>()
@@ -105,6 +106,8 @@ export function buildComponentThumbnail(component: RoomComponent, style: RoomSty
     object = model.root
     dispose = () => { disposeGeometry(model.root); model.materials.forEach((material) => material.dispose()) }
   }
+  // Cards show the model's front even when its fitted position faces an invisible side wall.
+  object.rotation.y -= componentPlacements[component.slotId]?.rotation ?? 0
   const root = new Group()
   root.add(object)
   const bounds = visibleBounds(root)
@@ -183,10 +186,11 @@ function draw(component: RoomComponent, style: RoomStyle): string {
     const scene = new Scene()
     const camera = componentThumbnailCamera(model.bounds)
     const center = model.bounds.getCenter(new Vector3())
-    const wallMounted = ['clock', 'wall-art', 'mirror', 'noticeboard', 'curtains', 'light', 'towel-rack', 'shower-shelf'].includes(component.kind)
+    const wallMounted = componentPlacements[component.slotId]?.surface === 'wall'
+      || ['clock', 'mirror', 'noticeboard', 'curtains', 'light'].includes(component.kind)
     const raster = thumbnailRasterizer()
     if (raster) {
-      const lights = createRoomLights()
+      const lights = createRoomLights(model.bounds)
       scene.add(model.root, lights.group)
       const ground = new Group()
       scene.add(ground)

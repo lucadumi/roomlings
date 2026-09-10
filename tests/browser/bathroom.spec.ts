@@ -1,15 +1,15 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
-import { Group, Mesh, OrthographicCamera, Vector3 } from 'three'
-import { bathroomFraming, buildBathroomModel } from '../../src/bathroomModel.ts'
-import { baseCameraOffset, cameraProjection } from '../../src/camera.ts'
+import { OrthographicCamera, Vector3 } from 'three'
+import { baseCameraOffset, cameraProjection, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
+import { bathroomLayout } from '../../src/roomLayout.ts'
 import { selectRoom, trackDrawing } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
 async function frameRoom(page: Page) {
-  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-focus', 'room')
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-camera-moving', 'false')
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-rendering', 'paused')
@@ -20,26 +20,23 @@ async function clickFixture(page: Page, point: [number, number, number]) {
   const layout = await page.locator('.bathroom-world').evaluate((element) => {
     const canvas = element.querySelector('.world-canvas')!.getBoundingClientRect()
     const stage = element.querySelector('.bathroom-scene-area')!.getBoundingClientRect()
-    return { width: canvas.width, height: canvas.height, x: canvas.x, y: canvas.y, area: {
-      x: stage.left - canvas.left, y: stage.top - canvas.top, width: stage.width, height: stage.height,
-    } }
+    const controls = element.querySelector('.world-camera-controls')!.getBoundingClientRect()
+    return { width: canvas.width, height: canvas.height, x: canvas.x, y: canvas.y,
+      panelOpen: element.closest('.game-home')?.getAttribute('data-panel-open') === 'true', area: {
+      x: stage.x, y: stage.y, width: stage.width, height: stage.height,
+    }, controls: { x: controls.x, y: controls.y, width: controls.width, height: controls.height } }
   })
-  const room = new Group()
-  const model = buildBathroomModel(room)
-  try {
-    const framing = bathroomFraming(layout.area.width, layout.area.height, model.bounds)
-    const projection = cameraProjection(layout.width, layout.height, layout.area, framing.halfHeight, 1)
-    const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
-    const center = new Vector3(...framing.center)
-    camera.position.copy(center).add(new Vector3(...baseCameraOffset))
-    camera.lookAt(center)
-    camera.updateMatrixWorld()
-    const position = new Vector3(...point).project(camera)
-    await page.mouse.click(layout.x + (position.x * .5 + .5) * layout.width, layout.y + (-position.y * .5 + .5) * layout.height)
-  } finally {
-    room.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
-    model.materials.forEach((material) => material.dispose())
-  }
+  const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
+    : { x: 0, y: 0, width: layout.width, height: layout.height }
+  const framing = roomEntryFraming(layout.width, layout.height, area)
+  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, 1)
+  const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+  const center = new Vector3(...framing.center)
+  camera.position.copy(center).add(new Vector3(...baseCameraOffset))
+  camera.lookAt(center)
+  camera.updateMatrixWorld()
+  const position = new Vector3(...point).project(camera)
+  await page.mouse.click(layout.x + (position.x * .5 + .5) * layout.width, layout.y + (-position.y * .5 + .5) * layout.height)
 }
 
 test('bathroom objects open room-specific chores and the shared supply list', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
@@ -71,11 +68,15 @@ test('bathroom fixtures remain pickable when object labels are hidden', { tag: '
   await page.goto(roomPath('bathroom'))
   await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
-  await clickFixture(page, [0.15, 1.9, -2.22])
+  await clickFixture(page, [bathroomLayout.sink[0], 1.9, bathroomLayout.sink[2] + 0.06])
   await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', 'sink')
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-  await clickFixture(page, [3.92, 2.78, -2.4])
+  await clickFixture(page, [bathroomLayout.supplies[0], 2.78, bathroomLayout.supplies[2]])
   await expect(page.getByRole('region', { name: 'Bathroom supplies.', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  await clickFixture(page, [bathroomLayout.chores[0], bathroomLayout.chores[1] + 0.3, bathroomLayout.chores[2]])
+  await expect(page.getByRole('region', { name: 'Household chores.', exact: true })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', '')
 })
 
 test('bathroom rendering settles, recolors existing geometry and releases the scene on room switching', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {

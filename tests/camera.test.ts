@@ -1,16 +1,81 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseCameraOffset, cameraFraming, cameraProjection } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, preferredRoomRotation, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
+import { bathroomFraming } from '../src/bathroomModel.ts'
 
 describe('room-first camera framing', () => {
-  it('starts phones more than twice as close as the whole-room overview', () => {
+  it('preserves entry pixel scale while centering the room beside an editor panel', () => {
+    for (const [width, height] of [[1440, 960], [390, 844], [844, 390]]) {
+      const full = { x: 0, y: 0, width, height }
+      const area = { x: width * 0.4, y: 80, width: width * 0.6 - 40, height: height - 190 }
+      const initial = roomEntryFraming(width, height, full)
+      const paneled = roomEntryFraming(width, height, area)
+      const first = cameraProjection(width, height, full, initial.halfHeight, 1)
+      const next = cameraProjection(width, height, area, paneled.halfHeight, 1)
+      assert.ok(Math.abs((first.right - first.left) - (next.right - next.left)) < 0.000001)
+      assert.ok(Math.abs((first.top - first.bottom) - (next.top - next.bottom)) < 0.000001)
+      assert.deepEqual(initial.center, paneled.center)
+    }
+  })
+
+  it('measures the clear scene area beside existing camera controls without device breakpoints', () => {
+    const canvas = { x: 0, y: 0, width: 390, height: 844 }
+    const stage = { x: 12, y: 240, width: 366, height: 420 }
+    const controls = { x: 322, y: 326, width: 53, height: 270 }
+    assert.deepEqual(roomFramingArea(canvas, stage, controls), { x: 12, y: 240, width: 298, height: 420 })
+    assert.deepEqual(roomFramingArea(canvas, stage), stage)
+    assert.deepEqual(roomFramingArea(canvas, stage, { ...controls, x: 400 }), stage)
+    assert.deepEqual(roomFramingArea(canvas, stage, { ...controls, y: 700 }), stage)
+    assert.deepEqual(roomFramingArea(canvas, stage, { ...controls, width: 0 }), stage)
+    assert.deepEqual(roomFramingArea({ ...canvas, x: 5, y: 20 }, stage, controls), { x: 7, y: 220, width: 298, height: 420 })
+  })
+  it('keeps the immersive phone close-up separate from the measured whole-room overview', () => {
     const close = cameraFraming(390, 636, 'room', false)
     const whole = cameraFraming(390, 636, 'room', true)
     assert.ok(whole.halfHeight / close.halfHeight > 2)
     assert.deepEqual(close.center, [-0.7, 1.6, -0.9])
+    assert.deepEqual(cameraFraming(389, 636, 'room', false).center, close.center)
+    assert.ok(cameraFraming(390, 636, 'fridge', false).halfHeight < whole.halfHeight)
+  })
+  it('resets both rooms to exactly their entry magnification at 100%, even after focusing an object or opening a panel', () => {
+    const bounds = new Box3(new Vector3(-5, 0, -4), new Vector3(5, 5, 4))
+    const initialClose = usesRoomEntryFraming({ focus: 'room' })
+    const resetClose = usesRoomEntryFraming({ focus: 'room', selectedComponentId: 'selected-object', panelOpen: true, resetView: true })
+    assert.equal(initialClose, true)
+    assert.equal(resetClose, initialClose)
+    assert.equal(usesRoomEntryFraming({ focus: 'room', selectedComponentId: 'selected-object' }), false)
+    assert.equal(usesRoomEntryFraming({ focus: 'room', panelOpen: true }), false)
+    assert.equal(usesRoomEntryFraming({ focus: 'sink' }), false)
+    for (const [width, height] of [[320, 630], [390, 636], [844, 390], [1440, 778]]) {
+      const area = { x: 0, y: 0, width, height }
+      for (const roomId of ['kitchen', 'bathroom']) {
+        const framing = (closeRoom: boolean) => roomId === 'kitchen'
+          ? cameraFraming(width, height, 'room', !closeRoom, { bounds })
+          : bathroomFraming(width, height, bounds, 0, 0, { closeRoom })
+        const initial = framing(initialClose)
+        const reset = framing(resetClose)
+        assert.deepEqual(reset, initial)
+        assert.deepEqual(cameraProjection(width, height, area, reset.halfHeight, 1),
+          cameraProjection(width, height, area, initial.halfHeight, 1))
+        assert.notEqual(reset.halfHeight, framing(false).halfHeight)
+      }
+    }
+  })
+  it('keeps reset framing measured for placement previews, editor overviews and public tours', () => {
+    for (const context of [{ placementPreview: true }, { overviewFocus: true }, { publicPreview: true }]) {
+      assert.equal(usesRoomEntryFraming({ focus: 'room', ...context }), false)
+      assert.equal(usesRoomEntryFraming({ focus: 'room', resetView: true, ...context }), false)
+      assert.equal(usesRoomEntryFraming({ focus: 'sink', selectedComponentId: 'object', resetView: true, ...context }), false)
+    }
+  })
+  it('retains the inward-facing fitted-appliance angle when selecting or resetting a placement preview', () => {
+    assert.equal(preferredRoomRotation('kitchen-undercounter'), 0.75)
+    assert.equal(preferredRoomRotation('kitchen-small-appliance'), 0)
+    assert.equal(preferredRoomRotation('bathroom-laundry'), 0)
+    assert.equal(preferredRoomRotation(), 0)
   })
   it('keeps a whole-room framing available at every supported size', () => {
     for (const [width, height] of [[320, 630], [390, 636], [768, 690], [1440, 778]]) {

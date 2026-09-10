@@ -180,9 +180,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
       if (!area) return false
       return Math.abs(area.width - kitchen.width) < 1 && Math.abs(area.height - kitchen.height) < 1
     }).toBe(true)
-    await expect(page.getByRole('button', { name: 'Frame the whole room', exact: true })).toHaveAttribute('aria-pressed', 'false')
-    await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
-    await expect(bathroom).toHaveAttribute('data-framing', 'whole')
+    await expect(page.getByRole('button', { name: 'Reset room view', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
+    await expect(bathroom).toHaveAttribute('data-framing', 'close')
     await expect(bathroom).toHaveAttribute('data-camera-moving', 'false')
   })
 }

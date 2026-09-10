@@ -2,6 +2,9 @@ import { z } from 'zod'
 import { roomIdSchema } from './rooms.ts'
 import type { ChoreArea, RoomId } from './rooms.ts'
 import { normalizeShoppingName } from './shopping.ts'
+import { componentFinishSchema } from './componentFinishes.ts'
+export { componentFinishSchema, componentFinishes } from './componentFinishes.ts'
+export type { ComponentFinish } from './componentFinishes.ts'
 
 export const componentKinds = [
   'fridge', 'sink', 'counters', 'hob', 'kettle', 'table', 'seating', 'plant', 'rug', 'clock', 'light',
@@ -23,16 +26,6 @@ export const componentCategories = {
   appliances: 'Appliances', fixtures: 'Fixtures', furniture: 'Furniture', decor: 'Decor and plants', household: 'Household tools',
 } as const
 export type ComponentCategory = keyof typeof componentCategories
-export const componentFinishSchema = z.enum(['room', 'cream', 'sage', 'tomato', 'clay', 'walnut'])
-export type ComponentFinish = z.infer<typeof componentFinishSchema>
-export const componentFinishes: Record<ComponentFinish, { name: string; color: string | null }> = {
-  room: { name: 'Match room colors', color: null },
-  cream: { name: 'Warm cream', color: '#fcf9f1' },
-  sage: { name: 'Sage green', color: '#81b29a' },
-  tomato: { name: 'Tomato red', color: '#e07a5f' },
-  clay: { name: 'Terracotta', color: '#c58d71' },
-  walnut: { name: 'Walnut', color: '#806044' },
-}
 export const roomComponentLimit = 120
 export const componentSupplyLimit = 12
 export const roomComponentIdSchema = z.string().min(1).max(80).regex(/^[a-z0-9][a-z0-9-]*$/, 'Choose a valid room object.')
@@ -52,6 +45,7 @@ export type ComponentDefinition = {
   states: readonly { id: string; name: string }[]
   supplies: readonly ComponentSupply[]
   chores: readonly ComponentChoreSuggestion[]
+  placementRooms?: readonly RoomId[]
 }
 const supply = (id: string, name: string, quantity = '1 bottle'): ComponentSupply => ({ id, name, quantity })
 const chore = (title: string, repeatDays: number | null): ComponentChoreSuggestion => ({ title, repeatDays })
@@ -122,11 +116,13 @@ export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
     states: states('Dirty', 'Running', 'Ready to empty', 'Empty'),
   }),
   'washing-machine': define('Washing machine', 'A shared laundry appliance with detergent and maintenance reminders.', 'appliances', {
+    placementRooms: ['bathroom'],
     supplies: [supply('laundry-detergent', 'Laundry detergent'), supply('fabric-softener', 'Fabric softener'), supply('washing-machine-cleaner', 'Washing machine cleaner')],
     chores: [chore('Run a laundry load', 7), chore('Clean the washing machine', 30)],
     states: states('Idle', 'Running', 'Ready to unload'),
   }),
   dryer: define('Dryer', 'Keep track of a drying load and remember the lint filter.', 'appliances', {
+    placementRooms: ['bathroom'],
     supplies: [supply('dryer-sheets', 'Dryer sheets', '1 box')], chores: [chore('Clean the dryer lint filter', 7)],
     states: states('Idle', 'Running', 'Ready to unload'),
   }),
@@ -348,7 +344,7 @@ export const roomSlots = [
   slot('kitchen-seating', 'kitchen', 'Kitchen seating', ['seating'], 'seating'),
   slot('kitchen-plant-floor', 'kitchen', 'Floor planter', floorStorage, 'plant'),
   slot('kitchen-plant-counter', 'kitchen', 'Counter planter', ['plant'], 'plant'),
-  slot('kitchen-rug', 'kitchen', 'Dining rug', ['rug'], 'rug'),
+  slot('kitchen-rug', 'kitchen', 'Sink-side rug', ['rug'], 'rug'),
   slot('kitchen-clock', 'kitchen', 'Wall clock', ['clock'], 'clock'),
   slot('kitchen-light', 'kitchen', 'Pendant light', ['light'], 'light', false),
   slot('kitchen-curtains', 'kitchen', 'Window curtains', ['curtains'], 'curtains'),
@@ -361,23 +357,57 @@ export const roomSlots = [
   slot('kitchen-settlement-envelope', 'kitchen', 'Repayment envelope', ['settlement-envelope'], 'settlement-envelope', false),
   slot('kitchen-undercounter', 'kitchen', 'Fitted appliance bay', ['dishwasher', 'washing-machine', 'dryer', 'oven']),
   slot('kitchen-coffee', 'kitchen', 'Coffee corner', counterAppliances),
-  slot('kitchen-small-appliance', 'kitchen', 'Countertop appliance spot', counterAppliances),
+  slot('kitchen-small-appliance', 'kitchen', 'Appliance shelf', counterAppliances),
   slot('kitchen-drinks', 'kitchen', 'Small drinks accessory', ['grinder', 'water-filter', 'tea-set', 'speaker', 'storage-jars', 'fruit-bowl', 'mug-tree', 'kitchen-scale', 'cereal-dispenser', 'egg-basket', 'reed-diffuser']),
   slot('kitchen-dish-rack', 'kitchen', 'Beside the sink', ['dish-rack', 'paper-towel-holder', 'knife-block', 'spice-rack', 'watering-can', 'cutting-boards']),
-  slot('kitchen-bins', 'kitchen', 'Bin corner', ['bins']),
+  slot('kitchen-bins', 'kitchen', 'Bin bay below the sink', ['bins']),
   slot('kitchen-vacuum', 'kitchen', 'Cleaning station', floorStorage),
   slot('kitchen-wall-art', 'kitchen', 'Wall picture', wallAccessories),
   slot('kitchen-soap-dispenser', 'kitchen', 'Sink dispenser', ['soap-dispenser']),
   slot('kitchen-table-center', 'kitchen', 'Table centerpiece', tableAccessories),
   slot('kitchen-windowsill', 'kitchen', 'Window ledge', ['plant', 'storage-jars', 'speaker', 'reed-diffuser']),
   slot('kitchen-left-wall', 'kitchen', 'Side wall', wallAccessories),
+  slot('kitchen-washing-machine', 'kitchen', 'Laundry washing bay', ['washing-machine']),
+  slot('kitchen-dryer', 'kitchen', 'Laundry drying bay', ['dryer']),
+  slot('kitchen-oven', 'kitchen', 'Oven below the hob', ['oven']),
+  slot('kitchen-air-fryer', 'kitchen', 'Cooking counter appliance', ['air-fryer']),
+  slot('kitchen-stand-mixer', 'kitchen', 'Prep counter baking station', ['stand-mixer']),
+  slot('kitchen-blender', 'kitchen', 'Prep counter blending station', ['blender']),
+  slot('kitchen-rice-cooker', 'kitchen', 'Prep counter cooking station', ['rice-cooker']),
+  slot('kitchen-scale', 'kitchen', 'Prep counter weighing spot', ['kitchen-scale']),
+  slot('kitchen-cookbook', 'kitchen', 'Prep counter recipe stand', ['cookbook-stand']),
+  slot('kitchen-cutting-boards', 'kitchen', 'Prep counter board stand', ['cutting-boards']),
+  slot('kitchen-knife-block', 'kitchen', 'Cooking counter knives', ['knife-block']),
+  slot('kitchen-egg-basket', 'kitchen', 'Prep counter ingredient basket', ['egg-basket']),
+  slot('kitchen-toaster', 'kitchen', 'Breakfast toaster spot', ['toaster']),
+  slot('kitchen-waffle-maker', 'kitchen', 'Breakfast waffle spot', ['waffle-maker']),
+  slot('kitchen-bread-box', 'kitchen', 'Breakfast bread box', ['bread-box']),
+  slot('kitchen-water-filter', 'kitchen', 'Sink water filter', ['water-filter']),
+  slot('kitchen-mug-tree', 'kitchen', 'Window mug stand', ['mug-tree']),
+  slot('kitchen-cereal-dispenser', 'kitchen', 'Window breakfast supplies', ['cereal-dispenser']),
+  slot('kitchen-tea-set', 'kitchen', 'Window tea tray', ['tea-set']),
+  slot('kitchen-paper-towels', 'kitchen', 'Sink paper towels', ['paper-towel-holder']),
+  slot('kitchen-spice-rack', 'kitchen', 'Cooking wall spices', ['spice-rack']),
+  slot('kitchen-key-hooks', 'kitchen', 'Entry key hooks', ['key-hooks']),
+  slot('kitchen-wall-shelf', 'kitchen', 'Household wall shelf', ['wall-shelf']),
+  slot('kitchen-first-aid', 'kitchen', 'Household care shelf', ['first-aid-kit']),
+  slot('kitchen-speaker', 'kitchen', 'Listening corner speaker', ['speaker']),
+  slot('kitchen-record-player', 'kitchen', 'Listening corner turntable', ['record-player']),
+  slot('kitchen-tissue-box', 'kitchen', 'Household tissue spot', ['tissue-box']),
+  slot('kitchen-diffuser', 'kitchen', 'Household fragrance spot', ['reed-diffuser']),
+  slot('kitchen-board-game', 'kitchen', 'Dining game spot', ['board-game']),
+  slot('kitchen-storage-cabinet', 'kitchen', 'Utility storage cabinet', ['storage-cabinet']),
+  slot('kitchen-cart', 'kitchen', 'Dining serving cart', ['kitchen-cart']),
+  slot('kitchen-pet-bowls', 'kitchen', 'Pet feeding corner', ['pet-bowls']),
+  slot('kitchen-air-purifier', 'kitchen', 'Utility air purifier', ['air-purifier']),
+  slot('kitchen-watering-can', 'kitchen', 'Beside the floor planter', ['watering-can']),
   slot('bathroom-sink', 'bathroom', 'Bathroom basin', ['sink'], 'sink', false),
   slot('bathroom-mirror', 'bathroom', 'Vanity mirror', ['mirror'], 'mirror', false),
   slot('bathroom-toilet', 'bathroom', 'Toilet', ['toilet'], 'toilet', false),
   slot('bathroom-bath', 'bathroom', 'Bathing area', ['bath'], 'bath', false),
   slot('bathroom-supply-shelf', 'bathroom', 'Bathroom supply shelf', ['supply-shelf'], 'supply-shelf', false),
   slot('bathroom-cleaning-caddy', 'bathroom', 'Bathroom cleaning caddy', ['cleaning-caddy'], 'cleaning-caddy', false),
-  slot('bathroom-laundry', 'bathroom', 'Laundry appliance spot', ['washing-machine', 'dryer']),
+  slot('bathroom-laundry', 'bathroom', 'Left-corner laundry bay', ['washing-machine', 'dryer']),
   slot('bathroom-laundry-basket', 'bathroom', 'Laundry basket spot', ['laundry-basket', 'storage-cabinet', 'bathroom-stool', 'air-purifier']),
   slot('bathroom-drying-rack', 'bathroom', 'Drying rack spot', ['drying-rack', 'ironing-board']),
   slot('bathroom-towel-rack', 'bathroom', 'Towel rail', ['towel-rack']),
@@ -392,6 +422,21 @@ export const roomSlots = [
   slot('bathroom-bath-tray', 'bathroom', 'Across the bathtub', ['bath-tray'], null, true, {
     slotId: 'bathroom-bath', variant: 'original', message: 'This position needs the bathtub. Remove the bath tray before choosing a shower.',
   }),
+  slot('bathroom-dryer', 'bathroom', 'Supported laundry stack', ['dryer']),
+  slot('bathroom-storage-cabinet', 'bathroom', 'Linen storage cabinet', ['storage-cabinet']),
+  slot('bathroom-stool', 'bathroom', 'Bathing area stool', ['bathroom-stool']),
+  slot('bathroom-air-purifier', 'bathroom', 'Laundry air purifier', ['air-purifier']),
+  slot('bathroom-ironing-board', 'bathroom', 'Laundry ironing station', ['ironing-board']),
+  slot('bathroom-wall-calendar', 'bathroom', 'Laundry wall calendar', ['wall-calendar']),
+  slot('bathroom-key-hooks', 'bathroom', 'Entry wall hooks', ['key-hooks']),
+  slot('bathroom-wall-shelf', 'bathroom', 'Vanity wall shelf', ['wall-shelf']),
+  slot('bathroom-shower-squeegee', 'bathroom', 'Bathing area squeegee', ['shower-squeegee']),
+  slot('bathroom-hair-dryer', 'bathroom', 'Vanity hair dryer', ['hair-dryer']),
+  slot('bathroom-storage-jars', 'bathroom', 'Vanity storage jars', ['storage-jars']),
+  slot('bathroom-tissue-box', 'bathroom', 'Vanity tissue spot', ['tissue-box']),
+  slot('bathroom-first-aid', 'bathroom', 'Vanity first-aid spot', ['first-aid-kit']),
+  slot('bathroom-diffuser', 'bathroom', 'Vanity fragrance spot', ['reed-diffuser']),
+  slot('bathroom-vacuum', 'bathroom', 'Laundry cleaning station', ['vacuum']),
 ] as const
 export type RoomSlotId = typeof roomSlots[number]['id']
 export const roomSlotIdSchema = z.enum(roomSlots.map((slot) => slot.id), { error: 'Choose a designed position in this home.' })
@@ -496,9 +541,15 @@ export function getRoomComponents(household: { roomComponents?: readonly RoomCom
 }
 
 export function availableComponentSlots(components: readonly RoomComponent[], roomId: RoomId, kind: ComponentKind) {
+  if (!componentAllowedInRoom(kind, roomId)) return []
   return roomSlots.filter((slot) => slot.roomId === roomId && slot.kinds.includes(kind)
     && componentPositionSupported(slot.id, components)
     && !components.some((component) => component.installed && component.slotId === slot.id))
+}
+
+export function componentAllowedInRoom(kind: ComponentKind, roomId: RoomId): boolean {
+  const rooms = componentCatalog[kind].placementRooms
+  return (!rooms || rooms.includes(roomId)) && roomSlots.some((slot) => slot.roomId === roomId && slot.kinds.includes(kind))
 }
 
 export function componentPositionSupported(slotId: RoomSlotId, components: readonly RoomComponent[]): boolean {

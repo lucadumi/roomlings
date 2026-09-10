@@ -13,6 +13,7 @@ export type ComponentBinding = {
 export type ComponentFixture = {
   vacant: readonly Object3D[]
   occupied: readonly Object3D[]
+  occupiedBy?: readonly RoomSlotId[]
 }
 
 export type ComponentModel = ComponentBinding & {

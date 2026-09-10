@@ -72,8 +72,8 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
   </div>
 }
 
-export function RoomPanel({ title, subtitle, children, onClose, view, suspended = false, busy = false, side = 'right', badge }: {
-  title: string; subtitle: string; children: ReactNode; onClose: () => void; view?: string; suspended?: boolean; busy?: boolean; side?: 'left' | 'right'; badge?: ReactNode
+export function RoomPanel({ title, subtitle, children, onClose, view, suspended = false, busy = false, side = 'right', badge, compact = false }: {
+  title: string; subtitle: string; children: ReactNode; onClose: () => void; view?: string; suspended?: boolean; busy?: boolean; side?: 'left' | 'right'; badge?: ReactNode; compact?: boolean
 }) {
   const panel = useRef<HTMLElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
@@ -82,13 +82,14 @@ export function RoomPanel({ title, subtitle, children, onClose, view, suspended 
   const closeRef = useRef(onClose)
   const suspendedRef = useRef(suspended)
   const busyRef = useRef(busy)
-  const previousView = useRef({ title, view, suspended })
+  const previousView = useRef({ title, view, suspended, compact })
   closeRef.current = onClose
   suspendedRef.current = suspended
   busyRef.current = busy
   useEffect(() => {
     const resuming = previousView.current.suspended && previousView.current.title === title && previousView.current.view === view
-    previousView.current = { title, view, suspended }
+    const placementChanged = previousView.current.compact !== compact
+    previousView.current = { title, view, suspended, compact }
     if (suspended) return
     const active = document.activeElement
     if (resuming && active instanceof HTMLElement && panel.current?.contains(active)) return
@@ -96,8 +97,19 @@ export function RoomPanel({ title, subtitle, children, onClose, view, suspended 
     // Restore a room control even when an earlier dialog removed the original trigger.
     if (!returnFocus.current) returnFocus.current = document.querySelector<HTMLButtonElement>('.game-dock button[aria-pressed="true"]')
     if (scroll.current) scroll.current.scrollTop = 0
+    if (placementChanged) return
     panel.current?.focus({ preventScroll: true })
-  }, [title, view, suspended])
+  }, [title, view, suspended, compact])
+  useEffect(() => {
+    const element = panel.current
+    const app = element?.closest<HTMLElement>('.game-app')
+    if (!compact || !element || !app) return
+    const measure = () => app.style.setProperty('--placement-panel-height', `${element.getBoundingClientRect().height}px`)
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    measure()
+    return () => { observer.disconnect(); app.style.removeProperty('--placement-panel-height') }
+  }, [compact])
   useEffect(() => {
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented && !suspendedRef.current) {
@@ -111,11 +123,11 @@ export function RoomPanel({ title, subtitle, children, onClose, view, suspended 
       if (returnFocus.current?.isConnected) returnFocus.current.focus({ preventScroll: true })
     }
   }, [])
-  return <aside className="room-panel" role="region" aria-labelledby={titleId} aria-busy={busy || undefined} ref={panel} tabIndex={-1}
-    data-panel-side={side} inert={suspended} aria-hidden={suspended || undefined} style={suspended ? { display: 'none' } : undefined}>
+  return <aside className="room-panel" role={compact ? 'dialog' : 'region'} aria-modal={compact ? false : undefined} aria-labelledby={titleId} aria-busy={busy || undefined} ref={panel} tabIndex={-1}
+    data-panel-side={side} data-compact={compact} inert={suspended} aria-hidden={suspended || undefined} style={suspended ? { display: 'none' } : undefined}>
     <header className="room-panel-header">
       <div className="room-panel-title"><h2 id={titleId}>{title}</h2></div>
-      <div className="room-panel-actions">{badge}<button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size={20} /></button></div>
+      {!compact && <div className="room-panel-actions">{badge}<button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size={20} /></button></div>}
     </header>
     <div className="room-panel-scroll" ref={scroll}>{subtitle && <p className="room-panel-subtitle">{subtitle}</p>}{children}</div>
   </aside>

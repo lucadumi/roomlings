@@ -216,14 +216,14 @@ test.describe('responsive current app', () => {
       expect(geometry.outside).toEqual([])
       expect(geometry.overlaps).toEqual([])
       await expectContentFits(page.locator('.game-hud'))
-      for (const name of ['House rules', 'How to play', 'Room style', 'Zoom in', 'Zoom out', 'Frame the whole room']) {
+      for (const name of ['House rules', 'How to play', 'Room style', 'Zoom in', 'Zoom out', 'Reset room view']) {
         await expectReachable(page.getByRole('button', { name, exact: true }))
       }
       await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
       await expect(page.locator('.kitchen-world')).toHaveAttribute('data-evening', 'true')
       await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
       await expect(page.getByRole('button', { name: 'Peek inside', exact: true })).toHaveAttribute('aria-pressed', 'false')
-      await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+      await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
       await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
       await expectReachable(page.getByRole('button', { name: 'Close panel', exact: true }))
       await expect.poll(() => page.locator('.game-app').evaluate((app) => {

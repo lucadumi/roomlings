@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
 import { getRoomComponents } from '../../shared/roomComponents.ts'
-import { openRoomEditor } from './fixtures.ts'
+import { openRoomEditor, placeRoomObject } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
@@ -90,7 +90,7 @@ test('the object browser is a large left-side grid with real previews and hover/
   await page.screenshot({ path: testInfo.outputPath('left-object-grid.png'), animations: 'disabled' })
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
   await editor.getByRole('navigation', { name: 'Filter object availability', exact: true }).getByRole('button', { name: /^Available/ }).click()
-  for (const name of ['Dishwasher', 'Washing machine', 'Dryer']) {
+  for (const name of ['Dishwasher', 'Oven', 'Coffee machine']) {
     const card = editor.getByRole('article', { name, exact: true })
     await expect(card.locator('.component-preview')).toHaveAttribute('data-preview-renderer', 'webgl')
     await expect.poll(() => card.locator('img').evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth >= 320)).toBe(true)
@@ -124,14 +124,14 @@ test('catalog badges and filters distinguish availability, placed objects and un
   await dishwasher.scrollIntoViewIfNeeded()
   await expect(dishwasher.locator('.component-preview')).toHaveAttribute('data-preview-ready', 'true')
   await page.screenshot({ path: testInfo.outputPath('available-object-grid.png'), animations: 'disabled' })
-  await dishwasher.getByRole('button', { name: 'Add Dishwasher', exact: true }).click()
+  await placeRoomObject(editor, 'Dishwasher')
   const saved = await accounts.store.get(owner.household.id)
   expect(getRoomComponents(saved ?? {}).some((component) => component.kind === 'dishwasher')).toBe(false)
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
   await filters.getByRole('button', { name: /^All objects/ }).click()
   await expect(dishwasher).toHaveAttribute('data-availability', 'preview')
   await expect(dishwasher.locator('.room-availability')).toHaveText('In preview')
-  await expect(editor.getByRole('article', { name: 'Washing machine', exact: true })).toHaveAttribute('data-availability', 'occupied')
+  await expect(editor.getByRole('article', { name: 'Oven', exact: true })).toHaveAttribute('data-availability', 'available')
   await filters.getByRole('button', { name: /^Placed/ }).click()
   await expect(dishwasher).toHaveCount(0)
   await expect(editor.locator('.room-catalog-card[data-availability="available"]')).toHaveCount(0)

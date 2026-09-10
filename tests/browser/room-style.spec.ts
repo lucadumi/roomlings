@@ -1,8 +1,11 @@
 import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
-import { householdSchema } from '../../shared/domain.ts'
+import { householdSchema, roomStyleSchema } from '../../shared/domain.ts'
+import { componentFinishes } from '../../shared/componentFinishes.ts'
+import { getRoomComponents } from '../../shared/roomComponents.ts'
 import { sessionSchema } from '../../src/api.ts'
-import { createHousehold, pauseRequest, savedKitchen } from './fixtures.ts'
+import { roomPresets } from '../../src/roomStyles.ts'
+import { chooseOption, createHousehold, openRoomEditor, pauseRequest, savedKitchen, selectRoom } from './fixtures.ts'
 
 test.use({ providerEnabled: false })
 test.use({ reducedMotion: 'reduce' })
@@ -12,6 +15,41 @@ async function openPicker(page: Page) {
   const picker = page.getByRole('dialog', { name: 'Make the room feel like home.', exact: true })
   await expect(picker).toBeVisible()
   return picker
+}
+
+async function roomScreenshot(page: Page) {
+  const sheet = await page.addStyleTag({
+    content: `
+      :root, body, #root, .game-app, .game-app * { background: transparent !important; }
+      .game-app * { visibility: hidden !important; }
+      .game-home::before, .game-home::after { visibility: hidden !important; }
+      .game-app .game-home, .game-app .kitchen-world, .game-app .world-canvas, .game-app canvas { visibility: visible !important; }
+    `,
+  })
+  try {
+    await expect(page.locator('.house-tools')).toBeHidden()
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    return await page.locator('.kitchen-world').screenshot({ omitBackground: true })
+  } finally {
+    await sheet.evaluate((element) => element.parentNode?.removeChild(element))
+  }
+}
+
+async function savedRoomImages(page: Page) {
+  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
+  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
+  const images: Record<string, string> = {}
+  for (const roomId of ['kitchen', 'bathroom']) {
+    const image = menu.locator(`[data-room-preview="${roomId}"] img`)
+    await expect(image).toHaveAttribute('src', /^data:image\/png;base64,/)
+    images[roomId] = (await image.getAttribute('src'))!
+  }
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  return images
 }
 
 async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
@@ -29,7 +67,11 @@ async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
     }
     if (pixels[0].length !== pixels[1].length) throw new Error('Room screenshots have different dimensions.')
     let changed = 0
+    let visible = 0
     for (let i = 0; i < pixels[0].length; i += 4) {
+      // Compare the whole visible room, not the transparent corners around its isometric footprint.
+      if (pixels[0][i + 3] === 0 && pixels[1][i + 3] === 0) continue
+      visible++
       const difference = Math.max(
         Math.abs(pixels[0][i] - pixels[1][i]),
         Math.abs(pixels[0][i + 1] - pixels[1][i + 1]),
@@ -37,7 +79,8 @@ async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
       )
       if (difference >= 30) changed++
     }
-    return changed / (pixels[0].length / 4)
+    if (!visible) throw new Error('The room screenshots contain no visible room pixels.')
+    return changed / visible
   }, [before.toString('base64'), after.toString('base64')])
 }
 
@@ -189,34 +232,22 @@ test('saved finishes repaint the same scene and restore Original without resetti
   const canvas = await page.locator('.world-canvas canvas').elementHandle()
   expect(canvas).not.toBeNull()
   await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
-  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
   await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
   await expect(room).toHaveAttribute('data-rendering', 'paused')
-  const screenshot = async () => {
-    const sheet = await page.addStyleTag({
-      content: '.game-app * { visibility: hidden !important; } .game-app .game-home, .game-app .world-canvas, .game-app canvas { visibility: visible !important; }',
-    })
-    try {
-      await expect(page.locator('.house-tools')).toBeHidden()
-      await page.evaluate(() => new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      }))
-      return await page.screenshot()
-    } finally {
-      await sheet.evaluate((element) => element.parentNode?.removeChild(element))
-    }
-  }
+  const screenshot = () => roomScreenshot(page)
   const original = await screenshot()
   const seen = [original]
-  for (const name of ['Sage', 'Clay', 'Linen', 'Roomlings']) {
+  for (const style of [...roomStyleSchema.options.filter((style) => style !== 'original'), 'original'] as const) {
+    const name = style === 'original' ? 'Roomlings' : roomPresets[style].name
     const picker = await openPicker(page)
     await picker.getByRole('radio', { name, exact: true }).check()
     await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     await expect(picker).toHaveCount(0)
-    await expect(room).toHaveAttribute('data-room-style', name === 'Roomlings' ? 'original' : name.toLowerCase())
+    await expect(room).toHaveAttribute('data-room-style', style)
     await expect(room).toHaveAttribute('data-rendering', 'paused')
-    await expect(room).toHaveAttribute('data-framing', 'whole')
+    await expect(room).toHaveAttribute('data-framing', 'close')
     await expect(room).toHaveAttribute('data-evening', 'true')
     await expect(page.locator('.world-camera-controls')).toContainText('120%')
     await expect(page.getByRole('button', { name: 'Peek inside', exact: true })).toBeVisible()
@@ -235,6 +266,116 @@ test('saved finishes repaint the same scene and restore Original without resetti
     }
   }
 })
+
+for (const roomId of ['kitchen', 'bathroom'] as const) for (const style of ['coastal', 'lavender', 'citrus', 'rose'] as const) {
+  test(`${style} visibly repaints the ${roomId} and restores Original without rebuilding`, { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.clock.setFixedTime(new Date())
+    await page.goto('/kitchen')
+    if (roomId === 'bathroom') await selectRoom(page, roomId)
+    const room = page.locator(roomId === 'bathroom' ? '.bathroom-world' : '.kitchen-world')
+    await expect(room).toHaveAttribute('data-rendering', 'paused')
+    if (roomId === 'kitchen') await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
+    await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
+    await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
+    await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
+    await expect(room).toHaveAttribute('data-rendering', 'paused')
+    const canvas = await room.locator('canvas').elementHandle()
+    expect(canvas).not.toBeNull()
+    const original = await roomScreenshot(page)
+    const picker = await openPicker(page)
+    await picker.getByRole('radio', { name: roomPresets[style].name, exact: true }).check()
+    await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+    await expect(picker).toHaveCount(0)
+    await expect(room).toHaveAttribute('data-room-style', style)
+    await expect(room).toHaveAttribute('data-rendering', 'paused')
+    expect(await canvas!.evaluate((element) => element.isConnected)).toBe(true)
+    const changed = await roomScreenshot(page)
+    expect(await strongColorChange(page, original, changed), `${style} should strongly recolor at least 30% of the ${roomId} view`).toBeGreaterThanOrEqual(0.3)
+    await openPicker(page)
+    await picker.getByRole('radio', { name: 'Roomlings', exact: true }).check()
+    await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+    await expect(picker).toHaveCount(0)
+    await expect(room).toHaveAttribute('data-room-style', 'original')
+    await expect(room).toHaveAttribute('data-rendering', 'paused')
+    expect(await canvas!.evaluate((element) => element.isConnected)).toBe(true)
+    expect((await roomScreenshot(page)).equals(original)).toBe(true)
+  })
+}
+
+for (const roomId of ['kitchen', 'bathroom'] as const) {
+  test(`approved ${roomId} object finishes preview honestly and persist in thumbnails and saved room images`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.clock.setFixedTime(new Date())
+    await page.goto('/kitchen')
+    if (roomId === 'bathroom') await selectRoom(page, roomId)
+    const style = roomId === 'kitchen' ? 'coastal' : 'lavender'
+    const picker = await openPicker(page)
+    await picker.getByRole('radio', { name: roomPresets[style].name, exact: true }).check()
+    await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+    await expect(picker).toHaveCount(0)
+    const before = await accounts.store.get(owner.household.id)
+    if (!before) throw new Error('The isolated palette household is missing.')
+    const component = getRoomComponents(before).find((component) => component.id === (roomId === 'kitchen' ? 'default-kitchen-fridge' : 'default-bathroom-sink'))
+    if (!component) throw new Error('The palette object is missing.')
+    const roomImages = await savedRoomImages(page)
+    const editor = await openRoomEditor(page)
+    const card = editor.getByRole('button', { name: `Edit ${component.name}`, exact: true })
+    const thumbnail = card.locator('.component-preview')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    const originalImage = await thumbnail.locator('img').getAttribute('src')
+    await card.click()
+    const control = editor.getByRole('combobox', { name: 'Finish', exact: true })
+    await control.click()
+    const options = page.getByRole('listbox')
+    await expect(options.getByRole('option')).toHaveCount(Object.keys(componentFinishes).length)
+    for (const [finish, metadata] of Object.entries(componentFinishes)) {
+      await expect(options.getByRole('option', { name: metadata.name, exact: true })).toHaveAttribute('data-option-value', finish)
+    }
+    await page.keyboard.press('Escape')
+    const savedFinish = roomId === 'kitchen' ? 'teal' : 'berry'
+    const finishes = ['ocean', 'teal', 'plum', 'lilac', 'lime', 'lemon', 'berry', 'rose'] as const
+    for (const finish of [...finishes.filter((finish) => finish !== savedFinish), savedFinish] as const) {
+      await chooseOption(control, finish)
+      await expect(editor.locator('.room-finish-preview')).toHaveText(componentFinishes[finish].name)
+      const channels = componentFinishes[finish].color!.slice(1).match(/.{2}/g)!.map((channel) => Number.parseInt(channel, 16))
+      await expect(editor.locator('.room-finish-preview span')).toHaveCSS('background-color', `rgb(${channels.join(', ')})`)
+    }
+    expect(await accounts.store.get(owner.household.id)).toEqual(before)
+    await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    const draftImage = await thumbnail.locator('img').getAttribute('src')
+    expect(draftImage).not.toBe(originalImage)
+    const applying = page.waitForRequest('**/api/household/room-components')
+    await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+    const patch = (await applying).postDataJSON()
+    await expect(editor).toHaveCount(0)
+    const saved = await accounts.store.get(owner.household.id)
+    if (!saved) throw new Error('The saved palette household is missing.')
+    const receipt = saved.mutationReceipts?.at(-1)
+    expect(receipt).toMatchObject({ id: patch.mutationId, memberId: owner.memberId, version: before.version + 1 })
+    expect(receipt?.fingerprint).toMatch(/^[a-f0-9]{64}$/)
+    expect(saved.mutationReceipts).toEqual([...(before.mutationReceipts ?? []), receipt])
+    const expected = {
+      ...before, version: before.version + 1,
+      mutationReceipts: saved.mutationReceipts,
+      roomComponents: getRoomComponents(before).map((item) => item.id === component.id ? { ...item, finish: savedFinish, version: item.version + 1 } : item),
+    }
+    expect(saved).toEqual(expected)
+    const savedImages = await savedRoomImages(page)
+    expect(savedImages[roomId]).not.toBe(roomImages[roomId])
+    const other = roomId === 'kitchen' ? 'bathroom' : 'kitchen'
+    expect(savedImages[other]).toBe(roomImages[other])
+    await page.reload()
+    if (roomId === 'bathroom' && !await page.locator('.bathroom-world').isVisible()) await selectRoom(page, roomId)
+    await openRoomEditor(page)
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail.locator('img')).toHaveAttribute('src', draftImage!)
+    await card.click()
+    await expect(control).toHaveAttribute('data-value', savedFinish)
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-room-style', style)
+  })
+}
 
 test('room controls stay separate on a narrow tablet', async ({ page, emptyHousehold: _household }) => {
   await page.setViewportSize({ width: 600, height: 900 })

@@ -1,11 +1,40 @@
 import { Vector3 } from 'three'
 import type { Box3 } from 'three'
+import type { RoomSlotId } from '../shared/roomComponents.ts'
 import type { KitchenAction, KitchenUtility } from './room.ts'
+import { componentPlacements, kitchenLayout, roomFootprints, roomShellBounds } from './roomLayout.ts'
 
 export type SceneFocus = KitchenAction | KitchenUtility | 'room' | 'fridge' | 'brew'
 export type FocusRequest = { target: SceneFocus; id: number }
 export const baseCameraOffset: [number, number, number] = [9, 7.85, 13]
+export const placementPreviewZoom = 1.2
 export type FramingArea = { x: number; y: number; width: number; height: number }
+
+export function preferredRoomRotation(slotId?: RoomSlotId): number {
+  const placement = slotId ? componentPlacements[slotId] : undefined
+  return placement?.surface === 'fitted' && placement.rotation === -Math.PI / 2 ? 0.75 : 0
+}
+
+export function usesRoomEntryFraming(view: {
+  focus: string
+  selectedComponentId?: string | null
+  resetView?: boolean
+  panelOpen?: boolean
+  overviewFocus?: boolean
+  placementPreview?: boolean
+  publicPreview?: boolean
+}): boolean {
+  return !view.overviewFocus && !view.placementPreview && !view.publicPreview
+    && (!!view.resetView || (!view.panelOpen && view.focus === 'room' && !view.selectedComponentId))
+}
+
+export function roomFramingArea(canvas: FramingArea, stage: FramingArea, controls?: FramingArea): FramingArea {
+  const overlaps = controls && controls.width > 0 && controls.height > 0
+    && controls.y < stage.y + stage.height && controls.y + controls.height > stage.y
+    && controls.x > stage.x && controls.x < stage.x + stage.width
+  const right = overlaps ? controls.x - 12 : stage.x + stage.width
+  return { x: stage.x - canvas.x, y: stage.y - canvas.y, width: Math.max(1, right - stage.x), height: stage.height }
+}
 
 export const focusLabels: Record<SceneFocus, string> = {
   room: 'The kitchen',
@@ -24,19 +53,19 @@ export const focusLabels: Record<SceneFocus, string> = {
 }
 
 const views: Record<SceneFocus, { center: [number, number, number]; halfHeight: number; width: number }> = {
-  room: { center: [-0.1, 1.85, -0.05], halfHeight: 4.45, width: 9.4 },
-  fridge: { center: [-2.7, 1.95, -2.05], halfHeight: 2.9, width: 4.2 },
-  stock: { center: [-0.65, 1.65, 0.65], halfHeight: 2.85, width: 4.6 },
-  ledger: { center: [0.85, 1.2, 1.35], halfHeight: 2.7, width: 4.3 },
-  budget: { center: [0.45, 2, -2.1], halfHeight: 2.65, width: 4.1 },
-  roommates: { center: [3.45, 2.8, -2.9], halfHeight: 2.65, width: 4.1 },
-  settle: { center: [1.75, 1.15, 1.1], halfHeight: 2.7, width: 4.2 },
-  brew: { center: [1.65, 2, -2.25], halfHeight: 2.65, width: 4.1 },
-  chores: { center: [-1.55, 0.75, -0.45], halfHeight: 2.4, width: 3.6 },
-  supplies: { center: [-4.55, 1.9, -1.8], halfHeight: 2.4, width: 3.6 },
-  sink: { center: [3.35, 1.7, -2.56], halfHeight: 2.6, width: 4.1 },
-  counters: { center: [2.05, 1.3, -2.56], halfHeight: 2.9, width: 5.3 },
-  floor: { center: [0, 0.6, 0], halfHeight: 4.25, width: 9.4 },
+  room: { center: [0, 1.85, roomFootprints.kitchen.centerZ], halfHeight: 4.45, width: roomFootprints.kitchen.width },
+  fridge: { center: [kitchenLayout.fridge[0], 1.95, -2.05], halfHeight: 2.9, width: 4.2 },
+  stock: { center: kitchenLayout.stock, halfHeight: 2.85, width: 4.6 },
+  ledger: { center: kitchenLayout.ledger, halfHeight: 2.7, width: 4.3 },
+  budget: { center: kitchenLayout.budget, halfHeight: 2.65, width: 4.1 },
+  roommates: { center: kitchenLayout.roommates, halfHeight: 2.65, width: 4.1 },
+  settle: { center: kitchenLayout.settle, halfHeight: 2.7, width: 4.2 },
+  brew: { center: [kitchenLayout.kettle[0], 2.1, kitchenLayout.kettle[2]], halfHeight: 2.65, width: 4.1 },
+  chores: { center: kitchenLayout.chores, halfHeight: 2.4, width: 3.6 },
+  supplies: { center: kitchenLayout.supplies, halfHeight: 2.4, width: 3.6 },
+  sink: { center: [3.5, 1.7, -2.56], halfHeight: 2.6, width: 4.1 },
+  counters: { center: kitchenLayout.counters, halfHeight: 2.9, width: roomFootprints.kitchen.width },
+  floor: { center: [0, 0.6, roomFootprints.kitchen.centerZ], halfHeight: 4.25, width: roomFootprints.kitchen.width },
 }
 
 export function cameraFraming(width: number, height: number, focus: SceneFocus, wholeRoom: boolean, wholeRoomView: {
@@ -48,24 +77,13 @@ export function cameraFraming(width: number, height: number, focus: SceneFocus, 
     throw new Error('Camera framing needs a positive viewport width and height.')
   }
   const aspect = width / height
-  if (wholeRoom) {
-    const { bounds, rotation = 0, pitch = 0 } = wholeRoomView
-    const min = bounds?.min.toArray() ?? [-5.4, -0.4, -3.5]
-    const max = bounds?.max.toArray() ?? [5.4, 5.1, 3.5]
-    if (![...min, ...max, rotation, pitch].every(Number.isFinite) || bounds?.isEmpty()) {
+  if (wholeRoom || focus === 'floor') {
+    const { bounds = roomShellBounds('kitchen'), rotation = 0, pitch = 0 } = wholeRoomView
+    if (![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
       throw new Error('Whole-room framing needs finite bounds and camera angles.')
     }
-    const center = new Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2)
-    const axis = new Vector3(0, 1, 0)
-    const backward = new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).normalize()
-    const right = new Vector3().crossVectors(axis, backward).normalize()
-    const up = new Vector3().crossVectors(backward, right).normalize()
-    let halfHeight = Math.max(4.65, 6.8 / aspect)
-    for (const x of [min[0], max[0]]) for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) {
-      const corner = new Vector3(x, y, z).sub(center).applyAxisAngle(axis, rotation)
-      halfHeight = Math.max(halfHeight, Math.abs(corner.dot(up)) + 0.18, (Math.abs(corner.dot(right)) + 0.18) / aspect)
-    }
-    return { center: [center.x, center.y, center.z], halfHeight }
+    const fitted = fitRoomBounds(width, height, bounds, rotation, pitch)
+    return { center: bounds.getCenter(new Vector3()).toArray(), halfHeight: fitted.halfHeight }
   }
   if (focus === 'room') {
     return aspect < 0.9
@@ -87,6 +105,15 @@ export function cameraProjection(width: number, height: number, area: FramingAre
   const x = horizontal * (1 - (area.x + area.width / 2) * 2 / width) / zoom
   const y = vertical * ((area.y + area.height / 2) * 2 / height - 1) / zoom
   return { left: -horizontal + x, right: horizontal + x, top: vertical + y, bottom: -vertical + y }
+}
+
+export function roomEntryFraming(width: number, height: number, area: FramingArea, rotation = 0) {
+  const frame = cameraFraming(width, height, 'room', false)
+  if (![area.width, area.height].every((value) => Number.isFinite(value) && value > 0) || !Number.isFinite(rotation)) {
+    throw new Error('Room entry framing needs a measured scene area and a finite angle.')
+  }
+  const center = new Vector3(...frame.center).applyAxisAngle(new Vector3(0, 1, 0), rotation)
+  return { center: center.toArray(), halfHeight: frame.halfHeight * area.height / height }
 }
 
 export function fitRoomBounds(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0): {

@@ -229,7 +229,8 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
         original.binding.root.visible = visible
       }
       for (const [slotId, fixture] of options.fixtures ?? []) {
-        for (const [objects, visible] of [[fixture.vacant, !installedSlots.has(slotId)], [fixture.occupied, installedSlots.has(slotId)]] as const) {
+        const occupied = (fixture.occupiedBy ?? [slotId]).some((id) => installedSlots.has(id))
+        for (const [objects, visible] of [[fixture.vacant, !occupied], [fixture.occupied, occupied]] as const) {
           for (const object of objects) {
             if (object.visible !== visible) shadowsChanged = true
             object.visible = visible

@@ -13,7 +13,7 @@ export const memberColors = ['#c9533a', '#7d9070', '#c2a34e', '#7c89a1', '#aa789
 export const activeMemberLimit = 12
 export const retainedMemberLimit = 200
 export const mutationReceiptLimit = 1000
-export const roomStyleSchema = z.enum(['original', 'sage', 'clay', 'linen'])
+export const roomStyleSchema = z.enum(['original', 'sage', 'clay', 'linen', 'coastal', 'lavender', 'citrus', 'rose'])
 
 const id = z.string().uuid()
 export const mutationInputSchema = z.object({ mutationId: id, mutationVersion: z.number().int().nonnegative() })

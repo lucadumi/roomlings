@@ -42,6 +42,7 @@ test('additional placements stay grouped and cancel restores the saved positions
   await objects.getByRole('button', { name: 'Edit this object', exact: true }).click()
   const editor = page.locator('.room-editor')
   await editor.getByRole('button', { name: 'Add at another position', exact: true }).click()
+  await editor.getByRole('button', { name: 'Place object', exact: true }).click()
   await expect(editor.getByRole('group', { name: 'Plant positions', exact: true }).getByRole('button')).toHaveCount(3)
   await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
   const plantCard = editor.getByRole('button', { name: 'Edit Plant', exact: true })

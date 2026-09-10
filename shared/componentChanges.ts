@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { ChoreInput, Household } from './domain.ts'
 import {
-  componentCatalog, componentChoreArea, componentChoreMatches, componentStateInputSchema, getRoomComponents,
+  componentAllowedInRoom, componentCatalog, componentChoreArea, componentChoreMatches, componentStateInputSchema, getRoomComponents,
   roomComponentSchema, roomComponentsPatchSchema, validateRoomComponents,
 } from './roomComponents.ts'
 import type { RoomComponent, RoomComponentsPatch } from './roomComponents.ts'
@@ -44,6 +44,10 @@ export function applyRoomComponentPatch(household: Household, input: RoomCompone
       }
     } else if (componentVersion !== null || !z.string().uuid().safeParse(change.id).success || !change.installed) {
       throw new RoomComponentError(400, 'Add a new object with a fresh identifier, or restore a saved object.')
+    }
+    const placing = change.installed && (!previous?.installed || change.slotId !== previous.slotId)
+    if (placing && !componentAllowedInRoom(change.kind, change.roomId)) {
+      throw new RoomComponentError(400, `${componentCatalog[change.kind].name} is not available for new placements in this room.`)
     }
     changes.set(change.id, roomComponentSchema.parse({
       ...change, version: previous ? previous.version + 1 : 0,

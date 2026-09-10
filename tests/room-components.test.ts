@@ -8,7 +8,7 @@ import {
   applyRoomComponentPatch, choreComponentFields, RoomComponentError, setRoomComponentState,
 } from '../shared/componentChanges.ts'
 import {
-  availableComponentSlots, componentCatalog, componentChoreMatches, componentKinds, createRoomComponent, defaultRoomComponents,
+  availableComponentSlots, componentAllowedInRoom, componentCatalog, componentChoreMatches, componentKinds, createRoomComponent, defaultRoomComponents,
   getRoomComponents, roomComponentSchema, roomComponentsPatchSchema, roomSlots, suggestedComponentSupplies, validateRoomComponents,
 } from '../shared/roomComponents.ts'
 import type { RoomComponent, RoomComponentChange } from '../shared/roomComponents.ts'
@@ -43,6 +43,20 @@ const throwsStatus = (operation: () => unknown, status: number) =>
   assert.throws(operation, (error) => error instanceof RoomComponentError && error.status === status)
 
 describe('room component catalog and legacy defaults', () => {
+  it('offers cooking objects only in kitchens and new laundry objects only in bathrooms', () => {
+    const components = defaultRoomComponents()
+    for (const kind of ['washing-machine', 'dryer'] as const) {
+      assert.equal(componentAllowedInRoom(kind, 'kitchen'), false)
+      assert.equal(componentAllowedInRoom(kind, 'bathroom'), true)
+      assert.deepEqual(availableComponentSlots(components, 'kitchen', kind), [])
+      assert.ok(availableComponentSlots(components, 'bathroom', kind).length > 0)
+    }
+    assert.equal(componentAllowedInRoom('coffee-machine', 'bathroom'), false)
+    assert.equal(componentAllowedInRoom('toilet', 'kitchen'), false)
+    assert.equal(componentAllowedInRoom('plant', 'kitchen'), true)
+    assert.equal(componentAllowedInRoom('plant', 'bathroom'), true)
+  })
+
   it('gives every real catalog entry an allowed fixed position and useful supported settings', () => {
     assert.ok(componentKinds.length >= 80)
     assert.deepEqual(Object.keys(componentCatalog), [...componentKinds])
@@ -111,12 +125,46 @@ describe('room component catalog and legacy defaults', () => {
 })
 
 describe('room component changes', () => {
+  it('preserves legacy kitchen laundry but rejects new, moved and restored kitchen laundry placements', () => {
+    const household = home()
+    const legacy = createRoomComponent('washing-machine', 'kitchen-washing-machine', randomUUID())
+    household.roomComponents = [...defaultRoomComponents(), legacy]
+    assert.doesNotThrow(() => householdSchema.parse(household))
+    applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(legacy, { finish: 'teal', name: 'Our existing washer' })] }, now)
+    const edited = getRoomComponents(household).find((component) => component.id === legacy.id)!
+    assert.equal(edited.finish, 'teal')
+    const before = structuredClone(household)
+    throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen',
+      changes: [change(edited, { slotId: 'kitchen-undercounter' })],
+    }, now), 400)
+    const fresh = createRoomComponent('dryer', 'kitchen-dryer', randomUUID())
+    throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen',
+      changes: [change(fresh, { componentVersion: null })],
+    }, now), 400)
+    assert.deepEqual(household, before)
+    setRoomComponentState(household, edited.id, { componentVersion: edited.version, state: 'running' }, household.members[0].id, now)
+    const running = getRoomComponents(household).find((component) => component.id === legacy.id)!
+    applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(running, { installed: false })] }, now)
+    const removed = getRoomComponents(household).find((component) => component.id === legacy.id)!
+    assert.equal(removed.installed, false)
+    assert.equal(removed.state, 'running')
+    throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen',
+      changes: [change(removed, { installed: true })],
+    }, now), 400)
+    const bathroomWasher = createRoomComponent('washing-machine', 'bathroom-laundry', randomUUID())
+    applyRoomComponentPatch(household, { roomId: 'bathroom',
+      changes: [change(bathroomWasher, { componentVersion: null })],
+    }, now)
+    assert.equal(getRoomComponents(household).find((component) => component.id === bathroomWasher.id)?.installed, true)
+    for (const key of ['expenses', 'settlements', 'shopping', 'chores', 'members'] as const) assert.deepEqual(household[key], before[key])
+  })
+
   it('installs and customizes without making a shopping item, chore, expense or debt', () => {
     const household = home()
     const before = structuredClone(household)
     const component = dishwasher(household)
     assert.equal(getRoomComponents(household).find((entry) => entry.id === component.id)?.installed, true)
-    assert.equal(availableComponentSlots(getRoomComponents(household), 'kitchen', 'washing-machine').length, 0)
+    assert.deepEqual(availableComponentSlots(getRoomComponents(household), 'kitchen', 'washing-machine'), [])
     applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(component, { name: 'Our dishwasher', finish: 'tomato', supplies: component.supplies.slice(0, 1) })] }, now)
     household.version++
     assert.deepEqual(household.shopping, before.shopping)
@@ -133,7 +181,7 @@ describe('room component changes', () => {
     throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(component, { componentVersion: 9 })] }, now), 409)
     assert.equal(roomComponentsPatchSchema.safeParse({ roomId: 'bathroom', changes: [change(component)] }).success, false)
     throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(component, { kind: 'washing-machine' })] }, now), 400)
-    const competing = createRoomComponent('washing-machine', 'kitchen-undercounter', randomUUID())
+    const competing = createRoomComponent('oven', 'kitchen-undercounter', randomUUID())
     throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(competing, { componentVersion: null })] }, now), 409)
     assert.deepEqual(household, before)
   })
@@ -163,7 +211,7 @@ describe('room component changes', () => {
   it('replaces one appliance with another in one atomic fixed-slot change and restores archived identities', () => {
     const household = home()
     const component = dishwasher(household)
-    const replacement = createRoomComponent('washing-machine', component.slotId, randomUUID())
+    const replacement = createRoomComponent('oven', component.slotId, randomUUID())
     applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [
       change(component, { installed: false }), change(replacement, { componentVersion: null }),
     ] }, now)

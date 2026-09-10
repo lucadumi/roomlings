@@ -49,7 +49,7 @@ export function createConfiguredRoomPreview(
   })
   componentScene.update(components, style)
   batchStaticMeshes(room, kitchen?.scenery.preserved ?? new Set())
-  const lights = createRoomLights()
+  const lights = createRoomLights(componentScene.bounds)
   scene.add(lights.group)
   let disposed = false
   return {

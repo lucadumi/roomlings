@@ -86,6 +86,14 @@ export async function openRoomEditor(page: Page) {
   return editor
 }
 
+export async function placeRoomObject(editor: Locator, name: string, restore = false) {
+  await editor.getByRole('button', { name: `${restore ? 'Preview restoring' : 'Preview'} ${name}`, exact: true }).click()
+  const placement = editor.getByRole('group', { name: 'Placement preview', exact: true })
+  await expect(placement).toBeVisible()
+  await placement.getByRole('button', { name: 'Place object', exact: true }).click()
+  await expect(placement).toHaveCount(0)
+}
+
 export async function openRoomColors(page: Page) {
   const editor = await openRoomEditor(page)
   await editor.getByRole('button', { name: 'Room colors', exact: true }).click()

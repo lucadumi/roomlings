@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowLeft, Check, CircleHelp, ListChecks, Palette, Pencil, Plus, RotateCcw, ShoppingBasket, Trash2, TriangleAlert, Users } from 'lucide-react'
+import { ArrowLeft, Check, CircleHelp, Eye, ListChecks, Palette, Pencil, Plus, RotateCcw, ShoppingBasket, Trash2, TriangleAlert, Users, X } from 'lucide-react'
 import { billingDate, choreLimit } from '../shared/domain.ts'
 import type { Household, ShoppingItemInput } from '../shared/domain.ts'
 import { choreAssignee, choreStatus } from '../shared/chores.ts'
 import {
-  availableComponentSlots, componentCatalog, componentCategories, componentFinishes, componentKinds,
+  availableComponentSlots, componentAllowedInRoom, componentCatalog, componentCategories, componentFinishes, componentKinds,
   componentChoreMatches, componentFinishSchema, componentPositionSupported, componentSupplyLimit, createRoomComponent, getRoomComponents,
-  roomComponentLimit, roomComponentsPatchSchema, roomSlots, suggestedComponentSupplies, validateRoomComponents,
+  roomComponentLimit, roomComponentSchema, roomComponentsPatchSchema, roomSlots, suggestedComponentSupplies, validateRoomComponents,
 } from '../shared/roomComponents.ts'
 import type {
   ComponentCategory, ComponentChoreSuggestion, ComponentKind, RoomComponent,
@@ -31,6 +31,14 @@ type ComponentConfiguration = Omit<RoomComponentChange, 'componentVersion' | 'li
 type ComponentDraft = { base: RoomComponent | null; value: RoomComponent; linkedChores?: 'keep' | 'archive' }
 type ComponentDrafts = Record<string, ComponentDraft>
 type AvailabilityFilter = 'all' | 'available' | 'placed' | 'preview'
+type EditorSection = 'installed' | 'catalog'
+type PlacementPreview = {
+  id: string
+  kind: ComponentKind
+  previousDraft?: ComponentDraft
+  section: EditorSection
+  selectedId: string | null
+}
 
 function AvailabilityBadge({ status, label }: Pick<ComponentAvailability, 'status' | 'label'>) {
   const Icon = status === 'available' ? Plus : status === 'placed' ? Check : status === 'preview' ? Pencil : TriangleAlert
@@ -50,6 +58,25 @@ function withoutDraft(drafts: ComponentDrafts, id: string): ComponentDrafts {
   const next = { ...drafts }
   delete next[id]
   return next
+}
+
+function withoutPlacement(drafts: ComponentDrafts, placement: PlacementPreview | null): ComponentDrafts {
+  if (!placement) return drafts
+  return placement.previousDraft ? { ...drafts, [placement.id]: placement.previousDraft } : withoutDraft(drafts, placement.id)
+}
+
+function previewDrafts(current: readonly RoomComponent[], drafts: ComponentDrafts): RoomComponent[] {
+  const ids = new Set(current.map((component) => component.id))
+  return [
+    ...current.map((component) => {
+      const draft = drafts[component.id]
+      return draft ? {
+        ...draft.value, version: component.version,
+        state: component.state, stateChangedAt: component.stateChangedAt, stateChangedBy: component.stateChangedBy,
+      } : component
+    }),
+    ...Object.values(drafts).filter((draft) => !ids.has(draft.value.id)).map((draft) => draft.value),
+  ]
 }
 
 function objectName(component: RoomComponent): string {
@@ -118,8 +145,10 @@ export type RoomEditorProps = {
   canEdit?: boolean
   error: ReactNode
   selectedComponentId: string | null
+  cancelPlacementRequest?: number
+  initialRemovalId?: string | null
   onSelect: (id: string | null) => void
-  onPreview: (components: readonly RoomComponent[] | null) => void
+  onPreview: (components: readonly RoomComponent[] | null, placement?: RoomComponent | null) => void
   onSubmit: (patch: RoomComponentsPatch) => Promise<boolean>
   onClose: () => void
   onManageAdmins: () => void
@@ -130,40 +159,48 @@ export function RoomEditor(props: RoomEditorProps) {
   return <RoomEditorDraft key={`${props.household.id}:${props.roomId}`} {...props} />
 }
 
-function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selectedComponentId, onSelect, onPreview, onSubmit, onClose, onManageAdmins, onRoomColors }: RoomEditorProps) {
+function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selectedComponentId, cancelPlacementRequest = 0, initialRemovalId = null, onSelect, onPreview, onSubmit, onClose, onManageAdmins, onRoomColors }: RoomEditorProps) {
   const current = useMemo(() => getRoomComponents(household), [household.id, household.roomComponents])
   const [drafts, setDrafts] = useState<ComponentDrafts>({})
-  const [section, setSection] = useState<'installed' | 'catalog'>('installed')
+  const [placement, setPlacement] = useState<PlacementPreview | null>(null)
+  const [section, setSection] = useState<EditorSection>('installed')
   const [category, setCategory] = useState<ComponentCategory | 'all'>('all')
   const [search, setSearch] = useState('')
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>('all')
-  const [removing, setRemoving] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(initialRemovalId)
   const [removalChoice, setRemovalChoice] = useState<'' | 'keep' | 'archive'>('')
   const [localError, setLocalError] = useState('')
   const [notice, setNotice] = useState('')
   const [saving, setSaving] = useState(false)
   const nameInput = useRef<HTMLInputElement>(null)
   const suppliesElement = useRef<HTMLFieldSetElement>(null)
+  const catalogElement = useRef<HTMLDivElement>(null)
+  const catalogSearch = useRef<HTMLInputElement>(null)
+  const placeButton = useRef<HTMLButtonElement>(null)
+  const lastCancelRequest = useRef(cancelPlacementRequest)
+  const previousSelection = useRef(selectedComponentId)
   const locked = busy || saving || !canEdit
-  const pending = Object.values(drafts)
+  const acceptedDrafts = useMemo(() => withoutPlacement(drafts, placement), [drafts, placement])
+  const pending = Object.values(acceptedDrafts)
+  const allDrafts = Object.values(drafts)
+  const placementDraft = placement ? drafts[placement.id] : undefined
   const currentById = new Map(current.map((component) => [component.id, component]))
-  const preview = useMemo(() => [
-    ...current.map((component) => {
-      const draft = drafts[component.id]
-      return draft ? {
-        ...draft.value, version: component.version,
-        state: component.state, stateChangedAt: component.stateChangedAt, stateChangedBy: component.stateChangedBy,
-      } : component
-    }),
-    ...Object.values(drafts).filter((draft) => !current.some((component) => component.id === draft.value.id)).map((draft) => draft.value),
-  ], [current, drafts])
+  const preview = useMemo(() => previewDrafts(current, drafts), [current, drafts])
+  const acceptedPreview = useMemo(() => previewDrafts(current, acceptedDrafts), [current, acceptedDrafts])
+  const placementIssue = placementDraft && acceptedPreview.some((component) => component.installed
+    && component.slotId === placementDraft.value.slotId && component.id !== placementDraft.value.id)
+    ? 'This position is now occupied. Choose another position or discard the placement preview.'
+    : placementDraft && !componentPositionSupported(placementDraft.value.slotId, acceptedPreview)
+      ? 'This placement no longer has its required fixture. Choose another position or discard the placement preview.' : ''
+  const visiblePreview = placementIssue ? acceptedPreview : preview
   const roomObjects = preview.filter((component) => component.roomId === roomId)
   const installed = roomObjects.filter((component) => component.installed)
   const groups = groupedRoomComponents(installed)
   const selected = roomObjects.find((component) => component.id === selectedComponentId)
   const selectedPositions = selected ? installed.filter((component) => component.kind === selected.kind) : []
-  const positionChoices = selected ? roomSlots.filter((slot) => slot.roomId === roomId && slot.kinds.includes(selected.kind)) : []
-  const conflicts = pending.filter((draft) => {
+  const positionChoices = selected ? roomSlots.filter((slot) => slot.roomId === roomId && slot.kinds.includes(selected.kind)
+    && (componentAllowedInRoom(selected.kind, roomId) || slot.id === selected.slotId)) : []
+  const conflicts = allDrafts.filter((draft) => {
     const latest = currentById.get(draft.value.id)
     return draft.base ? !latest || latest.version !== draft.base.version : !!latest
   })
@@ -171,7 +208,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
   const removal = removing ? preview.find((component) => component.id === removing) : undefined
   const linkedToRemoval = removal ? household.chores.items.filter((chore) => !chore.archived && componentChoreMatches(chore, removal)) : []
   const matchingCatalog = componentKinds.filter((kind) =>
-    roomSlots.some((slot) => slot.roomId === roomId && slot.kinds.includes(kind))
+    componentAllowedInRoom(kind, roomId) && roomSlots.some((slot) => slot.roomId === roomId && slot.kinds.includes(kind))
     && (category === 'all' || componentCatalog[kind].category === category)
     && normalizeShoppingName(`${componentCatalog[kind].name} ${componentCatalog[kind].description}`).includes(normalizeShoppingName(search)))
   const availability = new Map(matchingCatalog.map((kind) => [kind, componentAvailability(kind, roomId, preview, current)]))
@@ -185,57 +222,117 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
   const previewCount = [...availability.values()].filter((item) => item.status === 'preview').length
   if (previewCount || availabilityFilter === 'preview') availabilityFilters.push({ id: 'preview', label: 'In preview', count: previewCount })
 
-  useEffect(() => { onPreview(pending.length ? preview : null) }, [onPreview, preview, pending.length])
+  const previewedPlacement = placementDraft?.value ?? null
+  useEffect(() => { onPreview(allDrafts.length ? visiblePreview : null, previewedPlacement) }, [onPreview, visiblePreview, allDrafts.length, previewedPlacement])
   useEffect(() => () => onPreview(null), [onPreview])
   useEffect(() => {
-    if (selectedComponentId) {
-      setSection('installed')
-      setRemoving(null)
-    }
+    if (selectedComponentId) setSection('installed')
+    if (previousSelection.current !== selectedComponentId) setRemoving(null)
+    previousSelection.current = selectedComponentId
   }, [selectedComponentId])
   useEffect(() => {
-    if (selectedComponentId && section === 'installed') nameInput.current?.focus()
-  }, [selectedComponentId, section])
+    if (selectedComponentId && section === 'installed') {
+      if (placement?.id === selectedComponentId) placeButton.current?.focus()
+      else nameInput.current?.focus()
+    }
+  }, [selectedComponentId, section, placement?.id])
+  useEffect(() => {
+    if (!placement || selectedComponentId === placement.id) return
+    setDrafts((previous) => withoutPlacement(previous, placement))
+    setPlacement(null)
+    setNotice('The placement preview was discarded. Your other draft changes are kept.')
+  }, [placement, selectedComponentId])
 
-  const select = (id: string | null) => {
+  const select = (id: string | null, nextSection: EditorSection = 'installed') => {
+    if (placement && id !== placement.id) {
+      setDrafts((previous) => withoutPlacement(previous, placement))
+      setPlacement(null)
+      setNotice('The placement preview was discarded. Your other draft changes are kept.')
+    }
     onSelect(id)
     setRemoving(null)
     setLocalError('')
-    setSection('installed')
+    setSection(nextSection)
   }
   const update = (component: RoomComponent, changes: Partial<ComponentConfiguration>, linkedChores?: 'keep' | 'archive') => {
     setDrafts((previous) => {
       const existing = previous[component.id]
       const base = existing ? existing.base : currentById.get(component.id) ?? null
       const value = { ...(existing?.value ?? component), ...changes }
-      if (base && sameConfiguration(base, value)) return withoutDraft(previous, component.id)
+      if (base && sameConfiguration(base, value) && placement?.id !== component.id) return withoutDraft(previous, component.id)
       return { ...previous, [component.id]: { base, value, linkedChores: linkedChores ?? existing?.linkedChores } }
     })
     setLocalError('')
     setNotice('')
   }
-  const add = (kind: ComponentKind, slotId: RoomSlotId) => {
-    if (!availableComponentSlots(preview, roomId, kind).some((slot) => slot.id === slotId)) {
+  const previewPlacement = (kind: ComponentKind, slotId: RoomSlotId) => {
+    if (!componentAllowedInRoom(kind, roomId)) {
+      setLocalError(`${componentCatalog[kind].name} is not available for new placements in this room.`)
+      return
+    }
+    if (!availableComponentSlots(acceptedPreview, roomId, kind).some((slot) => slot.id === slotId)) {
       setLocalError('That position is occupied. Remove its current object first.')
       return
     }
-    const archived = preview.find((component) => component.slotId === slotId && component.kind === kind && !component.installed)
-    if (archived) {
-      update(archived, { installed: true })
-      select(archived.id)
-      setNotice(`${objectName(archived)} is restored in your preview. Its saved settings are kept; archived chores stay archived.`)
-      return
+    const archived = acceptedPreview.find((component) => component.slotId === slotId && component.kind === kind && !component.installed)
+    if (!archived && acceptedPreview.length >= roomComponentLimit) { setLocalError('This home has reached its saved-object limit. Restore a saved object instead.'); return }
+    if (!archived && !globalThis.crypto?.randomUUID) { setLocalError('Use HTTPS or localhost to safely add a room object.'); return }
+    const component = archived ? { ...archived, installed: true } : createRoomComponent(kind, slotId, crypto.randomUUID())
+    const previousDraft = acceptedDrafts[component.id]
+    const base = previousDraft ? previousDraft.base : currentById.get(component.id) ?? null
+    setDrafts({ ...acceptedDrafts, [component.id]: { base, value: component, linkedChores: previousDraft?.linkedChores } })
+    setPlacement({ id: component.id, kind, previousDraft, section, selectedId: selectedComponentId })
+    onSelect(component.id)
+    setSection('installed')
+    setRemoving(null)
+    setLocalError('')
+    setNotice('')
+  }
+  const discardPlacement = () => {
+    if (!placement) return
+    setDrafts((previous) => withoutPlacement(previous, placement))
+    setPlacement(null)
+    onSelect(placement.selectedId)
+    setSection(placement.section)
+    setRemoving(null)
+    setLocalError('')
+    setNotice('The placement preview was discarded. Your other draft changes are kept.')
+    requestAnimationFrame(() => {
+      if (placement.section === 'catalog') {
+        const target = catalogElement.current?.querySelector<HTMLButtonElement>(`button[data-placement-kind="${placement.kind}"]`)
+        if (target && !target.disabled) target.focus()
+        else catalogSearch.current?.focus()
+      } else nameInput.current?.focus()
+    })
+  }
+  const acceptPlacement = () => {
+    if (locked) return
+    if (!placementDraft) { setLocalError('Choose an object to preview before placing it.'); return }
+    const issue = placementIssue || invalidLayout
+    if (issue) { setLocalError(issue); return }
+    if (conflicts.length) { setLocalError('Review the changed objects before accepting this placement.'); return }
+    const checked = roomComponentSchema.safeParse(placementDraft.value)
+    if (!checked.success) { setLocalError(checked.error.issues[0].message); return }
+    setDrafts((previous) => placementDraft.base && sameConfiguration(placementDraft.base, checked.data)
+      ? withoutDraft(previous, checked.data.id)
+      : { ...previous, [checked.data.id]: { ...placementDraft, value: checked.data } })
+    setPlacement(null)
+    setLocalError('')
+    setNotice(`${objectName(checked.data)} is kept in your private draft. Apply for everyone to share it. Supplies and chores are not added automatically.`)
+  }
+  const useLatest = (id: string) => {
+    setDrafts((previous) => withoutDraft(previous, id))
+    if (placement?.id === id) {
+      setPlacement(null)
+      onSelect(null)
+      setSection('catalog')
     }
-    if (preview.length >= roomComponentLimit) { setLocalError('This home has reached its saved-object limit. Restore a saved object instead.'); return }
-    if (!globalThis.crypto?.randomUUID) { setLocalError('Use HTTPS or localhost to safely add a room object.'); return }
-    const component = createRoomComponent(kind, slotId, crypto.randomUUID())
-    setDrafts((previous) => ({ ...previous, [component.id]: { base: null, value: component } }))
-    select(component.id)
-    setNotice(`${component.name} was added to your preview. Supplies and chores are not added automatically.`)
+    setLocalError('')
+    setNotice('The latest object settings are now in your preview.')
   }
   const keepDraft = (draft: ComponentDraft, latest: RoomComponent) => {
     const value = changedFields(draft, latest)
-    setDrafts((previous) => sameConfiguration(value, latest) ? withoutDraft(previous, value.id) : {
+    setDrafts((previous) => sameConfiguration(value, latest) && placement?.id !== value.id ? withoutDraft(previous, value.id) : {
       ...previous, [value.id]: { ...draft, base: latest, value },
     })
     setLocalError('')
@@ -243,9 +340,43 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
   }
   const discard = () => { onPreview(null); onClose() }
 
-  return <section className="room-components room-editor" aria-label={`Edit ${roomCatalog[roomId].name} objects`} aria-busy={busy || saving || undefined}>
+  useEffect(() => {
+    if (lastCancelRequest.current === cancelPlacementRequest) return
+    lastCancelRequest.current = cancelPlacementRequest
+    if (placement && !busy && !saving) discardPlacement()
+  }, [cancelPlacementRequest, placement, busy, saving])
+
+  if (placementDraft) {
+    const previewError = localError || placementIssue || invalidLayout
+      || (conflicts.length ? 'The room changed. Discard this preview and review your draft before placing the object.' : '')
+    return <section className="room-components room-editor" aria-label={`Edit ${roomCatalog[roomId].name} objects`}
+      aria-busy={busy || saving || undefined} data-placement-preview={placement?.id}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented || busy || saving) return
+        event.preventDefault()
+        event.stopPropagation()
+        discardPlacement()
+      }}>
+      {previewError && <p className="form-error" role="alert">{previewError}</p>}{error}
+      <div className="room-placement-actions" role="group" aria-label="Placement preview">
+        <button type="button" className="button primary small-button" ref={placeButton}
+          disabled={locked || !!placementIssue || !!invalidLayout || !!conflicts.length} onClick={acceptPlacement}><Check size={15} />Place object</button>
+        <button type="button" className="button secondary small-button" disabled={busy || saving} onClick={discardPlacement}><X size={15} />Discard preview</button>
+      </div>
+    </section>
+  }
+
+  return <section className="room-components room-editor" aria-label={`Edit ${roomCatalog[roomId].name} objects`}
+    aria-busy={busy || saving || undefined} data-placement-preview={placement?.id}
+    onKeyDown={(event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || !placement || busy || saving) return
+      event.preventDefault()
+      event.stopPropagation()
+      discardPlacement()
+    }}>
     <Form onSubmit={() => {
       if (locked) return
+      if (placement) { setLocalError('Place or discard the previewed object before applying your draft.'); return }
       if (removing) { setLocalError('Finish reviewing the object removal before applying.'); return }
       if (conflicts.length) { setLocalError('Review the changed objects before applying your draft.'); return }
       if (invalidLayout) { setLocalError(invalidLayout); return }
@@ -273,8 +404,8 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
       <fieldset className="room-editor-fields" disabled={locked}>
         <legend className="sr-only">Room object settings</legend>
         <div className="room-editor-toolbar"><nav className="receipt-tabs" aria-label="Room editor sections">
-          <button type="button" disabled={locked} aria-pressed={section === 'installed'} onClick={() => setSection('installed')}>In this room <span>{groups.length}</span></button>
-          <button type="button" disabled={locked} aria-pressed={section === 'catalog'} onClick={() => { onSelect(null); setSection('catalog'); setRemoving(null) }}><Plus size={14} />Add objects</button>
+          <button type="button" disabled={locked} aria-pressed={section === 'installed'} onClick={() => select(null)}>In this room <span>{groups.length}</span></button>
+          <button type="button" disabled={locked} aria-pressed={section === 'catalog'} onClick={() => select(null, 'catalog')}><Plus size={14} />Add objects</button>
         </nav>
           <div className="room-editor-tools">
             <button type="button" className="icon-button control-surface" disabled={locked} onClick={onRoomColors} aria-label="Room colors" title="Room colors"><Palette size={17} /></button>
@@ -284,19 +415,17 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
         {conflicts.map((draft) => {
           const latest = currentById.get(draft.value.id)
           return <div key={draft.value.id} className="room-object-conflict" aria-label={`Changed object: ${objectName(draft.value)}`}>
-            {latest ? <DraftConflict onLatest={() => {
-              setDrafts((previous) => withoutDraft(previous, draft.value.id)); setLocalError(''); setNotice('The latest object settings are now in your preview.')
-            }} onKeep={() => keepDraft(draft, latest)}>
+            {latest ? <DraftConflict onLatest={() => useLatest(draft.value.id)} onKeep={() => keepDraft(draft, latest)}>
               {objectName(draft.value)} changed while you were editing. Latest: {latest.name}, {positionName(latest)}, {finishName(latest)}, {latest.installed ? 'in the room' : 'removed'}.
               {' '}Supplies: {latest.supplies.length ? latest.supplies.map((supply) => `${supply.quantity} ${supply.name}`).join(', ') : 'none'}.
               {' '}Keep your draft to retain the fields you edited and include your roommates' other changes.
             </DraftConflict> : <div className="shopping-conflict">
               <p role="alert">{objectName(draft.value)} is no longer available. Remove this draft and choose an object from the current catalog.</p>
-              <button type="button" className="text-button" onClick={() => setDrafts((previous) => withoutDraft(previous, draft.value.id))}>Use latest values</button>
+              <button type="button" className="text-button" onClick={() => useLatest(draft.value.id)}>Use latest values</button>
             </div>}
           </div>
         })}
-        {invalidLayout && <p className="form-error" role="alert">{invalidLayout} Review the objects below before applying.</p>}
+        {invalidLayout && !placementIssue && <p className="form-error" role="alert">{invalidLayout} Review the objects below before applying.</p>}
         {section === 'installed' && <>
           {selected ? <div className="room-object-settings" aria-label={`Settings for ${objectName(selected)}`}>
             <button type="button" className="text-button" disabled={locked} onClick={() => select(null)}><ArrowLeft size={14} />All room objects</button>
@@ -321,11 +450,12 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
                 return <option key={slot.id} value={slot.id} disabled={occupied || !supported}>{slot.name}{occupied ? ' (occupied)' : !supported ? ' (unavailable)' : ''}</option>
               })}
             </Dropdown></label> : <p className="field-hint">{positionName(selected)}</p>}
-            {selected.installed && availableComponentSlots(preview, roomId, selected.kind).length > 0
+            {!componentAllowedInRoom(selected.kind, roomId) && <p className="field-hint">This saved object can stay here. New placements belong in {componentCatalog[selected.kind].placementRooms?.map((id) => roomCatalog[id].name).join(' or ')}.</p>}
+            {!placement && selected.installed && availableComponentSlots(preview, roomId, selected.kind).length > 0
               && <button type="button" className="text-button" disabled={locked} onClick={() => {
                 const destination = availableComponentSlots(preview, roomId, selected.kind)[0]
                 if (!destination) { setLocalError('There are no free positions for this object.'); return }
-                add(selected.kind, destination.id)
+                previewPlacement(selected.kind, destination.id)
               }}><Plus size={14} />Add at another position</button>}
             <label className="field">Object name<input ref={nameInput} required maxLength={50} value={selected.name} disabled={locked} onChange={(event) => update(selected, { name: event.target.value })} /></label>
             {componentCatalog[selected.kind].variants.length > 1
@@ -371,7 +501,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
               </div>
               {selected.supplies.length >= componentSupplyLimit && <p className="field-hint">An object can have up to {componentSupplyLimit} supply shortcuts.</p>}
             </fieldset>
-            {selected.installed ? roomSlots.find((slot) => slot.id === selected.slotId)?.removable
+            {placement?.id === selected.id ? null : selected.installed ? roomSlots.find((slot) => slot.id === selected.slotId)?.removable
               ? <button type="button" className="text-button room-remove-object" disabled={locked} onClick={() => { setRemoving(selected.id); setRemovalChoice('') }}><Trash2 size={14} />Remove object</button>
               : <p className="field-hint">This fitted object stays in the room. Its name, finish and supply shortcuts can still be changed.</p>
               : <div className="room-draft-removal">
@@ -434,8 +564,8 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
             </div>)}
           </div>}
         </>}
-        {section === 'catalog' && <div className="room-catalog">
-          <div className="room-catalog-filters"><label className="field">Find an object<input type="search" maxLength={80} value={search} disabled={locked} onChange={(event) => setSearch(event.target.value)} /></label>
+        {section === 'catalog' && <div className="room-catalog" ref={catalogElement}>
+          <div className="room-catalog-filters"><label className="field">Find an object<input ref={catalogSearch} type="search" maxLength={80} value={search} disabled={locked} onChange={(event) => setSearch(event.target.value)} /></label>
           <label className="field">Object category<Dropdown label="Object category" value={category} disabled={locked} onValueChange={(value) => {
             if (value === 'all' || isComponentCategory(value)) { setCategory(value); setLocalError('') }
             else setLocalError('Choose an available object category.')
@@ -464,7 +594,13 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
               `${positionName(component)} is occupied by ${objectName(component)}.${component.kind !== kind ? ' Remove it first to replace it.' : ''}`).join(' ')
             : previewSlot.requires?.message ?? 'No compatible position is available.'
             return <article className="room-catalog-card" key={kind} aria-label={definition.name} data-availability={status.status} data-free-positions={status.free}>
-              <ObjectCardPreview component={previewObject} household={household} note={placementNote} />
+              {position ? <button type="button" className="room-catalog-preview" data-placement-kind={kind}
+                disabled={locked || (!archived && preview.length >= roomComponentLimit)}
+                aria-label={`Preview ${definition.name} in the room`}
+                aria-description={`${placementNote}. Preview this placement before deciding whether to keep it.`}
+                onClick={() => previewPlacement(kind, position.id)}>
+                <ObjectCardPreview component={previewObject} household={household} note={placementNote} />
+              </button> : <ObjectCardPreview component={previewObject} household={household} note={placementNote} />}
               <div className="room-catalog-card-content"><div className="room-catalog-card-title"><h3>{definition.name}</h3>
                 <AvailabilityBadge {...status} /></div>
               {available.length > 0 && <span className="room-position-count">{available.length} {available.length === 1 ? 'position available' : 'positions available'}</span>}
@@ -478,8 +614,8 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
               </div>})}
               {position ? <button type="button" className="button secondary small-button" disabled={locked || (!archived && preview.length >= roomComponentLimit)}
                 aria-description={`${status.label}. ${placementNote}. ${previewDescription(previewObject)}`}
-                aria-label={`${archived ? 'Restore' : 'Add'} ${definition.name}`} onClick={() => add(kind, position.id)}>
-                {archived ? <RotateCcw size={14} /> : <Plus size={14} />}{archived ? 'Restore' : 'Add'}
+                aria-label={`${archived ? 'Preview restoring' : 'Preview'} ${definition.name}`} onClick={() => previewPlacement(kind, position.id)}>
+                {archived ? <RotateCcw size={14} /> : <Eye size={14} />}{archived ? 'Preview restore' : 'Preview'}
               </button> : <p className="field-hint">No free designed position for this object.</p>}
               {position && !archived && preview.length >= roomComponentLimit && <p className="field-hint">The saved-object limit has been reached. Restore an existing object instead.</p>}
               </div>
@@ -493,7 +629,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
         <p className="field-hint" role="status">{pending.length ? `${pending.length} ${pending.length === 1 ? 'object has' : 'objects have'} unapplied changes.` : 'No unapplied changes.'}</p>
         <div className="button-row room-editor-actions">
           <button type="button" className="button secondary" disabled={busy || saving} onClick={discard}>Cancel</button>
-          <button className="button primary" disabled={locked || !pending.length || !!conflicts.length || !!invalidLayout || !!removing}>
+          <button className="button primary" disabled={locked || !!placement || !pending.length || !!conflicts.length || !!invalidLayout || !!removing}>
             {busy || saving ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{busy || saving ? 'Saving...' : 'Apply for everyone'}
           </button>
         </div>
@@ -520,6 +656,7 @@ export type RoomObjectsPanelProps = {
   canEdit: boolean
   onSelect: (id: string | null) => void
   onEdit: (id: string | null) => void
+  onRemove: (id: string) => void
   onRestock: (item: ShoppingItemInput) => void
   onShopping: () => void
   onCreateChore: (component: RoomComponent, suggestion?: ComponentChoreSuggestion) => void
@@ -530,7 +667,7 @@ export type RoomObjectsPanelProps = {
 }
 
 export function RoomObjectsPanel({
-  household, roomId, selectedComponentId, busy, canEdit, onSelect, onEdit, onRestock, onShopping, onCreateChore, onOpenChores, onState, onUse, onHelp,
+  household, roomId, selectedComponentId, busy, canEdit, onSelect, onEdit, onRemove, onRestock, onShopping, onCreateChore, onOpenChores, onState, onUse, onHelp,
 }: RoomObjectsPanelProps) {
   const components = getRoomComponents(household).filter((component) => component.installed && component.roomId === roomId)
   const groups = groupedRoomComponents(components)
@@ -554,7 +691,11 @@ export function RoomObjectsPanel({
   return <section className="room-components room-objects-panel" aria-label={`${roomCatalog[roomId].name} objects`} aria-busy={busy || undefined}>
     {selected && description ? <>
       <button type="button" className="text-button" disabled={busy} onClick={() => onSelect(null)}><ArrowLeft size={14} />All room objects</button>
-      <header className="room-object-heading"><h3>{selected.name}</h3>{canEdit && <button type="button" className="text-button" disabled={busy} onClick={() => onEdit(selected.id)}><Pencil size={14} />Edit this object</button>}</header>
+      <header className="room-object-heading"><h3>{selected.name}</h3>{canEdit && <div className="room-object-actions">
+        <button type="button" className="text-button" disabled={busy} onClick={() => onEdit(selected.id)}><Pencil size={14} />Edit this object</button>
+        {roomSlots.find((slot) => slot.id === selected.slotId)?.removable && <button type="button" className="text-button room-remove-object" disabled={busy}
+          onClick={() => onRemove(selected.id)}><Trash2 size={14} />Remove object</button>}
+      </div>}</header>
       {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${description.name} positions`}>
         {selectedPositions.map((component) => <button type="button" key={component.id} className="control-surface" disabled={busy}
           aria-pressed={component.id === selected.id} onClick={() => onSelect(component.id)}>{positionName(component)}</button>)}

@@ -2,7 +2,7 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen or bathroom without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. Both rooms start at the same close-up scale; **Whole room** zooms out to show the full space. The toolbar remains available in both rooms, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen or bathroom without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. Both rooms start at the same close-up scale; **Reset room view** restores that entry magnification at 100%. Its selected state clears whenever you zoom away from 100%. The toolbar remains available in both rooms, including when 3D cannot load.
 
 | Object | Purpose |
 | --- | --- |
@@ -33,9 +33,43 @@ Form dropdowns use the same white and sage styling throughout. Open one to choos
 
 ## Customizing a room
 
+Room colors include the existing Roomlings, Sage, Clay and Linen looks, plus
+Coastal, Lavender, Citrus and Rose. These choices recolor the room, not the
+white app interface. Individual objects can also use Ocean, Teal, Plum, Lilac,
+Olive, Butter yellow, Berry or Rose finishes alongside the existing finishes.
+
+The compact kitchen has a continuous L-shaped worktop along the sink run and
+the open right-hand wall, with a runner in front of the sink. The stove sits on
+the right-hand return, the kettle rests on a burner, and the optional oven fits
+underneath. Turn the room to see the inward-facing fitted appliances. The bathroom has a larger
+vanity-front mat, a shelf for the cleaning caddy and a left-corner laundry
+position facing into the room. Optional shelves, appliances and storage have
+dedicated places without adding anything to an existing household.
+
 Open the icon-only **Room objects** button, then choose **Edit room** inside its menu. The existing room-style, help and house-rule controls remain available. The object browser is a large preview grid on the left, with the room beside it. Hover over a preview or focus its controls for details. Repeated objects share one card: Plant opens its placed positions instead of appearing twice in the menu.
 
 Select an object in the room or its card. Position buttons choose which existing copy you are using or editing. In Edit room, **Position** moves that copy between compatible locations, and **Add at another position** creates another private-preview placement. The room updates live as you choose; nothing is shared before Apply. Occupied or incompatible positions are disabled. These are designed locations, not unrestricted dragging.
+
+In **Add objects**, click an object's picture or **Preview** to try its placement.
+The existing room becomes a translucent mint hologram with fine outlines, while
+the candidate keeps its real finish. The view moves slightly toward it and starts
+20% closer, without changing the object's physical size. In-room plus markers
+are hidden during the trial; zoom controls remain available. Your previous
+marker visibility setting returns afterward. A small warm-red triangle points down
+at the object and gently bobs above it; reduced motion keeps the triangle still.
+A short **Try [object]** dialog replaces
+the editor, with only **Place object** and **Discard preview**. Place accepts it
+into your private draft; Discard or Escape removes only that trial. Both choices
+restore the normal room and editor. You can then change its position, model and
+finish. **Apply for everyone** is still required to share accepted changes.
+Restoring a saved object follows the same preview step and keeps its identity
+and settings.
+
+Catalog cards remain close-ups for readability, not a physical size comparison.
+The hologram view shows the whole room so you can judge the candidate's actual
+size beside the other objects. New washing machines and dryers belong in the
+bathroom. Existing kitchen laundry objects remain accessible and can be edited
+or removed, but cannot be newly placed or restored there.
 
 The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The original kitchen and bathroom remain the defaults. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
 
@@ -46,6 +80,10 @@ Changes in the editor are a private preview until **Apply for everyone** succeed
 The catalog marks **Available to add**, **Placed**, and **Unavailable**, with availability filters above the grid. Available includes objects with another free position, even if one copy is already placed. An unsaved addition is **In preview**, not placed. Some positions need a compatible fixture: remove a placed bath tray before changing its bathtub to a shower. An object removed only in your draft is available in that preview, not yet removed from the shared home.
 
 Some fitted fixtures and the existing household tools stay in place, but their appearance and relevant options can still be customized. Moving an optional object within its room keeps its identity, manual state, supplies and chore links. Removing it also keeps its saved identity and settings, but connected chores must be archived or kept as room chores. Shopping items, paid receipts and completed turns are never deleted by removal. Restore the object before restoring its archived object-specific chores.
+
+To remove a placed optional object, open its details in **Room objects** and use
+**Remove object**. This opens the existing removal confirmation in Edit room.
+Review any linked chores, remove it from the private draft, then apply for everyone.
 
 Use **Household admins** from the roommate tools or the editor to see who can manage the rooms. An admin can grant or revoke another roommate's admin access, but cannot demote the owner. Ownership transfer and the existing owner-only account powers remain separate. All active roommates can use the objects, shared shopping and chores without editing the room.
 

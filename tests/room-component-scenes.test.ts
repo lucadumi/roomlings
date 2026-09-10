@@ -13,6 +13,7 @@ import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { createContactShadowTexture } from '../src/lighting.ts'
 import { componentAccessibleName, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible, visibleRoomBounds } from '../src/roomComponentScene.ts'
 import { roomAccents, roomPresets } from '../src/roomStyles.ts'
+import { kitchenLayout, roomShellBounds } from '../src/roomLayout.ts'
 
 function meshes(root: Object3D) {
   const result: Mesh[] = []
@@ -102,8 +103,9 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
         const bounds = scene.getBounds(component.id)!
         assert.ok(!bounds.isEmpty())
         assert.ok(bounds.min.toArray().every(Number.isFinite) && bounds.max.toArray().every(Number.isFinite))
-        assert.ok(bounds.min.x >= -5.3 && bounds.max.x <= 5.3, `${slot.id} must stay inside the room`)
-        assert.ok(bounds.min.z >= -3.5 && bounds.max.z <= 3.4, `${slot.id} must stay inside the room`)
+        const footprint = roomShellBounds(roomId).expandByScalar(0.02)
+        assert.ok(bounds.min.x >= footprint.min.x && bounds.max.x <= footprint.max.x, `${slot.id} must stay inside the room`)
+        assert.ok(bounds.min.z >= footprint.min.z && bounds.max.z <= footprint.max.z, `${slot.id} must stay inside the room`)
         assert.ok(bounds.min.y >= -0.3 && bounds.max.y < 5.2, `${slot.id} must fit the existing light envelope`)
         for (const mesh of meshes(actor)) {
           const positions = mesh.geometry.getAttribute('position')
@@ -228,7 +230,7 @@ test('removed originals have no active actor, label, contact shadow or picking t
   const plant = scene.actors.get('default-kitchen-plant-floor')!
   const contacts = () => meshes(room).filter((mesh) => mesh.userData.componentContact)
   const originalContacts = contacts()
-  const plantContact = originalContacts.find((mesh) => mesh.position.x === -4.29 && mesh.position.z === 1.59)!
+  const plantContact = originalContacts.find((mesh) => mesh.position.x === kitchenLayout.plant[0] && mesh.position.z === kitchenLayout.plant[2])!
   assert.ok(plantContact)
   const before = new Box3().setFromObject(plant)
   const without = defaults.map((component) => component.slotId === 'kitchen-kettle' || component.slotId === 'kitchen-plant-floor'
@@ -249,7 +251,7 @@ test('removed originals have no active actor, label, contact shadow or picking t
   assert.deepEqual(new Box3().setFromObject(plant), before)
   assert.equal(contacts().length, originalContacts.length)
   assert.ok(contacts().some((mesh) => mesh.position.equals(plantContact.position)))
-  assert.ok(visibleRoomBounds(room).containsPoint(new Vector3(-4.29, 0.5, 1.59)))
+  assert.ok(visibleRoomBounds(room).containsPoint(new Vector3(kitchenLayout.plant[0], 0.5, kitchenLayout.plant[2])))
 })
 
 for (const [roomId, kind, slotId] of [

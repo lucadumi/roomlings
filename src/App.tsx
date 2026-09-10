@@ -46,7 +46,7 @@ import type { ChoreFilter, ChoreView } from './Chores.tsx'
 import { RestockPanel } from './Restock.tsx'
 import { RoomPicker } from './RoomPicker.tsx'
 import { Dropdown } from './Dropdown.tsx'
-import { componentChoreArea, getRoomComponents } from '../shared/roomComponents.ts'
+import { componentCatalog, componentChoreArea, getRoomComponents, roomSlots } from '../shared/roomComponents.ts'
 import type { ComponentChoreSuggestion, RoomComponent } from '../shared/roomComponents.ts'
 import { roomAccessSchema } from '../shared/roomAccess.ts'
 import type { RoomAccess } from '../shared/roomAccess.ts'
@@ -145,16 +145,20 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const [stockEvent, setStockEvent] = useState<{ id: string; category: Category } | null>(null)
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ target: 'room', id: 0 })
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null)
-  const [componentPreview, setComponentPreview] = useState<{ householdId: string; roomId: RoomId; components: readonly RoomComponent[] } | null>(null)
+  const [cancelPlacementRequest, setCancelPlacementRequest] = useState(0)
+  const [initialObjectRemoval, setInitialObjectRemoval] = useState<string | null>(null)
+  const [componentPreview, setComponentPreview] = useState<{
+    householdId: string; roomId: RoomId; components: readonly RoomComponent[]; placement: RoomComponent | null
+  } | null>(null)
   const [roomAccess, setRoomAccess] = useState<RoomAccess | null>(null)
   const [roomAccessError, setRoomAccessError] = useState('')
   const [roomAccessRetry, setRoomAccessRetry] = useState(0)
   const savedComponents = useMemo(() => session ? getRoomComponents(session.household) : [], [session?.household.id, session?.household.roomComponents])
   const canEditRooms = !!session && roomAccess?.householdId === session.household.id && roomAccess.memberId === session.memberId
     && roomAccess.role !== 'member' && !roomAccessError
-  const previewComponents = useCallback((components: readonly RoomComponent[] | null) => {
+  const previewComponents = useCallback((components: readonly RoomComponent[] | null, placement: RoomComponent | null = null) => {
     const householdId = session?.household.id
-    setComponentPreview((previous) => components && householdId ? { householdId, roomId: currentRoom, components }
+    setComponentPreview((previous) => components && householdId ? { householdId, roomId: currentRoom, components, placement }
       : previous && previous.householdId === householdId && previous.roomId === currentRoom ? null : previous)
   }, [session?.household.id, currentRoom])
 
@@ -638,9 +642,17 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setSelectedComponentId(id)
     visit('objects')
   }
-  const editRoom = (id: string | null = null) => {
+  const editRoom = (id: string | null = null, remove = false) => {
     if (!canEditRooms) { setError(roomAccessError || 'Ask a household admin for room editing access.'); return }
+    if (remove) {
+      const component = savedComponents.find((component) => component.id === id && component.roomId === currentRoom && component.installed)
+      if (!component || !roomSlots.find((slot) => slot.id === component.slotId)?.removable) {
+        setError('That object cannot be removed from this room.')
+        return
+      }
+    }
     if (page !== 'room-edit') pendingRoomMutation.current = null
+    setInitialObjectRemoval(remove ? id : null)
     setSelectedComponentId(id)
     setFormError('')
     setError('')
@@ -956,7 +968,10 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     </div>
   </section>
 
-  return <div className="game-app" data-page={page} data-component-panel={page === 'objects' || page === 'room-edit'}>
+  const activeComponentPreview = page === 'room-edit' && componentPreview?.householdId === household.id
+    && componentPreview.roomId === currentRoom ? componentPreview : null
+  const activePlacement = activeComponentPreview?.placement
+  return <div className="game-app" data-page={page} data-component-panel={page === 'objects' || page === 'room-edit'} data-placement-preview={!!activePlacement}>
     <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
@@ -970,7 +985,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       }} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
       panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : page === 'objects' || page === 'room-edit' ? page : null}
       panelSide={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
-      components={page === 'room-edit' && componentPreview?.householdId === household.id && componentPreview.roomId === currentRoom ? componentPreview.components : savedComponents}
+      components={activeComponentPreview?.components ?? savedComponents}
+      placementPreviewId={activePlacement?.id ?? null}
       editMode={page === 'room-edit'} selectedComponentId={selectedComponentId} onComponentSelect={selectRoomComponent}
       onObjects={() => { if (page === 'room-edit') setSelectedComponentId(null); else openRoomObjects() }}
       canEditRooms={canEditRooms} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')} onSettings={() => openDialog('settings')}
@@ -983,21 +999,24 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       {error && <button className="icon-button" onClick={() => setError('')} aria-label="Dismiss message"><X size={16} /></button>}
     </div>}
     {page !== 'overview' && (!dialog || dialog === 'rooms' || page === 'room-edit') && <RoomPanel
-      title={{ shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
+      title={activePlacement ? `Try ${activePlacement.name.trim() || componentCatalog[activePlacement.kind].name}`
+        : { shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
       subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
       view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}:${choreFilter.componentId ?? ''}` : page === 'objects' ? `objects:${selectedComponentId ?? ''}` : page}
       suspended={dialog !== null && dialog !== 'rooms'} busy={page === 'room-edit' && busy}
       side={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
+      compact={!!activePlacement}
       badge={page === 'objects' || page === 'room-edit' ? <span className={`room-panel-mode ${page === 'room-edit' ? 'editing' : 'live'}`}>{page === 'room-edit' ? 'Private preview' : 'Live room'}</span> : undefined}
-      onClose={() => visit('overview')}
+      onClose={() => activePlacement ? setCancelPlacementRequest((request) => request + 1) : visit('overview')}
     ><div className="game-panel-content">
         {page === 'room-edit' && <RoomEditor key={`${household.id}:${currentRoom}`} household={household} roomId={currentRoom} busy={busy} canEdit={canEditRooms}
           error={formError ? <p className="form-error" role="alert">{formError}</p> : !canEditRooms ? <p className="form-error" role="alert">Room editing access is unavailable. Your draft is still here; an admin must restore your access before you can apply it.</p> : null}
-          selectedComponentId={selectedComponentId} onSelect={setSelectedComponentId} onPreview={previewComponents}
+          selectedComponentId={selectedComponentId} cancelPlacementRequest={cancelPlacementRequest} initialRemovalId={initialObjectRemoval}
+          onSelect={setSelectedComponentId} onPreview={previewComponents}
           onSubmit={(patch) => action('/household/room-components', patch, 'Room updated for everyone.', 'PATCH')}
           onClose={() => visit('overview')} onManageAdmins={() => openDialog('room-admins')} onRoomColors={() => openDialog('room-style')} />}
         {page === 'objects' && <RoomObjectsPanel household={household} roomId={currentRoom} selectedComponentId={selectedComponentId} busy={busy} canEdit={canEditRooms}
-          onSelect={setSelectedComponentId} onEdit={editRoom} onRestock={(item) => openDialog({ restockItem: item })}
+          onSelect={setSelectedComponentId} onEdit={editRoom} onRemove={(id) => editRoom(id, true)} onRestock={(item) => openDialog({ restockItem: item })}
           onShopping={() => { setShoppingView('list'); visit('shopping') }} onCreateChore={createComponentChore} onOpenChores={openComponentChores}
           onState={(component, state) => { void action(`/room-components/${component.id}/state`, { componentVersion: component.version, state }, 'Object state saved for everyone.', 'PATCH', true) }}
           onUse={useRoomComponent} onHelp={() => openDialog('help')} />}

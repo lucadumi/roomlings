@@ -248,7 +248,7 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       box([0.6, 0.015, 0.35], [0, 0.0075, 0], linen, 0.05)
       for (const x of [-0.15, 0.15]) {
         cylinder(0.1, 0.06, [x, 0.03, 0], silver, 0.13)
-        disc(0.09, 0.014, [x, 0.062, 0], dark)
+        cylinder(0.09, 0.014, [x, 0.062, 0], dark)
       }
       contactSize = [0.66, 0.4]
       break
@@ -496,8 +496,8 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       rod(footA, attachB, 0.022, silver)
       rod(footB, attachA, 0.022, silver)
       rod([-0.75, 0.35, -0.25], [-0.75, 0.35, 0.25], 0.018, silver)
-      disc(0.03, 0.015, footA, dark)
-      disc(0.03, 0.015, footB, dark)
+      cylinder(0.03, 0.015, footA, dark)
+      cylinder(0.03, 0.015, footB, dark)
       box([0.22, 0.11, 0.11], [0, 0.885, 0.15], paint, 0.03)
       const ironNose = cone(0.05, 0.16, [0.13, 0.885, 0.15], paint)
       ironNose.rotation.z = -Math.PI / 2
@@ -556,7 +556,7 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     }
     case 'reed-diffuser': {
       repaint(wood, lightWood)
-      disc(0.09, 0.015, [0, 0.0075, 0], wood)
+      cylinder(0.09, 0.015, [0, 0.0075, 0], wood)
       const bottle = [[0, 0], [0.055, 0], [0.06, 0.09], [0.045, 0.12], [0.02, 0.13], [0.02, 0.16], [0, 0.16]] as [number, number][]
       lathe(bottle, [0, 0.015, 0], glass)
       cylinder(0.045, 0.07, [0, 0.05, 0], lightWood, 0.045)

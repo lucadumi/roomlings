@@ -60,6 +60,33 @@ async function fixture(context: TestContext) {
 const resultHousehold = (data: unknown) => z.object({ household: householdSchema }).parse(data).household
 
 describe('shared room component API', () => {
+  it('enforces room-only placements at the API without rejecting existing kitchen laundry', async (context) => {
+    const api = await fixture(context)
+    const before = await api.current()
+    const kitchenWasher = createRoomComponent('washing-machine', 'kitchen-washing-machine', randomUUID())
+    const rejected = await api.mutate('/household/room-components', {
+      roomId: 'kitchen', changes: [change(kitchenWasher, { componentVersion: null })],
+    })
+    assert.equal(rejected.status, 400)
+    assert.deepEqual(await api.current(), before)
+    const legacy = { ...before, roomComponents: [...getRoomComponents(before), kitchenWasher] }
+    await api.store.save(legacy)
+    const edited = await api.mutate('/household/room-components', {
+      roomId: 'kitchen', changes: [change(kitchenWasher, { name: 'Existing laundry', finish: 'teal' })],
+    })
+    assert.equal(edited.status, 200, JSON.stringify(edited.data))
+    assert.equal(getRoomComponents(resultHousehold(edited.data)).find((component) => component.id === kitchenWasher.id)?.finish, 'teal')
+    const bathroomWasher = createRoomComponent('washing-machine', 'bathroom-laundry', randomUUID())
+    const placed = await api.mutate('/household/room-components', {
+      roomId: 'bathroom', changes: [change(bathroomWasher, { componentVersion: null })],
+    })
+    assert.equal(placed.status, 200, JSON.stringify(placed.data))
+    const saved = resultHousehold(placed.data)
+    assert.ok(getRoomComponents(saved).some((component) => component.id === kitchenWasher.id))
+    assert.ok(getRoomComponents(saved).some((component) => component.id === bathroomWasher.id))
+    for (const key of ['expenses', 'settlements', 'shopping', 'chores', 'members'] as const) assert.deepEqual(saved[key], before[key])
+  })
+
   it('only lets owners and delegated admins configure a shared room, including its overall style', async (context) => {
     const api = await fixture(context)
     const component = createRoomComponent('dishwasher', 'kitchen-undercounter', randomUUID())
@@ -116,7 +143,7 @@ describe('shared room component API', () => {
   it('applies at most one concurrent room draft and rejects forged or occupied placements without partial saves', async (context) => {
     const api = await fixture(context)
     const first = createRoomComponent('dishwasher', 'kitchen-undercounter', randomUUID())
-    const second = createRoomComponent('washing-machine', 'kitchen-undercounter', randomUUID())
+    const second = createRoomComponent('oven', 'kitchen-undercounter', randomUUID())
     const version = (await api.current()).version
     const results = await Promise.all([first, second].map((component) => api.call('/household/room-components', {
       roomId: 'kitchen', changes: [change(component, { componentVersion: null })], version,
