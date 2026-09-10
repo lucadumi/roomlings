@@ -6,8 +6,7 @@ import type { Category, RoomStyle } from '../shared/domain.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { roomIds } from '../shared/rooms.ts'
 import type { RoomId } from '../shared/rooms.ts'
-import { buildBathroomModel } from './bathroomModel.ts'
-import { buildKitchenModel } from './kitchenModel.ts'
+import { roomModels } from './roomModels.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { baseCameraOffset, fitRoomBounds } from './camera.ts'
 import { createContactShadowTexture, createRoomLights } from './lighting.ts'
@@ -26,7 +25,7 @@ export function createConfiguredRoomPreview(
   const scene = new Scene()
   const room = new Group()
   scene.add(room)
-  const model = roomId === 'kitchen' ? buildKitchenModel(room, style) : buildBathroomModel(room, style)
+  const model = roomModels[roomId](room, style)
   const kitchen = 'scenery' in model ? model : null
   const componentModel = 'scenery' in model ? model.scenery : model
   const shadowTexture = createContactShadowTexture()

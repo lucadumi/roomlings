@@ -49,7 +49,7 @@ test('the public welcome page explains the product without opening or changing a
   await page.goto('/welcome')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Share a home.Not the hassle.')
   await expect(page.locator('.welcome-feature')).toHaveCount(3)
-  await expect(page.locator('.welcome-hero')).toContainText('kitchen and bathroom')
+  await expect(page.locator('.welcome-hero')).toContainText('kitchen, bathroom and living room')
   await expect(page.locator('.welcome-feature h3')).toHaveText(['Rooms & chores.', 'Shopping & bills.', 'Balances & access.'])
   await expect(page.locator('.welcome-feature').nth(0)).toContainText('Assign chores, rotate turns')
   await expect(page.locator('.welcome-feature').nth(1)).toContainText('paid receipts')

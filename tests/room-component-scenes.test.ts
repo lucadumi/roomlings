@@ -6,8 +6,9 @@ import type { BufferGeometry, Material, Object3D } from 'three'
 import { componentCatalog, createRoomComponent, defaultRoomComponents, roomSlots } from '../shared/roomComponents.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import type { RoomId } from '../shared/rooms.ts'
-import { buildBathroomModel } from '../src/bathroomModel.ts'
-import { buildKitchenModel } from '../src/kitchenModel.ts'
+import { roomIds } from '../shared/rooms.ts'
+import { roomModels } from '../src/roomModels.ts'
+import { componentPlacements } from '../src/roomComponentModels.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { createContactShadowTexture } from '../src/lighting.ts'
@@ -26,7 +27,7 @@ function materials(root: Object3D): Material[] {
 
 function fixture(t: TestContext, roomId: RoomId, withContacts = false) {
   const room = new Group()
-  const model = roomId === 'kitchen' ? buildKitchenModel(room) : buildBathroomModel(room)
+  const model = roomModels[roomId](room)
   const componentModel = 'scenery' in model ? model.scenery : model
   const shadowTexture = withContacts ? createContactShadowTexture() : undefined
   const scene = createRoomComponentScene(room, roomId, {
@@ -45,10 +46,19 @@ function changed(components: readonly RoomComponent[], id: string, change: Parti
   return components.map((component) => component.id === id ? { ...component, ...change } : component)
 }
 
-for (const roomId of ['kitchen', 'bathroom'] as const) {
+test('reed diffusers stand on their designed surfaces instead of sinking a vertical base into them', (t) => {
+  for (const slotId of ['kitchen-drinks', 'living-room-table-top', 'living-room-windowsill'] as const) {
+    const component = createRoomComponent('reed-diffuser', slotId, `diffuser-${slotId}`)
+    const { scene } = fixture(t, component.roomId)
+    scene.update([...defaultRoomComponents().filter((item) => item.slotId !== slotId), component], 'original')
+    assert.ok(Math.abs(scene.getBounds(component.id)!.min.y - componentPlacements[slotId]!.position[1]) < 0.000001)
+  }
+})
+
+for (const roomId of roomIds) {
   test(`${roomId} defaults retain every visible primitive, transform and original finish`, (t) => {
     const room = new Group()
-    const model = roomId === 'kitchen' ? buildKitchenModel(room) : buildBathroomModel(room)
+    const model = roomModels[roomId](room)
     const componentModel = 'scenery' in model ? model.scenery : model
     room.updateMatrixWorld(true)
     const before: { mesh: Mesh; geometry: BufferGeometry; transform: number[]; color: string }[] = []

@@ -5,8 +5,10 @@ import type { RoomWorldProps } from './roomViewTypes.ts'
 
 const KitchenWorld = lazy(() => import('./KitchenWorld.tsx'))
 const BathroomWorld = lazy(() => import('./BathroomWorld.tsx'))
+const LivingRoomWorld = lazy(() => import('./LivingRoomWorld.tsx'))
 
 export const roomViews = {
   kitchen: KitchenWorld,
   bathroom: BathroomWorld,
+  'living-room': LivingRoomWorld,
 } satisfies Record<RoomId, LazyExoticComponent<ComponentType<RoomWorldProps>>>

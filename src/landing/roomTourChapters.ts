@@ -1,5 +1,6 @@
-import { Bath, CheckCheck, Droplets, Home, Layers, ListChecks, PackagePlus, ReceiptText, ShoppingBasket, Square, Toilet, Wallet } from 'lucide-react'
+import { Bath, CheckCheck, Droplets, Home, Layers, Leaf, ListChecks, PackagePlus, ReceiptText, ShoppingBasket, Sofa, Square, Toilet, Trash2, Wallet } from 'lucide-react'
 import type { BathroomFocus } from '../bathroomModel.ts'
+import type { LivingRoomFocus } from '../livingRoomModel.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import { tourChapters } from './tour.ts'
 
@@ -26,7 +27,19 @@ export const bathroomChapters = [
   { id: 'bathroom-supplies', target: 'supplies', label: 'Supply shelf', short: 'Supplies', icon: PackagePlus, title: 'Bathroom supplies.', copy: 'Add needed toiletries and cleaning products to the shared shopping list. Restocking creates no expense until a paid receipt is recorded.' },
 ] satisfies (RoomTourChapter & { target: BathroomFocus })[]
 
+export const livingRoomChapters = [
+  { id: 'living-room-room', target: 'room', label: 'Whole living room', short: 'Room', icon: Home, title: 'Your shared living room.', copy: 'A place for quiet evenings and time together. The sofa, tables and shared objects connect to the same household chores and shopping list.' },
+  { id: 'living-room-sofa', target: 'sofa', label: 'Sofa', short: 'Sofa', icon: Sofa, title: 'A sofa for everyone.', copy: 'Schedule vacuuming and washing cushion covers with a due date and a roommate rotation. A tidy state is a manual update, not a completed chore.' },
+  { id: 'living-room-surfaces', target: 'surfaces', label: 'Tables and shelves', short: 'Surfaces', icon: Square, title: 'Clear the shared surfaces.', copy: 'Keep the coffee table, TV and shelves ready for the next person. Each object can have its own cleaning routine and supply shortcuts.' },
+  { id: 'living-room-plants', target: 'plants', label: 'Plants', short: 'Plants', icon: Leaf, title: 'Share the plant care.', copy: 'Give watering and tending a regular turn. Plant food and potting soil join the shared shopping list only when you ask to restock them.' },
+  { id: 'living-room-floor', target: 'floor', label: 'Floor and rug', short: 'Floor', icon: Layers, title: 'Keep the lounge underfoot tidy.', copy: 'Assign vacuuming or mopping to a roommate or rotation. Saved completions record who did the work and advance the next turn.' },
+  { id: 'living-room-bins', target: 'bins', label: 'Bin', short: 'Bin', icon: Trash2, title: 'Take a turn with the bin.', copy: 'Set a reminder to empty the bin and add bags to the shared list when needed. Removing an object keeps its completed chore history.' },
+  { id: 'living-room-chores', target: 'chores', label: 'Cleaning caddy', short: 'Chores', icon: ListChecks, title: 'The living room routine.', copy: 'Review tasks for the whole room, their due dates and assignments. These chores stay separate from the kitchen and bathroom, in the same home.' },
+  { id: 'living-room-supplies', target: 'supplies', label: 'Supply shelf', short: 'Supplies', icon: PackagePlus, title: 'Living room supplies.', copy: 'Add floor cleaner, dusting cloths and bin bags to the household shopping list. No cost is recorded until someone records a paid receipt.' },
+] satisfies (RoomTourChapter & { target: LivingRoomFocus })[]
+
 export const roomTourChapters: Record<RoomId, readonly RoomTourChapter[]> = {
   kitchen: tourChapters.map((chapter, index) => ({ ...chapter, ...kitchenCopy[index] })),
   bathroom: bathroomChapters,
+  'living-room': livingRoomChapters,
 }

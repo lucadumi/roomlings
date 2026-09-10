@@ -2,7 +2,7 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen or bathroom without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. Both rooms open at the same 100% close-up baseline, calibrated to the former 120% view. **Whole room** still fits the full space. The toolbar remains available in both rooms, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. The kitchen and bathroom open at the same 100% close-up baseline, calibrated to the former 120% view; the living room opens on the sofa. **Whole room** still fits the full space. The toolbar remains available in every room, including when 3D cannot load.
 
 | Object | Purpose |
 | --- | --- |
@@ -18,6 +18,8 @@ Open **Rooms** for a preview menu directly beneath the button. Choose the kitche
 | Supply shelf | Add low supplies to the existing shopping list, without inventing an inventory. |
 
 The fridge visualizes purchases, not food remaining. Export the complete ledger from the receipt book.
+
+The living room has a sofa, coffee table, TV on a media unit, bookshelf, floor lamp, rug, plants and window curtains. Select the sofa for seating chores, the coffee table for surface chores, or the plant, bin and floor for their care routines. Other furniture opens its object details. The TV is a room object, not a media player. The cleaning caddy and supply shelf use the same room chores and shared shopping controls as elsewhere.
 
 The [Sage and clay palette from Coolors](https://coolors.co/ffffff-3d405b-81b29a-f2cc8f-e07a5f) replaces the app's accent colors: slate text, sage, honey and clay details. Primary buttons retain the original brick red (`#b8533b`). Pages, panels and modals stay white rather than using different colors for each feature. The house pot keeps its warm accent. The hero illustration has no backdrop; Explore scenes have white backgrounds and a divider beside the illustration.
 
@@ -37,7 +39,7 @@ Open the icon-only **Room objects** button, then choose **Edit room** inside its
 
 Select an object in the room or its card. Position buttons choose which existing copy you are using or editing. In Edit room, **Position** moves that copy between compatible locations, and **Add at another position** creates another private-preview placement. The room updates live as you choose; nothing is shared before Apply. Occupied or incompatible positions are disabled. These are designed locations, not unrestricted dragging.
 
-The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The original kitchen and bathroom remain the defaults. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
+The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The living room adds a corner or straight sofa, rectangular or round coffee table, TV, media unit, bookshelf and floor lamp. Existing kitchen and bathroom layouts stay unchanged. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
 
 Change an object's name, finish, supported model and supply suggestions. **Match room colors** uses the household palette, without an extra default-style label. Model controls appear only when there is a real choice, such as a rectangular or round table, bath or shower, different plants, or different coffee machines. Supplies have editable names and suggested quantities, not stock counts.
 
@@ -91,9 +93,9 @@ Sign in to create a household or link an existing roommate identity. Old `/kitch
 
 The short kitchen tour supports native scrolling, keyboard navigation, reduced motion and an illustrated fallback. The hero is a conceptual home illustration, not an exact floor plan.
 
-The landing page's **Explore the rooms** section uses one shared template for the kitchen and bathroom. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. Use the page's Sign in or Get started actions when you want to enter a real household. Existing kitchen chapter links remain supported, and `/#tour-bathroom` opens the bathroom exploration directly.
+The landing page's **Explore the rooms** section uses one shared template for all three rooms. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. Use the page's Sign in or Get started actions when you want to enter a real household. Existing kitchen chapter links remain supported; `/#tour-bathroom` and `/#tour-living-room` open their explorations directly.
 
-Both rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They use the same overview scale and camera angle throughout their scroll tours. A 2D loading indicator stays visible until the renderer is ready; an illustrated fallback keeps the controls available if 3D cannot load. Reduced motion keeps the room stationary while its descriptions remain navigable. The closing invitation retains one direct Start sharing CTA.
+All rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They share a camera angle and fit their measured scene areas throughout the scroll tours. A 2D loading indicator stays visible until the renderer is ready; an illustrated fallback keeps the controls available if 3D cannot load. Reduced motion keeps the room stationary while its descriptions remain navigable. The closing invitation retains one direct Start sharing CTA.
 
 The compact footer links to the home guide, room exploration and questions. Its logo returns to the start of the page without changing household access. About, Privacy, Terms and Contact are listed as planned pages, not active links.
 
@@ -101,9 +103,11 @@ The compact footer links to the home guide, room exploration and questions. Its 
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
 
-Room IDs and legacy chore areas are registered in `shared/rooms.ts`. The component catalog, fixed positions, supported variants, manual states and default supply/chore suggestions live in `shared/roomComponents.ts`; configuration and state rules live in `shared/componentChanges.ts`. `src/roomNavigation.ts` resolves routes and every room needs a renderer in `src/roomViews.ts` and a preview in `src/RoomPicker.tsx`. Add implemented rooms and components instead of placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
+Room IDs and legacy chore areas are registered in `shared/rooms.ts`. The component catalog, fixed positions, supported variants, manual states and default supply/chore suggestions live in `shared/roomComponents.ts`; configuration and state rules live in `shared/componentChanges.ts`. `src/roomNavigation.ts` resolves routes. Every room needs a view in `src/roomViews.ts`, a model in `src/roomModels.ts`, and public preview artwork and tour chapters. The model registry also drives saved room previews and object thumbnails. Add implemented rooms and components instead of placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
 New households persist their original component layout. Older JSON without `roomComponents` resolves to deterministic original fixtures without rewriting the stored household or replacing browser sessions. The first saved component change materializes that layout. Component IDs survive removal, and historical shopping/chore references remain valid independently of the currently configured supply list.
+
+Saved two-room layouts gain deterministic living room objects when read. Existing object IDs, names, versions, removed objects and care history stay intact; any saved living room record prevents reinitializing it. A subsequent save persists the expanded layout. The saved-object limit is 160 so homes at the former 120-object limit can still open with the new room.
 
 Configuration updates use `PATCH /api/household/room-components` with a room ID, changed configurations and each object's reviewed version. The existing household version and mutation receipt protect the whole atomic update. `PATCH /api/room-components/:id/state` records an allowed manual state for an installed object. Only admins may change configuration or the shared room style; all active members may update a supported manual state. Household room previews use saved configuration; public landing previews stay curated and never read personal household data.
 

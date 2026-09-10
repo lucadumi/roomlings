@@ -9,11 +9,13 @@ import type { ComponentModel } from './roomComponentTypes.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import { buildAdditionalComponentModel } from './additionalComponentModels.ts'
+import { buildLivingRoomComponentModel, livingRoomPlacements } from './livingRoomComponentModels.ts'
 
 type Position = [number, number, number]
 type Placement = { position: Position; scale?: number | Position; rotation?: number }
 
 export const componentPlacements: Partial<Record<RoomSlotId, Placement>> = {
+  ...livingRoomPlacements,
   'kitchen-table': { position: [0.73, 0, 1.14] },
   'kitchen-plant-floor': { position: [-4.29, 0.02, 1.59] },
   'kitchen-plant-counter': { position: [4.24, 1.76, -2.66], scale: 0.48 },
@@ -146,10 +148,11 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     }
   }
 
-  const additional = buildAdditionalComponentModel(component, {
+  const tools = {
     root, box, cylinder, material, finishes,
     palette: { paint, edge, wood, lightWood, cream, linen, dark, silver, tomato, leaf, glass },
-  })
+  }
+  const additional = buildLivingRoomComponentModel(component, tools) ?? buildAdditionalComponentModel(component, tools)
   if (additional) contactSize = additional.contactSize
   else switch (component.kind) {
     case 'dishwasher':

@@ -13,6 +13,7 @@ import { roomTourChapters } from './roomTourChapters.ts'
 
 const TourScene = lazy(() => import('./TourScene.tsx'))
 const BathroomTourScene = lazy(() => import('./BathroomTourScene.tsx'))
+const LivingRoomTourScene = lazy(() => import('./LivingRoomTourScene.tsx'))
 
 function roomFromHash(hash: string): RoomId | undefined {
   return roomIds.find((id) => hash === `#tour-${id}` || roomTourChapters[id].some((chapter) => hash === `#${chapter.id}`))
@@ -190,17 +191,19 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         <div className="welcome-tour-card">
           <div className="welcome-stage-shell">
             <div className="welcome-stage" ref={stage} aria-hidden="true">
-              <div className="welcome-static">{room === 'kitchen' ? <TourFallback /> : <RoomPreview roomId="bathroom" />}</div>
+              <div className="welcome-static">{room === 'kitchen' ? <TourFallback /> : <RoomPreview key={room} roomId={room} />}</div>
               {mounted && <PreviewBoundary key={room} onFailure={() => reportStatus('unavailable')}>
                 <Suspense fallback={null}>{room === 'kitchen'
                   ? <TourScene progress={progress} layout={layout} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
                     onSelectChapter={!paused ? selectChapter : undefined} />
-                  : <BathroomTourScene progress={progress} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
+                  : room === 'bathroom' ? <BathroomTourScene progress={progress} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
+                    onSelectChapter={!paused ? selectChapter : undefined} />
+                  : <LivingRoomTourScene progress={progress} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
                     onSelectChapter={!paused ? selectChapter : undefined} />
                 }</Suspense>
               </PreviewBoundary>}
             </div>
-            {mounted && status === 'loading' && <ExploreLoading label={`Loading the ${room}...`} reducedMotion={reducedMotion || paused} />}
+            {mounted && status === 'loading' && <ExploreLoading label={`Loading the ${roomCatalog[room].name.toLowerCase()}...`} reducedMotion={reducedMotion || paused} />}
           </div>
           <div className="welcome-tour-description">
             <div className="welcome-tour-details" id="tour-details">
