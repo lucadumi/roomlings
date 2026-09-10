@@ -4,9 +4,12 @@ import { billingDate, householdSchema } from '../../shared/domain.ts'
 import type { Household, Session } from '../../shared/domain.ts'
 import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { ComponentKind, RoomComponent, RoomComponentChange, RoomSlotId } from '../../shared/roomComponents.ts'
+import { roomCatalog } from '../../shared/rooms.ts'
+import type { RoomId } from '../../shared/rooms.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 import { expect, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
-import { chooseOption, openRoomEditor } from './fixtures.ts'
+import { chooseOption, openRoomEditor, placeRoomObject } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
@@ -57,24 +60,24 @@ async function openEditor(page: Page) {
   return editor
 }
 
-async function openObject(page: Page, name: string) {
+async function openObject(page: Page, name: string, roomId: RoomId = 'kitchen') {
   await page.getByRole('button', { name: 'Room objects', exact: true }).click()
   await page.getByRole('button', { name: `Open ${name} details`, exact: true }).click()
-  const panel = page.getByRole('region', { name: 'Kitchen objects', exact: true })
+  const panel = page.getByRole('region', { name: `${roomCatalog[roomId].name} objects`, exact: true })
   await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible()
   return panel
 }
 
 test('supply cards use compact adaptive columns and preserve their shopping sources', { tag: '@room' }, async ({ page, accounts, request, emptyHousehold: owner }) => {
-  const machine = await install(request, accounts, owner, 'washing-machine', 'kitchen-undercounter')
-  const table = getRoomComponents(await current(accounts, owner)).find((component) => component.slotId === 'kitchen-table')!
+  const machine = await install(request, accounts, owner, 'washing-machine', 'bathroom-laundry')
+  const basin = getRoomComponents(await current(accounts, owner)).find((component) => component.slotId === 'bathroom-sink')!
   await change(request, accounts, owner, '/household/room-components', {
-    roomId: 'kitchen', changes: [configuration(table, {
-      supplies: [...table.supplies, { id: 'shared-detergent', name: 'Laundry detergent', quantity: '2 bottles' }],
+    roomId: 'bathroom', changes: [configuration(basin, {
+      supplies: [...basin.supplies, { id: 'shared-detergent', name: 'Laundry detergent', quantity: '2 bottles' }],
     })],
   })
-  await page.goto('/kitchen')
-  const objects = await openObject(page, 'Washing machine')
+  await page.goto(roomPath('bathroom'))
+  const objects = await openObject(page, 'Washing machine', 'bathroom')
   const grid = objects.locator('.restock-grid')
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
@@ -96,7 +99,7 @@ test('supply cards use compact adaptive columns and preserve their shopping sour
 
   await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
   await page.getByRole('button', { name: 'Restock room supplies', exact: true }).click()
-  const supplies = page.getByRole('region', { name: 'Kitchen supplies', exact: true })
+  const supplies = page.getByRole('region', { name: 'Bathroom supplies', exact: true })
   const laundry = supplies.getByRole('article', { name: 'Laundry detergent', exact: true })
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
@@ -116,7 +119,7 @@ test('supply cards use compact adaptive columns and preserve their shopping sour
   await expect(laundry.getByRole('button', { name: 'Restock Laundry detergent', exact: true })).toHaveCount(0)
   const saved = await current(accounts, owner)
   expect(saved.shopping.items.find((item) => item.name === 'Laundry detergent')?.componentSources).toEqual([{
-    componentId: machine.id, supplyId: 'laundry-detergent', roomId: 'kitchen', componentName: machine.name,
+    componentId: machine.id, supplyId: 'laundry-detergent', roomId: 'bathroom', componentName: machine.name,
   }])
   expect(saved.expenses).toEqual([])
   expect(saved.settlements).toEqual([])
@@ -137,7 +140,7 @@ test('room drafts cancel cleanly and keep their model, finish, supplies and iden
   await openEditor(page)
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
   await editor.getByLabel('Find an object', { exact: true }).fill('Coffee machine')
-  await editor.getByRole('button', { name: 'Add Coffee machine', exact: true }).click()
+  await placeRoomObject(editor, 'Coffee machine')
   await editor.getByLabel('Object name', { exact: true }).fill('Morning coffee')
   await chooseOption(editor.getByRole('combobox', { name: 'Model', exact: true }), 'capsule')
   await chooseOption(editor.getByRole('combobox', { name: 'Finish', exact: true }), 'tomato')
@@ -184,7 +187,7 @@ test('daily object states, shopping shortcuts and chore suggestions use the exis
   const dishwasher = await install(request, accounts, owner, 'dishwasher', 'kitchen-undercounter')
   await page.goto('/kitchen')
   const panel = await openObject(page, 'Dishwasher')
-  await expect(panel).toContainText('not detected by an appliance')
+  await expect(panel).toContainText('Manual status only')
   await chooseOption(panel.getByRole('combobox', { name: 'Manual state', exact: true }), 'running')
   await expect(panel.getByRole('combobox', { name: 'Manual state', exact: true })).toHaveAttribute('data-value', 'running')
   let household = await current(accounts, owner)
@@ -273,7 +276,7 @@ test('a room conflict keeps edited fields, includes unedited remote settings, an
   await expect(editor.getByRole('combobox', { name: 'Finish', exact: true })).toHaveAttribute('data-value', 'sage')
   await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
   await editor.getByRole('button', { name: 'Edit Plant', exact: true }).click()
-  await editor.getByRole('group', { name: 'Plant positions', exact: true }).getByRole('button', { name: 'Counter planter', exact: true }).click()
+  await editor.getByRole('group', { name: 'Plant objects', exact: true }).getByRole('button', { name: 'Fresh herbs', exact: true }).click()
   await expect(editor.getByLabel('Object name', { exact: true })).toHaveValue('Fresh herbs')
   const applying = page.waitForRequest('**/api/household/room-components')
   await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
@@ -297,23 +300,25 @@ test('shared slots require removal choices and restoring an object reuses its sa
   await page.goto('/kitchen')
   const editor = await openEditor(page)
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-  await editor.getByLabel('Find an object', { exact: true }).fill('Washing machine')
-  const washingMachine = editor.getByRole('article', { name: 'Washing machine', exact: true })
-  await expect(washingMachine).toContainText('occupied by Dishwasher')
-  await expect(washingMachine.getByRole('button', { name: 'Add Washing machine', exact: true })).toHaveCount(0)
-  await washingMachine.getByRole('button', { name: 'Review Dishwasher', exact: true }).click()
+  await editor.getByLabel('Find an object', { exact: true }).fill('Oven')
+  const oven = editor.getByRole('article', { name: 'Oven', exact: true })
+  await expect(oven).toHaveAttribute('data-availability', 'available')
+  await expect(oven.getByRole('button', { name: 'Preview Oven', exact: true })).toBeVisible()
+  await editor.getByLabel('Find an object', { exact: true }).fill('')
+  await editor.getByRole('button', { name: /^In this room/ }).click()
+  await editor.getByRole('button', { name: 'Edit Dishwasher', exact: true }).click()
   await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
   await expect(editor.getByRole('button', { name: 'Remove from preview', exact: true })).toBeDisabled()
   await chooseOption(editor.getByRole('combobox', { name: 'Linked chores', exact: true }), 'archive')
   await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-  await editor.getByRole('button', { name: 'Add Washing machine', exact: true }).click()
+  await placeRoomObject(editor, 'Oven')
   await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
   await expect(editor).toHaveCount(0)
   let household = await current(accounts, owner)
   expect(getRoomComponents(household).find((component) => component.id === dishwasher.id)?.installed).toBe(false)
   expect(household.chores.items[0].archived).toBe(true)
-  const replacement = getRoomComponents(household).find((component) => component.kind === 'washing-machine')!
+  const replacement = getRoomComponents(household).find((component) => component.kind === 'oven')!
   expect(replacement.installed).toBe(true)
   await page.getByRole('button', { name: 'Chores', exact: true }).click()
   await page.getByRole('button', { name: 'Archived', exact: true }).click()
@@ -321,12 +326,12 @@ test('shared slots require removal choices and restoring an object reuses its sa
   await expect(page.getByRole('button', { name: 'Restore chore', exact: true })).toBeDisabled()
 
   await openEditor(page)
-  await editor.getByRole('button', { name: 'Edit Washing machine', exact: true }).click()
+  await editor.getByRole('button', { name: 'Edit Oven', exact: true }).click()
   await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
   await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
   await editor.getByLabel('Find an object', { exact: true }).fill('Dishwasher')
-  await editor.getByRole('button', { name: 'Restore Dishwasher', exact: true }).click()
+  await placeRoomObject(editor, 'Dishwasher', true)
   await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
   await expect(editor).toHaveCount(0)
   household = await current(accounts, owner)

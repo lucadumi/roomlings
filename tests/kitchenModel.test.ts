@@ -1,13 +1,15 @@
 import { describe, it } from 'node:test'
 import type { TestContext } from 'node:test'
 import assert from 'node:assert/strict'
-import { Box3, Camera, Group, Light, Mesh, MeshStandardMaterial, PointLight, Vector3 } from 'three'
+import { Box3, Camera, Group, Light, Mesh, MeshStandardMaterial, PointLight, Raycaster, Vector3 } from 'three'
 import type { BufferGeometry, Object3D } from 'three'
 import type { Category, RoomStyle } from '../shared/domain.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
 import { applyRoomStyle, roomAccents, roomPresets } from '../src/roomStyles.ts'
 import { kitchenUtilityAnchors } from '../src/room.ts'
+import { kitchenLayout, kitchenWorktops, kitchenShelves } from '../src/roomLayout.ts'
+import { visibleRoomBounds } from '../src/roomComponentScene.ts'
 
 function modelFor(context: TestContext, style: RoomStyle = 'original') {
   const room = new Group()
@@ -33,6 +35,58 @@ function closeTo(actual: Vector3, expected: [number, number, number]) {
 }
 
 describe('shared kitchen model', () => {
+  it('keeps kettle framing stable while steam rises and fades', (context) => {
+    const { room, scenery } = modelFor(context)
+    const kettle = scenery.actors.get('brew')!
+    const before = visibleRoomBounds(room, kettle)
+    for (const puff of scenery.steam) {
+      puff.visible = true
+      puff.position.y += 1
+      puff.scale.setScalar(2)
+    }
+    assert.deepEqual(visibleRoomBounds(room, kettle), before)
+  })
+
+  it('moves the kettle lid and its knob together without lifting the kettle base', (context) => {
+    const { room, scenery } = modelFor(context)
+    const kettle = scenery.actors.get('brew')!
+    const lid = scenery.kettleLid
+    const knob = lid.getObjectByName('Kettle lid knob')!
+    assert.ok(lid instanceof Group)
+    assert.equal(knob.parent, lid)
+    assert.ok(scenery.preserved.has(lid))
+    batchStaticMeshes(room, scenery.preserved)
+    const base = kettle.getWorldPosition(new Vector3())
+    const start = knob.getWorldPosition(new Vector3())
+    lid.position.y += 0.02
+    room.updateMatrixWorld(true)
+    assert.ok(Math.abs(knob.getWorldPosition(new Vector3()).y - start.y - 0.02) < 0.000001)
+    assert.ok(kettle.getWorldPosition(new Vector3()).distanceTo(base) < 0.000001)
+    assert.equal(lid.parent, kettle)
+  })
+
+  it('places the stove on the right-hand return and rests the kettle directly on a burner', (context) => {
+    const { scenery } = modelFor(context)
+    const hob = scenery.componentBindings.get('kitchen-hob')!.root
+    const kettle = scenery.actors.get('brew')!
+    const hobBounds = new Box3().setFromObject(hob)
+    const kettleBounds = new Box3().setFromObject(kettle)
+    const side = kitchenWorktops[1]
+    assert.ok(hobBounds.min.x >= side.position[0] - side.width / 2)
+    assert.ok(hobBounds.max.x <= side.position[0] + side.width / 2)
+    assert.ok(hobBounds.min.z >= side.position[2] - side.depth / 2)
+    assert.ok(hobBounds.max.z <= side.position[2] + side.depth / 2)
+    closeTo(hob.getWorldPosition(new Vector3()), kitchenLayout.hob)
+    closeTo(kettle.getWorldPosition(new Vector3()), kitchenLayout.kettle)
+    assert.equal(hob.rotation.y, -Math.PI / 2)
+    const ray = new Raycaster(new Vector3(kitchenLayout.kettle[0], 4, kitchenLayout.kettle[2]), new Vector3(0, -1, 0))
+    const burner = ray.intersectObject(hob, true)[0]
+    assert.ok(burner?.object instanceof Mesh)
+    assert.equal(burner.object.geometry.type, 'CylinderGeometry')
+    assert.ok(Math.abs(burner.point.y - kettleBounds.min.y) < 0.0001, 'The kettle must touch the burner rather than float above it')
+    assert.ok(!hobBounds.intersectsBox(new Box3().setFromObject(scenery.utilityActors.get('sink')!)))
+  })
+
   it('keeps chore fixtures and supply objects interactive after static batching', (context) => {
     const { room, scenery } = modelFor(context)
     assert.deepEqual([...scenery.utilityActors.keys()].sort(), ['chores', 'counters', 'floor', 'sink', 'supplies'])
@@ -74,18 +128,18 @@ describe('shared kitchen model', () => {
     const { room, kitchen, iceTray, interiorLight, scenery } = modelFor(context)
     assert.equal(kitchen.parent, room)
     assert.deepEqual(kitchen.userData, { action: 'fridge' })
-    closeTo(kitchen.position, [-2.7, 0.025, -2.25])
+    closeTo(kitchen.position, [-3.2, 0.025, -2.25])
     assert.equal(meshCount(kitchen), 95)
     const bounds = new Box3().setFromObject(kitchen, true)
-    closeTo(bounds.min, [-3.8, 0.055, -3.1])
-    closeTo(bounds.max, [-1.6, 3.78, -1.13])
+    closeTo(bounds.min, [-4.3, 0.055, -3.1])
+    closeTo(bounds.max, [-2.1, 3.78, -1.13])
 
     assert.ok(iceTray instanceof Group)
     assert.equal(iceTray.parent, kitchen)
     assert.equal(meshCount(iceTray), 7)
     const iceBounds = new Box3().setFromObject(iceTray, true)
-    closeTo(iceBounds.min, [-2.89, 2.725, -2.525])
-    closeTo(iceBounds.max, [-2.11, 2.895, -1.975])
+    closeTo(iceBounds.min, [-3.39, 2.725, -2.525])
+    closeTo(iceBounds.max, [-2.61, 2.895, -1.975])
     iceTray.traverse((object) => {
       if (object instanceof Mesh) {
         assert.equal(object.castShadow, true)
@@ -120,11 +174,11 @@ describe('shared kitchen model', () => {
     closeTo(lower.position, [-1.1, 1.5, 0.88])
     closeTo(upper.position, [-1.1, 3.19, 0.88])
     const lowerBounds = new Box3().setFromObject(lower, true)
-    closeTo(lowerBounds.min, [-3.8, 0.39, -1.815])
-    closeTo(lowerBounds.max, [-1.6, 2.66, -1.13])
+    closeTo(lowerBounds.min, [-4.3, 0.39, -1.815])
+    closeTo(lowerBounds.max, [-2.1, 2.66, -1.13])
     const upperBounds = new Box3().setFromObject(upper, true)
-    closeTo(upperBounds.min, [-3.8, 2.73, -1.515])
-    closeTo(upperBounds.max, [-1.6, 3.7, -1.13])
+    closeTo(upperBounds.min, [-4.3, 2.73, -1.515])
+    closeTo(upperBounds.max, [-2.1, 3.7, -1.13])
 
     const doorFoods = foods.filter(({ group }) => group.parent === lower)
     assert.deepEqual(doorFoods.map(({ category }) => category).sort(), ['drinks', 'pantry'])
@@ -136,6 +190,34 @@ describe('shared kitchen model', () => {
     room.updateMatrixWorld(true)
     assert.ok(upper.matrixWorld.equals(upperBefore))
     assert.ok(grocery.getWorldPosition(new Vector3()).distanceTo(groceryBefore) > 0.1)
+  })
+
+  it('leaves the complete fridge door sweep clear of the L counter, shelves and cleaning caddy', (context) => {
+    const { room, scenery, doors } = modelFor(context)
+    const obstacles = [...kitchenWorktops.slice(1), ...kitchenShelves].map((top) => new Box3(
+      new Vector3(top.position[0] - top.width / 2, 0, top.position[2] - top.depth / 2),
+      new Vector3(top.position[0] + top.width / 2, top.top, top.position[2] + top.depth / 2),
+    ))
+    obstacles.push(new Box3().setFromObject(scenery.utilityActors.get('chores')!))
+    room.updateMatrixWorld(true)
+    for (const door of doors) {
+      let radius = 0
+      door.traverse((object) => {
+        if (!(object instanceof Mesh)) return
+        const points = object.geometry.getAttribute('position')
+        for (let index = 0; index < points.count; index++) {
+          const point = door.worldToLocal(new Vector3().fromBufferAttribute(points, index).applyMatrix4(object.matrixWorld))
+          radius = Math.max(radius, Math.hypot(point.x, point.z))
+        }
+      })
+      const hinge = door.getWorldPosition(new Vector3())
+      for (const obstacle of obstacles) {
+        const x = Math.max(obstacle.min.x, Math.min(obstacle.max.x, hinge.x))
+        const z = Math.max(obstacle.min.z, Math.min(obstacle.max.z, hinge.z))
+        assert.ok(Math.hypot(x - hinge.x, z - hinge.z) > radius + 0.1,
+          'Fitted furniture must clear the actual hinge radius, not just the closed and fully open door poses')
+      }
+    }
   })
 
   it('retains every category group, grocery piece, shelf position and visibility index', (context) => {
@@ -198,7 +280,7 @@ describe('shared kitchen model', () => {
     assert.equal(scenery.receipts.length, 10)
     assert.equal(scenery.steam.length, 3)
     assert.equal(scenery.plants.length, 2)
-    assert.equal(scenery.contacts.length, 9)
+    assert.equal(scenery.contacts.length, 10)
     for (const coin of scenery.coins) assert.equal(coin.parent, scenery.actors.get('budget'))
     for (const portrait of scenery.portraits) assert.equal(portrait.parent, scenery.actors.get('roommates'))
     for (const receipt of scenery.receipts) assert.equal(receipt.parent, scenery.actors.get('ledger'))

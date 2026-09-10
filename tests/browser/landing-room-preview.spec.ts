@@ -14,6 +14,20 @@ test('the hero keeps only the home illustration and links to the room tour', asy
   await expect(hero.getByRole('img', { name: 'Illustration of a shared home', exact: true })).toBeVisible()
   await expect(hero.getByRole('radio')).toHaveCount(0)
   await expect(hero.locator('img')).toHaveCount(0)
+  const artwork = await hero.locator('.welcome-home-illustration').evaluate((element) => {
+    if (!(element instanceof SVGSVGElement)) throw new Error('The home illustration is missing.')
+    const bounds = element.getBBox()
+    const view = element.viewBox.baseVal
+    const scale = element.getScreenCTM()!.a
+    const width = element.getBoundingClientRect().width
+    const oldScale = Math.min(width / 750, width * 0.8 / 635)
+    return {
+      contained: bounds.x > view.x && bounds.y > view.y && bounds.x + bounds.width < view.x + view.width && bounds.y + bounds.height < view.y + view.height,
+      enlargement: scale / oldScale,
+    }
+  })
+  expect(artwork.contained).toBe(true)
+  expect(artwork.enlargement).toBeGreaterThanOrEqual(1.15)
   const tourLink = hero.getByRole('link', { name: 'Explore rooms', exact: true })
   await expect(tourLink).toHaveAttribute('href', '#tour')
   await expect(tourLink).toHaveCSS('border-top-width', '0px')

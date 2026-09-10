@@ -3,7 +3,8 @@ import ChoreRoomWorld from './ChoreRoomWorld.tsx'
 import type { ChoreRoomConfig, ChoreRoomWorldProps } from './ChoreRoomWorld.tsx'
 import { bathroomFocusForRequest, bathroomFraming, bathroomLabels, bathroomTargets, bathroomTourFraming, buildBathroomModel } from './bathroomModel.ts'
 import type { BathroomTarget } from './bathroomModel.ts'
-import { cameraFraming, roomCameraZoom } from './camera.ts'
+import { fitRoomBounds, roomCameraZoom } from './camera.ts'
+import { bathroomLayout } from './roomLayout.ts'
 import { bathroomTargetSlots } from './roomComponentScene.ts'
 
 const bathroomConfig: ChoreRoomConfig<BathroomTarget> = {
@@ -21,15 +22,15 @@ const bathroomConfig: ChoreRoomConfig<BathroomTarget> = {
   framing: bathroomFraming,
   cameraZoom: roomCameraZoom,
   tourFraming: bathroomTourFraming,
-  reducedTourFraming: (width, height) => cameraFraming(width, height, 'room', true),
-  lampPosition: [0.15, 3.9, -2.7],
+  reducedTourFraming: fitRoomBounds,
+  lampPosition: [bathroomLayout.mirror[0], 3.9, bathroomLayout.mirror[2] + 0.35],
   icon: Bath,
   copy: {
     name: 'bathroom',
     room: 'The bathroom',
     preview: 'Interactive bathroom preview. Select a fixture to explore its household chores or supplies.',
-    interactive: 'Interactive low-poly shared bathroom. Select the sink, mirror, toilet, bath or floor for chores, the cleaning caddy for room chores, or the shelf to restock supplies. Drag to turn, scroll or pinch to zoom.',
-    editing: 'Bathroom editing preview. Select an object to edit its settings in its fixed position, or use the room objects list. Drag to turn, scroll or pinch to zoom.',
+    interactive: 'Interactive bathroom. Object plus markers open chores. Select the supply shelf to restock. Drag to turn 360 degrees, scroll or pinch to zoom.',
+    editing: 'Bathroom editing preview. Use the Components menu to edit objects. Drag to turn 360 degrees, scroll or pinch to zoom.',
     objects: 'Objects in your bathroom',
     unavailable: 'The 3D bathroom is unavailable.',
     restockHint: 'Restock bathroom supplies',

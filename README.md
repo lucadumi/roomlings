@@ -16,7 +16,7 @@ The room's objects open these tools, and a toolbar keeps them available without 
 
 The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, mug tree, record player, board game and reed diffuser. **Rooms** opens a compact preview menu directly beneath its button.
 
-The living room opens on a corner sofa, with a coffee table, TV and media unit, bookshelf, reading lamp, rug and curtained window. Its objects share the same chores, shopping list and ledger as the kitchen and bathroom. Existing saved layouts gain this room without resetting their furniture or browser access.
+The living room includes a corner sofa, coffee table, TV and media unit, bookshelf, reading lamp, rug and curtained window. All three rooms use the same starting camera scale. Their objects share the same chores, shopping list and ledger. Existing saved layouts gain the living room without resetting their furniture or browser access.
 
 ## Run locally
 

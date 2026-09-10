@@ -1,7 +1,8 @@
 import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
-import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
+import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { kitchenLayout } from '../../src/roomLayout.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { localDate } from '../../shared/domain.ts'
 import { createHousehold, openGroceryForm, savedKitchen } from './fixtures.ts'
@@ -9,26 +10,39 @@ import { createHousehold, openGroceryForm, savedKitchen } from './fixtures.ts'
 test.use({ providerEnabled: false })
 
 async function frameRoom(page: Page) {
-  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await page.evaluate(() => new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   }))
-  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-framing', 'whole')
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-framing', 'close')
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
 }
 
 async function clickRoomPoint(page: Page, position: [number, number, number]) {
-  const box = await page.locator('.world-canvas').boundingBox()
-  if (!box) throw new Error('The kitchen canvas is not visible.')
-  const framing = cameraFraming(box.width, box.height, 'room', true)
-  const aspect = box.width / box.height
-  const camera = new OrthographicCamera(-framing.halfHeight * aspect, framing.halfHeight * aspect, framing.halfHeight, -framing.halfHeight, 0.1, 100)
+  const layout = await page.locator('.kitchen-world').evaluate((element) => {
+    const canvas = element.querySelector('.world-canvas')!.getBoundingClientRect()
+    const stage = element.getBoundingClientRect()
+    const controls = element.querySelector('.world-camera-controls')!.getBoundingClientRect()
+    return { x: canvas.x, y: canvas.y, width: canvas.width, height: canvas.height,
+      panelOpen: element.closest('.game-home')?.getAttribute('data-panel-open') === 'true',
+      area: { x: stage.x, y: stage.y, width: stage.width, height: stage.height },
+      controls: { x: controls.x, y: controls.y, width: controls.width, height: controls.height },
+    }
+  })
+  const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
+    : { x: 0, y: 0, width: layout.width, height: layout.height }
+  const framing = roomEntryFraming(layout.width, layout.height, area)
+  const zoom = roomCameraZoom(1, true, 'kitchen')
+  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
+  const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+  camera.zoom = zoom
+  camera.updateProjectionMatrix()
   const center = new Vector3(...framing.center)
   camera.position.copy(center).add(new Vector3(...baseCameraOffset))
   camera.lookAt(center)
   camera.updateMatrixWorld()
   const projected = new Vector3(...position).project(camera)
-  await page.mouse.click(box.x + (projected.x * 0.5 + 0.5) * box.width, box.y + (-projected.y * 0.5 + 0.5) * box.height)
+  await page.mouse.click(layout.x + (projected.x * 0.5 + 0.5) * layout.width, layout.y + (-projected.y * 0.5 + 0.5) * layout.height)
 }
 
 test('fridge, expenses, repayment records, and reload persistence', async ({ page, populatedHousehold: _household }) => {
@@ -209,6 +223,7 @@ test('budgets, category filtering, month navigation, and complete ledger export'
 })
 
 test.describe('room controls', { tag: '@room' }, () => {
+  test.use({ reducedMotion: 'reduce' })
   test.beforeEach(async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/kitchen')
@@ -224,7 +239,7 @@ test.describe('room controls', { tag: '@room' }, () => {
 
   test('zoom can return to a whole-room view', async ({ page }) => {
     await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-    await expect(page.locator('.world-camera-controls')).toContainText('120%')
+    await expect(page.locator('.world-camera-controls')).toContainText('110%')
     await frameRoom(page)
     await expect(page.locator('.world-camera-controls')).toContainText('100%')
   })
@@ -244,14 +259,16 @@ test.describe('room controls', { tag: '@room' }, () => {
     { action: 'settle', role: 'region', title: 'Keep it even.' },
   ] as const
 
-  for (const { action, role, title } of hotspots) {
-    test(`${action} opens its tool and returns to the room`, async ({ page }) => {
+  for (const { action } of hotspots) {
+    test(`${action} marker opens object chores and returns to the room`, async ({ page }) => {
       await frameRoom(page)
-      await page.locator(`.hotspot-${action}`).click()
-      await expect(page.getByRole(role, { name: title, exact: true })).toBeVisible()
-      await expect(page.locator('.kitchen-world')).toHaveAttribute('data-focus', action)
+      const marker = page.locator(`.hotspot-${action}`)
+      const id = await marker.getAttribute('data-component-id')
+      await marker.click()
+      await expect(page.locator('.chores-panel')).toBeVisible()
+      await expect(page.getByRole('combobox', { name: 'Chore object', exact: true })).toHaveAttribute('data-value', id!)
       await page.keyboard.press('Escape')
-      await expect(page.getByRole(role, { name: title, exact: true })).toHaveCount(0)
+      await expect(page.locator('.chores-panel')).toHaveCount(0)
       await frameRoom(page)
     })
   }
@@ -274,12 +291,13 @@ test('the ledger remains usable when WebGL is unavailable', async ({ page, popul
 })
 
 test('the grocery bag and receipt book meshes work without clickable labels', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/kitchen')
   await expect(page.locator('.hotspot-stock')).toBeVisible()
   await frameRoom(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
-  await clickRoomPoint(page, [-0.4, 1.92, 1.37])
+  await clickRoomPoint(page, [kitchenLayout.stock[0], kitchenLayout.stock[1] + 0.41, kitchenLayout.stock[2] + 0.27])
   await expect(page.getByRole('region', { name: 'The shopping bag.', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Record without a list', exact: true }).click()
   await expect(page.getByRole('dialog')).toContainText('What is in the bag?')
@@ -289,7 +307,7 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
   await frameRoom(page)
-  await clickRoomPoint(page, [0.96, 1.64, 1.65])
+  await clickRoomPoint(page, [kitchenLayout.ledger[0], kitchenLayout.ledger[1] + 0.1, kitchenLayout.ledger[2]])
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
@@ -300,7 +318,7 @@ test('the kitchen ignores nonvisual household refreshes while paused and still r
     const original = WebGL2RenderingContext.prototype.drawElements
     Object.defineProperty(WebGL2RenderingContext.prototype, 'drawElements', {
       value(this: WebGL2RenderingContext, ...args: Parameters<WebGL2RenderingContext['drawElements']>) {
-        draws++
+        if (this.canvas instanceof HTMLCanvasElement && this.canvas.closest('.world-canvas')) draws++
         return Reflect.apply(original, this, args)
       },
     })
@@ -380,7 +398,8 @@ test('wheel zoom and the kettle respond without changing the household ledger', 
   await page.goto('/kitchen')
   await expect(page.locator('.world-canvas canvas')).toBeVisible()
   const before = await page.locator('.fund-trigger strong').innerText()
-  await page.mouse.move(550, 330)
+  await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+  await page.locator('.world-canvas canvas').hover()
   await page.mouse.wheel(0, -180)
   await expect(page.locator('.world-camera-controls')).not.toContainText('100%')
   await page.locator('.world-kettle-toggle').click()

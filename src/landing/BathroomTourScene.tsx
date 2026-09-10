@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { RefObject } from 'react'
 import BathroomWorld from '../BathroomWorld.tsx'
 import { bathroomChapters } from './roomTourChapters.ts'
+import { sharedTourOverviewBounds } from './tourGeometry.ts'
 import type { TourStatus } from './TourScene.tsx'
 
 const stops = bathroomChapters.map((chapter) => chapter.target)
@@ -11,7 +12,7 @@ export default function BathroomTourScene({ progress, wake, reducedMotion, onSta
   progress: RefObject<number>; wake: RefObject<(() => void) | null>; reducedMotion: boolean
   onStatus: (status: TourStatus) => void; onSelectChapter?: (index: number) => void
 }) {
-  const tour = useMemo(() => ({ progress, wake, stops }), [progress, wake])
+  const tour = useMemo(() => ({ progress, wake, stops, overviewBounds: sharedTourOverviewBounds() }), [progress, wake])
   return <BathroomWorld preview roomStyle="original" paused={!onSelectChapter} panelOpen={false} dueChores={{}}
     motionReduced={reducedMotion} focusRequest={initialFocus} onStatus={onStatus} tour={tour}
     onOpenChores={(area) => {

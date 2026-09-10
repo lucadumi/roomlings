@@ -55,6 +55,34 @@ test('preview finishes do not recolor the shared original model and nonvisual ed
   } finally { red.dispose(); original.dispose() }
 })
 
+test('a rotated return position retains the same readable model orientation in its thumbnail', (context) => {
+  context.after(clearComponentThumbnails)
+  const counter = buildComponentThumbnail(createRoomComponent('stand-mixer', 'kitchen-coffee', 'counter-mixer'), 'original')
+  const fitted = buildComponentThumbnail(createRoomComponent('stand-mixer', 'kitchen-stand-mixer', 'return-mixer'), 'original')
+  try {
+    assert.ok(counter.bounds.min.distanceTo(fitted.bounds.min) < 0.000001)
+    assert.ok(counter.bounds.max.distanceTo(fitted.bounds.max) < 0.000001)
+    const vertices = (root: Object3D) => {
+      const result: Vector3[] = []
+      root.traverseVisible((object) => {
+        if (!(object instanceof Mesh)) return
+        const points = object.geometry.getAttribute('position')
+        for (let index = 0; index < points.count; index++) {
+          result.push(new Vector3().fromBufferAttribute(points, index).applyMatrix4(object.matrixWorld))
+        }
+      })
+      return result
+    }
+    const original = vertices(counter.root)
+    const moved = vertices(fitted.root)
+    assert.equal(original.length, moved.length)
+    assert.ok(original.every((point, index) => point.distanceTo(moved[index]) < 0.000001))
+  } finally {
+    counter.dispose()
+    fitted.dispose()
+  }
+})
+
 test('availability distinguishes saved objects, unsaved placements and occupied shared positions', () => {
   const saved = defaultRoomComponents()
   assert.equal(componentAvailability('dishwasher', 'kitchen', saved, saved).status, 'available')
@@ -62,6 +90,7 @@ test('availability distinguishes saved objects, unsaved placements and occupied 
   const draft = [...saved, dishwasher]
   assert.equal(componentAvailability('dishwasher', 'kitchen', draft, saved).status, 'preview')
   assert.equal(componentAvailability('washing-machine', 'kitchen', draft, saved).status, 'occupied')
+  assert.equal(componentAvailability('washing-machine', 'kitchen', draft, saved).free, 0)
   assert.equal(componentAvailability('washing-machine', 'bathroom', draft, saved).status, 'available')
   assert.equal(componentAvailability('dishwasher', 'kitchen', draft, draft).status, 'placed')
   assert.equal(componentAvailability('dishwasher', 'kitchen', saved, draft).label, 'Available in preview')

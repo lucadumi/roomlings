@@ -1,6 +1,6 @@
 import {
-  CylinderGeometry, DodecahedronGeometry, Group, Mesh, MeshStandardMaterial,
-  PointLight, SphereGeometry, TorusGeometry,
+  CylinderGeometry, DodecahedronGeometry, ExtrudeGeometry, Group, Mesh, MeshStandardMaterial,
+  PointLight, Shape, SphereGeometry, TorusGeometry,
 } from 'three'
 import { memberColors } from '../shared/domain.ts'
 import type { RoomStyle } from '../shared/domain.ts'
@@ -8,6 +8,9 @@ import { daylight, eveningLight } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
+import { componentPlacements, kitchenCabinetBays, kitchenLayout, kitchenReturnBays, kitchenShelves, kitchenWorktops, roomFootprints, roomShellLayout } from './roomLayout.ts'
+import { createRoomWallGroup } from './roomCutaway.ts'
+import { buildRoomWalls } from './roomShell.ts'
 
 export type KitchenAction = 'stock' | 'ledger' | 'budget' | 'roommates' | 'settle'
 export type SceneAction = KitchenAction | 'fridge' | 'light' | 'brew'
@@ -20,18 +23,18 @@ export type Shapes = {
 }
 
 export const sceneAnchors: { action: KitchenAction | 'brew'; label: string; position: [number, number, number] }[] = [
-  { action: 'stock', label: 'Shopping bag', position: [-0.45, 2.85, 1.08] },
-  { action: 'ledger', label: 'Receipt book', position: [0.8, 1.6, 2.1] },
-  { action: 'budget', label: 'The house pot', position: [0, 2.75, -2.35] },
-  { action: 'roommates', label: 'Your people', position: [3.7, 4.65, -3.15] },
-  { action: 'settle', label: 'Settle up', position: [2.35, 1.9, 1.45] },
-  { action: 'brew', label: 'Put the kettle on', position: [1.65, 2.5, -2.45] },
+  { action: 'stock', label: 'Shopping bag', position: [-0.54, 2.85, 0.65] },
+  { action: 'ledger', label: 'Receipt book', position: [-0.18, 1.85, 1.9] },
+  { action: 'budget', label: 'The house pot', position: [1.7, 2.55, 0.77] },
+  { action: 'roommates', label: 'Your people', position: [4.3, 4.3, -3.15] },
+  { action: 'settle', label: 'Settle up', position: [1.85, 1.9, 1.52] },
+  { action: 'brew', label: 'Put the kettle on', position: [kitchenLayout.kettle[0], 2.55, kitchenLayout.kettle[2]] },
 ]
 
 export const kitchenUtilityAnchors: { utility: KitchenUtility; label: string; position: [number, number, number] }[] = [
-  { utility: 'chores', label: 'Kitchen chores', position: [-1.55, 1.2, -0.45] },
-  { utility: 'supplies', label: 'Kitchen supplies', position: [-4.55, 2.55, -1.8] },
-  { utility: 'sink', label: 'Sink chores', position: [3.35, 2.55, -2.56] },
+  { utility: 'chores', label: 'Kitchen chores', position: [-3.7, 1.2, 2.78] },
+  { utility: 'supplies', label: 'Kitchen supplies', position: [-5.08, 2.55, -1.8] },
+  { utility: 'sink', label: 'Sink chores', position: [3.5, 2.55, -2.56] },
 ]
 
 export function buildRoom(room: Group, { material, box, cylinder }: Shapes, style: RoomStyle = 'original') {
@@ -83,34 +86,36 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     return group
   }
 
-  box(room, [10.5, 0.25, 6.7], [0, -0.15, 0], lightWood, 0.14)
+  const footprint = roomFootprints.kitchen
+  const { outer } = roomShellLayout('kitchen')
+  box(room, [outer.right - outer.left, 0.25, outer.front - outer.back],
+    [(outer.left + outer.right) / 2, -0.15, (outer.back + outer.front) / 2], lightWood, 0.14)
   const floor = utility('floor', [0, 0, 0])
-  for (let x = 0; x < 10; x++) {
+  const tileWidth = (footprint.width - 0.26) / 11
+  const tileDepth = (footprint.depth - 0.27) / 6
+  for (let x = 0; x < 11; x++) {
     for (let z = 0; z < 6; z++) {
-      const square = box(floor, [1.015, 0.025, 1.075], [-4.58 + x * 1.017, -0.008, -2.69 + z * 1.078], (x + z) % 2 ? tile : tileAlternate)
+      const square = box(floor, [tileWidth - 0.003, 0.025, tileDepth - 0.003],
+        [(x - 5) * tileWidth, -0.008, footprint.centerZ + (z - 2.5) * tileDepth], (x + z) % 2 ? tile : tileAlternate)
       square.castShadow = false
     }
   }
-  box(room, [10.5, 4.65, 0.16], [0, 2.2, -3.32], plaster, 0.055)
-  box(room, [0.16, 4.65, 3.3], [-5.16, 2.2, -1.75], plaster, 0.055)
-  box(room, [10.37, 0.13, 0.055], [0, 0.15, -3.21], wallTrim)
-  box(room, [0.06, 0.13, 3.2], [-5.055, 0.15, -1.72], wallTrim)
-  for (let x = 0; x < 10; x++) box(room, [0.015, 1.18, 0.015], [-4.6 + x * 1.02, 0.8, -3.227], wallTrim)
-  box(room, [10.3, 0.07, 0.055], [0, 1.43, -3.21], wallTrim)
+  buildRoomWalls(room, 'kitchen', { name: 'Kitchen', centerY: 2.2, wall: plaster, trim: wallTrim, lowerPanel: plaster })
 
   const window = actor('light', [0.85, 3.26, -3.2])
-  box(window, [2.3, 1.85, 0.1], [0, 0, 0], wood, 0.045)
-  box(window, [2.1, 1.63, 0.055], [0, 0, 0.065], sky)
-  box(window, [0.065, 1.63, 0.06], [0, 0, 0.115], paper)
-  box(window, [2.1, 0.065, 0.06], [0, 0, 0.115], paper)
-  box(window, [2.5, 0.12, 0.35], [0, -0.96, 0.05], lightWood, 0.015)
+  const windowPane = createRoomWallGroup(window, 'back', 'Kitchen window cutaway')
+  box(windowPane, [2.3, 1.85, 0.1], [0, 0, 0], wood, 0.045)
+  box(windowPane, [2.1, 1.63, 0.055], [0, 0, 0.065], sky)
+  box(windowPane, [0.065, 1.63, 0.06], [0, 0, 0.115], paper)
+  box(windowPane, [2.1, 0.065, 0.06], [0, 0, 0.115], paper)
+  box(window, [2.77, 0.12, 0.9], [0.085, -0.96, 0.39], lightWood, 0.015)
   const windowDisc = material(daylight.disc)
   windowDisc.emissive.set(eveningLight.disc)
   windowDisc.emissiveIntensity = 0
   const sun = new Mesh(new CylinderGeometry(0.17, 0.17, 0.015, 12), windowDisc)
   sun.rotation.x = Math.PI / 2
   sun.position.set(0.55, 0.48, 0.105)
-  window.add(sun)
+  windowPane.add(sun)
   const curtains = new Group()
   window.add(curtains)
   for (const side of [-1, 1]) {
@@ -119,27 +124,79 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     }
   }
 
-  const cupboard = utility('counters', [2.05, 0, -2.56])
-  contacts.push({ position: [2.05, 0.007, -2.56], size: [5.1, 1.65] })
-  const cabinetBody = box(cupboard, [4.77, 1.48, 1.18], [0, 0.85, 0], cabinet, 0.045)
-  box(cupboard, [4.88, 0.15, 1.31], [0, 1.66, 0.015], counter, 0.035)
-  box(cupboard, [4.6, 0.17, 0.98], [0, 0.15, -0.02], ink)
-  const cabinetBay = new Group()
-  cupboard.add(cabinetBay)
-  for (let i = 0; i < 5; i++) {
-    const x = -1.87 + i * 0.935
-    const parent = i === 1 ? cabinetBay : cupboard
-    box(parent, [0.885, 1.28, 0.065], [x, 0.88, 0.61], cabinet, 0.025)
-    box(parent, [0.735, 1.08, 0.012], [x, 0.86, 0.65], cabinetPanel, 0.006)
-    box(parent, [0.24, 0.04, 0.08], [x, 1.31, 0.68], handles, 0.014)
+  const cupboard = utility('counters', kitchenLayout.counters)
+  const cabinetBodies: Mesh[] = []
+  const [backTop, returnTop] = kitchenWorktops
+  const outline = new Shape()
+  const left = backTop.position[0] - backTop.width / 2
+  const right = backTop.position[0] + backTop.width / 2
+  const back = backTop.position[2] - backTop.depth / 2
+  const corner = backTop.position[2] + backTop.depth / 2
+  const inside = returnTop.position[0] - returnTop.width / 2
+  const front = returnTop.position[2] + returnTop.depth / 2
+  outline.moveTo(left, -back)
+  outline.lineTo(right, -back)
+  outline.lineTo(right, -front)
+  outline.lineTo(inside, -front)
+  outline.lineTo(inside, -corner)
+  outline.lineTo(left, -corner)
+  outline.closePath()
+  const topGeometry = new ExtrudeGeometry(outline, { depth: 0.15, bevelEnabled: false, steps: 1, curveSegments: 1 })
+  topGeometry.rotateX(-Math.PI / 2)
+  const worktop = new Mesh(topGeometry, counter)
+  worktop.name = 'Continuous L-shaped worktop'
+  worktop.position.set(-cupboard.position.x, backTop.top - 0.15, -cupboard.position.z)
+  worktop.castShadow = worktop.receiveShadow = true
+  cupboard.add(worktop)
+  for (const top of kitchenWorktops) {
+    const section = new Group()
+    section.name = top.name
+    section.position.set(top.position[0] - cupboard.position.x, 0, top.position[2] - cupboard.position.z)
+    cupboard.add(section)
+    const bodyHeight = top.top - 0.255
+    const bodyY = 0.11 + bodyHeight / 2
+    box(section, [top.width - 0.22, 0.17, top.depth - 0.3], [0, 0.15, 0], ink)
+    contacts.push({ position: [top.position[0], 0.007, top.position[2]], size: [top.width + 0.22, top.depth + 0.25] })
+    const rear = top === kitchenWorktops[0]
+    const units = rear ? kitchenCabinetBays.map((bay) => ({ ...bay, x: bay.x - top.position[0] }))
+      : kitchenReturnBays.map((bay) => ({ ...bay, x: bay.z - top.position[2] }))
+    for (const unitDefinition of units) {
+      const { x, width: unit } = unitDefinition
+      const bay = new Group()
+      bay.position.set(rear ? x : 0, 0, rear ? 0 : x)
+      if (!rear) bay.rotation.y = -Math.PI / 2
+      section.add(bay)
+      const depth = (rear ? top.depth : top.width) - 0.13
+      const body = box(bay, [unit - 0.035, bodyHeight, depth], [0, bodyY, 0], cabinet, 0.025)
+      const front = new Group()
+      bay.add(front)
+      if (!unitDefinition.blindCorner) {
+        box(front, [unit - 0.075, bodyHeight - 0.13, 0.065], [0, bodyY, depth / 2 + 0.02], cabinet, 0.025)
+        box(front, [unit - 0.22, bodyHeight - 0.3, 0.012], [0, bodyY - 0.01, depth / 2 + 0.06], cabinetPanel, 0.006)
+        box(front, [0.24, 0.04, 0.08], [0, top.top - 0.42, depth / 2 + 0.085], handles, 0.014)
+      }
+      if (!unitDefinition.slotId) continue
+      cabinetBodies.push(body)
+      const shell = new Group()
+      shell.visible = false
+      bay.add(shell)
+      for (const side of [-1, 1]) box(shell, [0.06, bodyHeight, depth], [side * (unit / 2 - 0.045), bodyY, 0], cabinet)
+      box(shell, [unit - 0.06, bodyHeight, 0.035], [0, bodyY, -depth / 2 + 0.0175], cabinet)
+      componentFixtures.set(unitDefinition.slotId, { vacant: [body, front], occupied: [shell] })
+    }
   }
-  const fittedShell = new Group()
-  fittedShell.visible = false
-  cupboard.add(fittedShell)
-  box(fittedShell, [0.98, 1.48, 1.18], [-1.895, 0.85, 0], cabinet, 0.045)
-  box(fittedShell, [2.86, 1.48, 1.18], [0.955, 0.85, 0], cabinet, 0.045)
-  componentFixtures.set('kitchen-undercounter', { vacant: [cabinetBody, cabinetBay], occupied: [fittedShell] })
+  const counterContacts = contacts.slice()
+  for (const shelf of kitchenShelves) {
+    const group = new Group()
+    group.name = shelf.name
+    group.position.set(shelf.position[0] - cupboard.position.x, 0, shelf.position[2] - cupboard.position.z)
+    group.visible = false
+    cupboard.add(group)
+    box(group, [shelf.width, 0.07, shelf.depth], [0, shelf.top - 0.035, 0], lightWood, 0.015)
+    componentFixtures.set(shelf.slots[0], { vacant: [], occupied: [group], occupiedBy: shelf.slots })
+  }
   const sink = new Group()
+  sink.position.x = 0.35
   sink.userData.utility = 'sink'
   utilityActors.set('sink', sink)
   cupboard.add(sink)
@@ -148,18 +205,26 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   cylinder(sink, 0.035, 0.48, [1.3, 1.99, -0.46], handles)
   box(sink, [0.07, 0.07, 0.31], [1.3, 2.2, -0.32], handles, 0.018)
   const hob = new Group()
+  hob.position.set(kitchenLayout.hob[0] - cupboard.position.x, 0, kitchenLayout.hob[2] - cupboard.position.z)
+  hob.rotation.y = -Math.PI / 2
   cupboard.add(hob)
-  box(hob, [0.95, 0.04, 0.91], [-0.45, 1.76, 0], ink, 0.025)
-  for (const x of [-0.67, -0.23]) for (const z of [-0.21, 0.2]) cylinder(hob, 0.135, 0.016, [x, 1.79, z], handles)
+  box(hob, [0.95, 0.04, 0.91], [0, 1.76, 0], ink, 0.025)
+  for (const x of [-0.22, 0.22]) for (const z of [-0.21, 0.2]) cylinder(hob, 0.135, 0.016, [x, 1.79, z], handles)
   const kettle = new Group()
-  kettle.position.set(-0.46, 1.8, 0.08)
+  kettle.position.set(kitchenLayout.kettle[0] - cupboard.position.x, kitchenLayout.kettle[1], kitchenLayout.kettle[2] - cupboard.position.z)
+  kettle.rotation.y = -Math.PI / 2
   kettle.userData.action = 'brew'
   actors.set('brew', kettle)
   cupboard.add(kettle)
   cylinder(kettle, 0.21, 0.025, [0, 0.017, 0], ink)
   cylinder(kettle, 0.22, 0.34, [0, 0.2, 0], tomato, 0.18)
-  const kettleLid = cylinder(kettle, 0.18, 0.045, [0, 0.39, 0], ink)
-  cylinder(kettle, 0.04, 0.065, [0, 0.44, 0], wood)
+  const kettleLid = new Group()
+  kettleLid.name = 'Kettle lid assembly'
+  kettleLid.position.y = 0.39
+  kettle.add(kettleLid)
+  cylinder(kettleLid, 0.18, 0.045, [0, 0, 0], ink)
+  const kettleKnob = cylinder(kettleLid, 0.04, 0.065, [0, 0.05, 0], wood)
+  kettleKnob.name = 'Kettle lid knob'
   const spout = cylinder(kettle, 0.07, 0.3, [0.22, 0.26, 0], tomato, 0.04)
   spout.rotation.z = -0.9
   const kettleHandle = new Mesh(new TorusGeometry(0.19, 0.035, 4, 8, Math.PI), wood)
@@ -174,12 +239,13 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     steamMaterial.opacity = 0
     steamMaterial.depthWrite = false
     const puff = new Mesh(new SphereGeometry(0.055, 5, 4), steamMaterial)
+    puff.userData.roomTransient = true
     puff.position.set(0.34, 0.44 + i * 0.2, 0)
     kettle.add(puff)
     return puff
   })
 
-  const jar = actor('budget', [-0.02, 1.76, -2.46])
+  const jar = actor('budget', kitchenLayout.budget)
   const glass = material(roomAccents.water, 0.3)
   glass.transparent = true
   glass.opacity = 0.25
@@ -198,7 +264,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     return coin
   })
 
-  const board = actor('roommates', [3.65, 3.2, -3.14])
+  const board = actor('roommates', kitchenLayout.roommates)
   box(board, [2.1, 1.8, 0.12], [0, 0, 0], wood, 0.06)
   box(board, [1.93, 1.62, 0.025], [0, 0, 0.075], linen)
   const portraits = Array.from({ length: 12 }, (_, i) => {
@@ -219,28 +285,32 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   })
 
   const table = new Group()
-  table.position.set(0.73, 0, 1.14)
+  table.position.set(...kitchenLayout.table)
   room.add(table)
   box(table, [3.58, 0.18, 1.86], [0, 1.4, 0], lightWood, 0.065)
   for (const z of [-0.31, 0.31]) box(table, [3.4, 0.004, 0.008], [0, 1.493, z], woodGrain)
   box(table, [3.25, 0.24, 1.54], [0, 1.23, 0], wood)
+  const tableContacts: ContactShadow[] = []
   for (const x of [-1.42, 1.42]) for (const z of [-0.61, 0.61]) {
     box(table, [0.12, 1.2, 0.12], [x, 0.65, z], wood, 0.015)
-    contacts.push({ position: [table.position.x + x, 0.042, table.position.z + z], size: [0.42, 0.42] })
+    tableContacts.push({ position: [table.position.x + x, 0.042, table.position.z + z], size: [0.42, 0.42] })
   }
+  contacts.push(...tableContacts)
   const rug = new Group()
+  rug.position.set(...kitchenLayout.rug)
   room.add(rug)
-  box(rug, [4.5, 0.018, 2.7], [0.85, 0.022, 1.69], linen, 0.07)
-  for (const z of [0.49, 2.9]) {
-    box(rug, [4.13, 0.007, 0.095], [0.85, 0.037, z], tomato)
-    for (let i = 0; i < 22; i++) box(rug, [0.025, 0.012, 0.2], [-1.22 + i * 0.195, 0.032, z + (z > 2 ? 0.21 : -0.21)], paper)
+  box(rug, [3, 0.018, 1.18], [0, 0.022, 0], linen, 0.05)
+  for (const z of [-0.46, 0.46]) {
+    box(rug, [2.7, 0.007, 0.075], [0, 0.037, z], tomato)
+    for (let i = 0; i < 15; i++) box(rug, [0.025, 0.012, 0.12], [-1.35 + i * 0.193, 0.032, z + (z > 0 ? 0.16 : -0.16)], paper)
   }
   const seating = new Group()
   room.add(seating)
-  for (const [x, z] of [[0.6, 2.76], [2.95, 1.26]]) {
+  const seatContacts: ContactShadow[] = []
+  for (const [x, z] of [[0.47, 2.8], [2.82, 1.3]]) {
     cylinder(seating, 0.38, 0.045, [x, 0.765, z], wood)
     cylinder(seating, 0.41, 0.12, [x, 0.84, z], cabinet)
-    contacts.push({ position: [x, 0.042, z], size: [1.05, 0.9] })
+    seatContacts.push({ position: [x, 0.042, z], size: [1.05, 0.9] })
     for (let i = 0; i < 3; i++) {
       const angle = (i / 3) * Math.PI * 2
       const leg = cylinder(seating, 0.035, 0.78, [x + Math.cos(angle) * 0.24, 0.42, z + Math.sin(angle) * 0.24], wood)
@@ -248,8 +318,9 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
       leg.rotation.x = Math.sin(angle) * 0.13
     }
   }
+  contacts.push(...seatContacts)
 
-  const bag = actor('stock', [-0.4, 1.51, 1.1])
+  const bag = actor('stock', kitchenLayout.stock)
   box(bag, [0.74, 0.72, 0.51], [0, 0.36, 0], bagPaper, 0.035)
   box(bag, [0.62, 0.03, 0.4], [0, 0.73, 0], brown)
   for (const z of [-0.19, 0.2]) {
@@ -273,7 +344,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   bagLeaf.rotation.z = -0.5
   bag.add(bagLeaf)
 
-  const receiptBook = actor('ledger', [0.96, 1.54, 1.65])
+  const receiptBook = actor('ledger', kitchenLayout.ledger)
   receiptBook.rotation.y = -0.16
   box(receiptBook, [0.8, 0.065, 0.97], [0, 0, 0], tomato, 0.022)
   const receipts = Array.from({ length: 10 }, (_, i) => {
@@ -285,7 +356,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   for (let i = 0; i < 5; i++) box(receiptLines, [i === 4 ? 0.2 : 0.47, 0.005, 0.017], [i === 4 ? 0.13 : 0, 0, -0.2 + i * 0.11], brown)
   receiptBook.add(receiptLines)
 
-  const envelope = actor('settle', [2.05, 1.51, 0.88])
+  const envelope = actor('settle', kitchenLayout.settle)
   box(envelope, [0.6, 0.045, 0.44], [0, 0.015, 0], paper, 0.015)
   const seal = cylinder(envelope, 0.05, 0.012, [0, 0.047, 0], tomato)
   seal.rotation.y = 0.4
@@ -293,11 +364,12 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
 
   const plants: Group[] = []
   const planters: Group[] = []
+  const plantContacts: ContactShadow[] = []
   const plant = (position: [number, number, number], scale: number) => {
     const pot = new Group()
     pot.position.set(...position)
     pot.scale.setScalar(scale)
-    contacts.push({ position: [position[0], position[1] - 0.012, position[2]], size: [0.85 * scale, 0.85 * scale] })
+    plantContacts.push({ position: [position[0], position[1] - 0.012, position[2]], size: [0.85 * scale, 0.85 * scale] })
     cylinder(pot, 0.24, 0.5, [0, 0.25, 0], terracotta, 0.32)
     cylinder(pot, 0.31, 0.06, [0, 0.51, 0], terracotta)
     cylinder(pot, 0.28, 0.03, [0, 0.545, 0], brown)
@@ -319,10 +391,12 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     plants.push(branches)
     planters.push(pot)
   }
-  plant([-4.29, 0.02, 1.59], 1)
-  plant([4.24, 1.76, -2.66], 0.48)
+  plant(kitchenLayout.plant, 1)
+  plant(kitchenLayout.counterPlant, 0.48)
+  planters[1].rotation.y = componentPlacements['kitchen-plant-counter']!.rotation!
+  contacts.push(...plantContacts)
 
-  const caddy = utility('chores', [-1.55, 0.025, -0.45])
+  const caddy = utility('chores', kitchenLayout.chores)
   box(caddy, [0.78, 0.18, 0.5], [0, 0.12, 0], cabinet, 0.02)
   box(caddy, [0.67, 0.025, 0.39], [0, 0.22, 0], ink)
   for (const x of [-0.32, 0.32]) box(caddy, [0.045, 0.42, 0.045], [x, 0.39, 0], wood)
@@ -331,7 +405,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   cylinder(caddy, 0.055, 0.08, [-0.18, 0.515, 0.09], paper)
   box(caddy, [0.18, 0.2, 0.12], [0.16, 0.32, 0.1], paper, 0.014)
   box(caddy, [0.2, 0.05, 0.14], [0.16, 0.44, 0.1], leaf)
-  const supplies = utility('supplies', [-4.58, 1.25, -1.8])
+  const supplies = utility('supplies', kitchenLayout.supplies)
   box(supplies, [0.075, 1.4, 0.88], [-0.37, 0.56, 0], wood, 0.015)
   for (const y of [0.04, 0.68]) box(supplies, [0.75, 0.07, 0.88], [0, y, 0], lightWood, 0.015)
   for (const [z, mat] of [[-0.2, tomato], [0.2, paper]] as const) {
@@ -341,11 +415,11 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   box(supplies, [0.33, 0.15, 0.49], [0.08, 0.795, 0], paper, 0.015)
   box(supplies, [0.35, 0.04, 0.5], [0.08, 0.89, 0], leaf)
 
-  const light = new PointLight('#ffca78', 0, 8, 2)
-  light.position.set(0.5, 3.55, 0.2)
+  const light = new PointLight('#ffca78', 0, 12, 2)
+  light.position.set(kitchenLayout.pendant[0], 3.55, kitchenLayout.pendant[2])
   room.add(light)
   const pendant = new Group()
-  pendant.position.set(0.5, 3.45, 0.2)
+  pendant.position.set(...kitchenLayout.pendant)
   cylinder(pendant, 0.01, 1.25, [0, 0.86, 0], wood)
   cylinder(pendant, 0.48, 0.35, [0, 0.1, 0], terracotta, 0.19)
   const bulb = material('#fff0cc')
@@ -355,7 +429,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   room.add(pendant)
 
   const clock = new Group()
-  clock.position.set(-2.8, 4.11, -3.16)
+  clock.position.set(...kitchenLayout.clock)
   const rim = cylinder(clock, 0.28, 0.065, [0, 0, 0], wood)
   rim.rotation.x = Math.PI / 2
   const clockFace = cylinder(clock, 0.245, 0.016, [0, 0, 0.041], paper)
@@ -376,25 +450,25 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     wall: plaster, trim: wallTrim, floor: tile, floorAlternate: tileAlternate,
     cabinet, cabinetPanel, counter, wood, lightWood, woodGrain,
   }
-  componentBindings.set('kitchen-counters', { root: cupboard, finishes: [cabinet, cabinetPanel], contacts: contacts.slice(0, 1), anchor: [2.8, 1.4, -1.78] })
-  componentBindings.set('kitchen-sink', { root: sink, finishes: [handles], anchor: [3.35, 2.55, -2.56] })
-  componentBindings.set('kitchen-hob', { root: hob, finishes: [ink], anchor: [1.58, 1.88, -2.95] })
-  componentBindings.set('kitchen-kettle', { root: kettle, finishes: [tomato], anchor: [1.65, 2.5, -2.45] })
-  componentBindings.set('kitchen-table', { root: table, finishes: [lightWood, wood, woodGrain], contacts: contacts.slice(1, 5) })
-  componentBindings.set('kitchen-seating', { root: seating, finishes: [cabinet], contacts: contacts.slice(5, 7), anchor: [2.95, 1.2, 1.26] })
-  componentBindings.set('kitchen-rug', { root: rug, finishes: [linen], anchor: [-0.8, 0.1, 2.7] })
-  componentBindings.set('kitchen-plant-floor', { root: planters[0], finishes: [terracotta], contacts: contacts.slice(7, 8) })
-  componentBindings.set('kitchen-plant-counter', { root: planters[1], finishes: [terracotta], contacts: contacts.slice(8, 9) })
+  componentBindings.set('kitchen-counters', { root: cupboard, finishes: [cabinet, cabinetPanel], contacts: counterContacts, anchor: [4.43, 1.95, -0.4] })
+  componentBindings.set('kitchen-sink', { root: sink, finishes: [handles], anchor: [3.5, 2.55, -2.56] })
+  componentBindings.set('kitchen-hob', { root: hob, finishes: [ink], anchor: [kitchenLayout.hob[0], 1.95, kitchenLayout.hob[2]] })
+  componentBindings.set('kitchen-kettle', { root: kettle, finishes: [tomato], anchor: [kitchenLayout.kettle[0], 2.55, kitchenLayout.kettle[2]] })
+  componentBindings.set('kitchen-table', { root: table, finishes: [lightWood, wood, woodGrain], contacts: tableContacts })
+  componentBindings.set('kitchen-seating', { root: seating, finishes: [cabinet], contacts: seatContacts, anchor: [2.82, 1.2, 1.3] })
+  componentBindings.set('kitchen-rug', { root: rug, finishes: [linen], anchor: [kitchenLayout.rug[0], 0.1, kitchenLayout.rug[2]] })
+  componentBindings.set('kitchen-plant-floor', { root: planters[0], finishes: [terracotta], contacts: plantContacts.slice(0, 1) })
+  componentBindings.set('kitchen-plant-counter', { root: planters[1], finishes: [terracotta], contacts: plantContacts.slice(1, 2) })
   componentBindings.set('kitchen-curtains', { root: curtains, finishes: [linen, paper], anchor: [2.07, 3.9, -2.94] })
-  componentBindings.set('kitchen-light', { root: pendant, finishes: [terracotta], anchor: [0.5, 3.6, 0.2] })
-  componentBindings.set('kitchen-clock', { root: clock, finishes: [wood], anchor: [-2.8, 4.48, -3.16] })
-  componentBindings.set('kitchen-supply-shelf', { root: supplies, finishes: [wood, lightWood], anchor: [-4.55, 2.55, -1.8] })
-  componentBindings.set('kitchen-cleaning-caddy', { root: caddy, finishes: [cabinet], contacts: [{ position: [-1.55, 0.012, -0.45], size: [1.05, 0.75] }], anchor: [-1.55, 1.2, -0.45] })
-  componentBindings.set('kitchen-noticeboard', { root: board, finishes: [wood], anchor: [3.7, 4.65, -3.15] })
-  componentBindings.set('kitchen-receipt-book', { root: receiptBook, finishes: [tomato], anchor: [0.8, 1.6, 2.1] })
-  componentBindings.set('kitchen-house-pot', { root: jar, finishes: [wood], anchor: [0, 2.75, -2.35] })
-  componentBindings.set('kitchen-shopping-bag', { root: bag, finishes: [bagPaper], anchor: [-0.45, 2.85, 1.08] })
-  componentBindings.set('kitchen-settlement-envelope', { root: envelope, finishes: [paper], anchor: [2.35, 1.9, 1.45] })
-  const preserved = new Set([cabinetBody, ...coins, ...receipts, ...steam, kettleLid])
+  componentBindings.set('kitchen-light', { root: pendant, finishes: [terracotta], anchor: [0.6, 3.6, 0.78] })
+  componentBindings.set('kitchen-clock', { root: clock, finishes: [wood], anchor: [-3.2, 4.48, -3.16] })
+  componentBindings.set('kitchen-supply-shelf', { root: supplies, finishes: [wood, lightWood], anchor: [-5.08, 2.55, -1.8] })
+  componentBindings.set('kitchen-cleaning-caddy', { root: caddy, finishes: [cabinet], contacts: [{ position: [-3.7, 0.012, 2.78], size: [1.05, 0.75] }], anchor: [-3.7, 1.2, 2.78] })
+  componentBindings.set('kitchen-noticeboard', { root: board, finishes: [wood], anchor: [4.3, 4.3, -3.15] })
+  componentBindings.set('kitchen-receipt-book', { root: receiptBook, finishes: [tomato], anchor: [-0.18, 1.85, 1.9] })
+  componentBindings.set('kitchen-house-pot', { root: jar, finishes: [wood], anchor: [1.7, 2.55, 0.77] })
+  componentBindings.set('kitchen-shopping-bag', { root: bag, finishes: [bagPaper], anchor: [-0.54, 2.85, 0.65] })
+  componentBindings.set('kitchen-settlement-envelope', { root: envelope, finishes: [paper], anchor: [1.85, 1.9, 1.52] })
+  const preserved = new Set([...cabinetBodies, ...coins, ...receipts, ...steam, kettleLid])
   return { actors, utilityActors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts, styleMaterials, componentBindings, componentFixtures, preserved }
 }

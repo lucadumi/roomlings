@@ -2,7 +2,20 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. The kitchen and bathroom open at the same 100% close-up baseline, calibrated to the former 120% view; the living room opens on the sofa. **Whole room** still fits the full space. The toolbar remains available in every room, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. The kitchen and bathroom start with a slightly wider 100% view than the living room. Each room's placement previews use its normal camera scale without resizing objects. The **Zoom in** and **Zoom out** buttons change zoom by 10 percentage points, from 50% to 150%. Scrolling and pinching use the same limits. **Reset room view** restores that room's entry magnification at 100%. Its selected state clears whenever you zoom away from 100%. The toolbar remains available in every room, including when 3D cannot load.
+
+Drag a room freely through 360 degrees. Far walls stay visible; walls and window
+panels facing you cut away. Furniture and window ledges remain visible.
+Turning never changes object sizes or saved data. **Reset room view** takes
+the shortest turn back to the starting angle.
+
+Every object's **+** marker opens its chores. Use **Room objects** to view or
+edit settings. Apply or cancel pending room edits before switching to chores.
+
+Saved room images are prepared after the main scene loads and reused when the
+selector opens. Their illustration areas are transparent, and edits to saved
+room appearances refresh the cached images. Previews never use an unconfirmed
+editor draft or substitute another household's room.
 
 | Object | Purpose |
 | --- | --- |
@@ -19,7 +32,7 @@ Open **Rooms** for a preview menu directly beneath the button. Choose the kitche
 
 The fridge visualizes purchases, not food remaining. Export the complete ledger from the receipt book.
 
-The living room has a sofa, coffee table, TV on a media unit, bookshelf, floor lamp, rug, plants and window curtains. Select the sofa for seating chores, the coffee table for surface chores, or the plant, bin and floor for their care routines. Other furniture opens its object details. The TV is a room object, not a media player. The cleaning caddy and supply shelf use the same room chores and shared shopping controls as elsewhere.
+The living room has a sofa, coffee table, TV on a media unit, bookshelf, floor lamp, rug, plants and window curtains. Select the sofa for seating chores, the coffee table for surface chores, or the plant, bin and floor for their care routines. Click the window to switch between daylight and evening, or use the lighting control. Other furniture opens its object details. The TV is a room object, not a media player. The cleaning caddy and supply shelf use the same room chores and shared shopping controls as elsewhere.
 
 The [Sage and clay palette from Coolors](https://coolors.co/ffffff-3d405b-81b29a-f2cc8f-e07a5f) replaces the app's accent colors: slate text, sage, honey and clay details. Primary buttons retain the original brick red (`#b8533b`). Pages, panels and modals stay white rather than using different colors for each feature. The house pot keeps its warm accent. The hero illustration has no backdrop; Explore scenes have white backgrounds and a divider beside the illustration.
 
@@ -35,11 +48,58 @@ Form dropdowns use the same white and sage styling throughout. Open one to choos
 
 ## Customizing a room
 
-Open the icon-only **Room objects** button, then choose **Edit room** inside its menu. The existing room-style, help and house-rule controls remain available. The object browser is a large preview grid on the left, with the room beside it. Hover over a preview or focus its controls for details. Repeated objects share one card: Plant opens its placed positions instead of appearing twice in the menu.
+Room colors include the existing Roomlings, Sage, Clay and Linen looks, plus
+Coastal, Lavender, Citrus and Rose. These choices recolor the room, not the
+white app interface. Individual objects can also use Ocean, Teal, Plum, Lilac,
+Olive, Butter yellow, Berry or Rose finishes alongside the existing finishes.
 
-Select an object in the room or its card. Position buttons choose which existing copy you are using or editing. In Edit room, **Position** moves that copy between compatible locations, and **Add at another position** creates another private-preview placement. The room updates live as you choose; nothing is shared before Apply. Occupied or incompatible positions are disabled. These are designed locations, not unrestricted dragging.
+The compact kitchen has a continuous L-shaped worktop along the sink run and
+the open right-hand wall, with a runner in front of the sink. The stove sits on
+the right-hand return, the kettle rests on a burner, and the optional oven fits
+underneath. Turn the room to see the inward-facing fitted appliances. The bathroom's
+narrower, shallower floor plan has about 15% less floor area without shrinking
+its fixtures. It keeps the larger vanity-front mat, a shelf for the cleaning
+caddy and a left-corner laundry position facing into the room. Optional shelves, appliances and storage have
+dedicated places without adding anything to an existing household.
 
-The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The living room adds a corner or straight sofa, rectangular or round coffee table, TV, media unit, bookshelf and floor lamp. Existing kitchen and bathroom layouts stay unchanged. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
+Open **Room objects**, then **Edit room**. The preview grid stays beside the room.
+Each card has an **Info** icon for a short description, model and supplies.
+Details appear on click, not hover. Escape or clicking away closes the info popup.
+Repeated objects share a card; numbered names distinguish copies.
+
+Select a card to view or edit an object. In Edit room, **Move object** previews
+another compatible spot; **Add another**
+previews another copy. Nothing is shared before Apply. Occupied or incompatible
+spots are disabled. Location names appear only when explaining an occupied spot.
+
+In **Add objects**, click an object's picture or **Preview** to try its placement.
+The existing room becomes a translucent mint hologram with fine outlines, while
+the candidate keeps its real finish. The camera centers the object and its triangle
+at the normal room's 100% scale. It does not enlarge the candidate or shrink the
+room to fit the preview. Reset keeps the candidate centered at that same scale.
+In-room plus markers
+are hidden during the trial; zoom controls remain available. Your previous
+marker visibility setting returns afterward. A small warm-red triangle points down
+at the object and gently bobs above it; reduced motion keeps the triangle still.
+A short **Try [object]** dialog replaces
+the editor, with only **Place object** and **Discard preview**. Place accepts it
+into your private draft; Discard or Escape removes only that trial. Both choices
+restore the normal room and editor. You can then change its position, model and
+finish. **Apply for everyone** is still required to share accepted changes.
+Restoring a saved object follows the same preview step and keeps its identity
+and settings.
+
+Catalog cards remain close-ups for readability, not a physical size comparison.
+The hologram view retains the normal room scale so you can judge the candidate's
+actual size beside the other objects. Bathroom additions prefer their dedicated
+positions rather than the first shared corner. Accessories use sizes matched to
+the vanity and bath, not the miniature scale reserved for a countertop plant.
+Restoring an archived object keeps its original position and identity.
+New washing machines and dryers belong in the
+bathroom. Existing kitchen laundry objects remain accessible and can be edited
+or removed, but cannot be newly placed or restored there.
+
+The catalog includes fitted appliances; coffee and cooking equipment; fruit bowls, tea sets, spice racks and storage jars; carts, cabinets, speakers, plants and pet bowls; and bathroom accessories such as scales, a hair dryer, toothbrush holders and a bath tray. Further choices include a stand mixer, waffle maker, kitchen scale, cutting boards, mug tree, cereal dispenser, egg basket, wall shelf, ironing board, toilet brush, shower squeegee, tissue box, first-aid kit, reed diffuser, board game and record player. The living room adds a corner or straight sofa, rectangular or round coffee table, TV, media unit, bookshelf and floor lamp. Existing installed object identities and settings are kept. Adding an object does not add supplies to shopping, schedule chores, record a purchase or change a balance.
 
 Change an object's name, finish, supported model and supply suggestions. **Match room colors** uses the household palette, without an extra default-style label. Model controls appear only when there is a real choice, such as a rectangular or round table, bath or shower, different plants, or different coffee machines. Supplies have editable names and suggested quantities, not stock counts.
 
@@ -49,11 +109,19 @@ The catalog marks **Available to add**, **Placed**, and **Unavailable**, with av
 
 Some fitted fixtures and the existing household tools stay in place, but their appearance and relevant options can still be customized. Moving an optional object within its room keeps its identity, manual state, supplies and chore links. Removing it also keeps its saved identity and settings, but connected chores must be archived or kept as room chores. Shopping items, paid receipts and completed turns are never deleted by removal. Restore the object before restoring its archived object-specific chores.
 
+To remove a placed optional object, open its details in **Room objects** and use
+**Remove object**. This opens the existing removal confirmation in Edit room.
+Review any linked chores, remove it from the private draft, then apply for everyone.
+
 Use **Household admins** from the roommate tools or the editor to see who can manage the rooms. An admin can grant or revoke another roommate's admin access, but cannot demote the owner. Ownership transfer and the existing owner-only account powers remain separate. All active roommates can use the objects, shared shopping and chores without editing the room.
 
 ## Object supplies, care and states
 
-**Room objects** uses the same preview grid and works with or without 3D. Its thumbnails use the actual object models, a consistent camera, soft grounding and the room's lighting. One shared renderer creates cached previews rather than opening a WebGL context per card; vector previews remain available without WebGL. Optional appliances also open their details when selected in the room; the original fridge, kettle and household shortcuts retain their familiar interactions. From an object's details, review supplies, open its chores or use a suggested chore as a starting point for a schedule and rotation.
+**Room objects** works with or without 3D. Cached thumbnails use the actual models;
+vector previews remain available without WebGL. Room markers open chores, while
+editing stays in the Components menu. The fridge, kettle and household-tool
+meshes keep their direct shortcuts. Object details provide supplies, manual
+states and suggested chores.
 
 The **Components** page is marked **Live room** for everyday use of placed objects. **Edit room** is marked **Private preview** for adding, removing and changing appearance. These are separate workflows: everyday supplies, chores and manual states use the shared home, while layout edits must be applied or discarded.
 
@@ -102,6 +170,15 @@ The compact footer links to the home guide, room exploration and questions. Its 
 ## Development notes
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
+
+CI uses two household shards and two room shards, each with one browser worker.
+The pinned Playwright container supplies browsers and system libraries without
+installing OS packages during a run. Its version must match `package-lock.json`.
+Pull requests and main pushes run CI; manual dispatch supports branch checks
+without duplicating every pull-request run on its source-branch push.
+PostgreSQL coverage uses the host's loopback service. Its browser container shares
+the host network, preserving the application's loopback-only rule for tests
+without TLS.
 
 Room IDs and legacy chore areas are registered in `shared/rooms.ts`. The component catalog, fixed positions, supported variants, manual states and default supply/chore suggestions live in `shared/roomComponents.ts`; configuration and state rules live in `shared/componentChanges.ts`. `src/roomNavigation.ts` resolves routes. Every room needs a view in `src/roomViews.ts`, a model in `src/roomModels.ts`, and public preview artwork and tour chapters. The model registry also drives saved room previews and object thumbnails. Add implemented rooms and components instead of placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 

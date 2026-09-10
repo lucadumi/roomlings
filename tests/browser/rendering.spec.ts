@@ -1,8 +1,8 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
-import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
-import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
-import { buildKitchenModel } from '../../src/kitchenModel.ts'
+import { OrthographicCamera, Vector3 } from 'three'
+import { baseCameraOffset, cameraFraming, roomCameraZoom } from '../../src/camera.ts'
+import { kitchenLayout } from '../../src/roomLayout.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
 import { trackDrawing } from './fixtures.ts'
@@ -13,31 +13,25 @@ test.beforeEach(({ populatedHousehold }) => {
 
 async function frameKitchenBag(page: Page) {
   const world = page.locator('.kitchen-world')
-  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
-  await expect(world).toHaveAttribute('data-framing', 'whole')
+  await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
+  await expect(world).toHaveAttribute('data-framing', 'close')
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
   const layout = await world.locator('.world-canvas').evaluate((element) => {
     const { x, y, width, height } = element.getBoundingClientRect()
     return { x, y, width, height }
   })
-  const room = new Group()
-  const model = buildKitchenModel(room)
-  try {
-    model.doors.forEach((door, index) => { door.rotation.y = index ? -1.72 : -1.97 })
-    const framing = cameraFraming(layout.width, layout.height, 'room', true, { bounds: new Box3().setFromObject(room) })
-    const halfWidth = framing.halfHeight * layout.width / layout.height
-    const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)
-    const center = new Vector3(...framing.center)
-    camera.position.copy(center).add(new Vector3(...baseCameraOffset))
-    camera.lookAt(center)
-    camera.updateMatrixWorld(true)
-    const bag = new Vector3(-0.4, 1.87, 1.3).project(camera)
-    return { x: layout.x + (bag.x * 0.5 + 0.5) * layout.width, y: layout.y + (-bag.y * 0.5 + 0.5) * layout.height }
-  } finally {
-    room.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
-    model.materials.forEach((material) => material.dispose())
-  }
+  const framing = cameraFraming(layout.width, layout.height, 'room', false)
+  const halfWidth = framing.halfHeight * layout.width / layout.height
+  const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)
+  camera.zoom = roomCameraZoom(1, true, 'kitchen')
+  camera.updateProjectionMatrix()
+  const center = new Vector3(...framing.center)
+  camera.position.copy(center).add(new Vector3(...baseCameraOffset))
+  camera.lookAt(center)
+  camera.updateMatrixWorld(true)
+  const bag = new Vector3(kitchenLayout.stock[0], kitchenLayout.stock[1] + 0.36, kitchenLayout.stock[2] + 0.2).project(camera)
+  return { x: layout.x + (bag.x * 0.5 + 0.5) * layout.width, y: layout.y + (-bag.y * 0.5 + 0.5) * layout.height }
 }
 
 test('the full-size kitchen stays within its static-geometry draw-call budget', { tag: '@room' }, async ({ page }) => {
@@ -80,7 +74,7 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   expect(await drawing()).toEqual(idle)
 
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-  await expect(page.locator('.world-camera-controls')).toContainText('120%')
+  await expect(page.locator('.world-camera-controls')).toContainText('110%')
   await expect.poll(async () => (await drawing()).draws).toBeGreaterThan(idle.draws)
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   const zoomed = await drawing()
@@ -113,9 +107,9 @@ test('kitchen picking ignores secondary clicks and releases abandoned pointer ca
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
   await expect(canvas).toBeVisible()
-  await expect(world.getByRole('img')).toHaveAccessibleName(/The shopping bag opens the shared shopping list.*the house pot shows the grocery budget.*The cleaning caddy opens room chores and the shelf opens kitchen supplies/)
+  await expect(world.getByRole('img')).toHaveAccessibleName(/Object plus markers open chores.*household tools.*360 degrees/)
   const sink = world.locator('.hotspot-sink')
-  expect(await sink.getAttribute('aria-label')).toBe(await sink.locator('.hotspot-label').textContent())
+  expect(await sink.getAttribute('aria-label')).toBe(`Chores for ${await sink.locator('.hotspot-label').textContent()}`)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   let bag = await frameKitchenBag(page)
   await page.mouse.click(bag.x, bag.y, { button: 'right' })

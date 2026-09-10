@@ -4,48 +4,16 @@ import {
 } from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { RoomStyle } from '../shared/domain.ts'
-import type { RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
+import type { RoomComponent } from '../shared/roomComponents.ts'
 import type { ComponentModel } from './roomComponentTypes.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import { buildAdditionalComponentModel } from './additionalComponentModels.ts'
-import { buildLivingRoomComponentModel, livingRoomPlacements } from './livingRoomComponentModels.ts'
+import { componentPlacements } from './roomLayout.ts'
+import { buildLivingRoomComponentModel } from './livingRoomComponentModels.ts'
+export { componentPlacements } from './roomLayout.ts'
 
 type Position = [number, number, number]
-type Placement = { position: Position; scale?: number | Position; rotation?: number }
-
-export const componentPlacements: Partial<Record<RoomSlotId, Placement>> = {
-  ...livingRoomPlacements,
-  'kitchen-table': { position: [0.73, 0, 1.14] },
-  'kitchen-plant-floor': { position: [-4.29, 0.02, 1.59] },
-  'kitchen-plant-counter': { position: [4.24, 1.76, -2.66], scale: 0.48 },
-  'kitchen-undercounter': { position: [1.115, 0.235, -2.56], scale: [0.66, 0.91, 0.91] },
-  'kitchen-coffee': { position: [0.72, 1.735, -2.52], scale: 0.8 },
-  'kitchen-small-appliance': { position: [2.45, 1.735, -2.48] },
-  'kitchen-drinks': { position: [2.03, 1.495, 1.69] },
-  'kitchen-dish-rack': { position: [4.18, 1.735, -2.21] },
-  'kitchen-bins': { position: [4.45, 0.02, -0.82] },
-  'kitchen-vacuum': { position: [-2.64, 0.02, 2.3] },
-  'kitchen-wall-art': { position: [-1, 3.5, -3.238], scale: 0.72 },
-  'kitchen-soap-dispenser': { position: [3.88, 1.735, -3.02], scale: 0.65 },
-  'kitchen-table-center': { position: [0.55, 1.495, 0.57], scale: 0.72 },
-  'kitchen-windowsill': { position: [0.2, 2.36, -3.12], scale: 0.35 },
-  'kitchen-left-wall': { position: [-5.045, 2.95, -0.63], scale: 0.68, rotation: Math.PI / 2 },
-  'bathroom-bath': { position: [-2.85, 0, -1.3] },
-  'bathroom-laundry': { position: [3.85, 0.02, -0.27] },
-  'bathroom-laundry-basket': { position: [2.25, 0.02, 1.83] },
-  'bathroom-drying-rack': { position: [-2.4, 0.02, 2.3] },
-  'bathroom-towel-rack': { position: [-4.56, 2.65, -0.4], rotation: Math.PI / 2 },
-  'bathroom-plant': { position: [-4.08, 0.02, 1.08], scale: 0.86 },
-  'bathroom-wall-art': { position: [2.27, 3.22, -3.088] },
-  'bathroom-soap-dispenser': { position: [-0.7, 1.66, -2.19] },
-  'bathroom-shower-shelf': { position: [-2.55, 2.45, -3.088] },
-  'bathroom-bins': { position: [4.08, 0.02, 2.2], scale: 0.72 },
-  'bathroom-vanity-accessory': { position: [0.92, 1.66, -2.7], scale: 0.48 },
-  'bathroom-floor-storage': { position: [0.1, 0.025, 2.15], scale: 0.9 },
-  'bathroom-bath-tray': { position: [-2.85, 1.2, -0.8] },
-  'bathroom-toilet-accessory': { position: [3.08, 0.025, -2.55], scale: 0.65 },
-}
 
 export function buildRoomComponentModel(component: RoomComponent, style: RoomStyle): ComponentModel {
   const placement = componentPlacements[component.slotId]
@@ -53,8 +21,9 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
   const root = new Group()
   root.name = `${component.kind} ${component.variant} model`
   root.position.set(...placement.position)
-  if (typeof placement.scale === 'number') root.scale.setScalar(placement.scale)
-  else if (placement.scale) root.scale.set(...placement.scale)
+  const scale = placement.scaleByKind?.[component.kind] ?? placement.scale
+  if (typeof scale === 'number') root.scale.setScalar(scale)
+  else if (scale) root.scale.set(...scale)
   root.rotation.y = placement.rotation ?? 0
   const materials: MeshStandardMaterial[] = []
   const styleSurfaces = new Map<MeshStandardMaterial, keyof RoomStyleMaterials>()
@@ -394,15 +363,16 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       break
     }
     case 'drying-rack': {
+      const rackHeight = 1.42
       for (const x of [-0.74, 0.74]) {
-        rod([x, 0.05, -0.52], [x, 1.15, 0.52], 0.023, paint)
-        rod([x, 0.05, 0.52], [x, 1.15, -0.52], 0.023, paint)
+        rod([x, 0.05, -0.52], [x, rackHeight, 0.52], 0.023, paint)
+        rod([x, 0.05, 0.52], [x, rackHeight, -0.52], 0.023, paint)
       }
-      for (const z of [-0.54, 0.54]) rod([-0.95, 1.15, z], [0.95, 1.15, z], 0.024, paint)
-      for (let i = 0; i < 7; i++) rod([-0.85 + i * 0.28, 1.15, -0.54], [-0.85 + i * 0.28, 1.15, 0.54])
+      for (const z of [-0.54, 0.54]) rod([-0.95, rackHeight, z], [0.95, rackHeight, z], 0.024, paint).name = 'Drying rack top rail'
+      for (let i = 0; i < 7; i++) rod([-0.85 + i * 0.28, rackHeight, -0.54], [-0.85 + i * 0.28, rackHeight, 0.54])
       const clothes = clothGroup(['drying', 'ready-to-fold'])
-      box([0.47, 0.58, 0.025], [-0.43, 0.85, 0.06], cream, 0, clothes)
-      box([0.4, 0.44, 0.025], [0.27, 0.92, 0.09], tomato, 0, clothes)
+      box([0.47, 0.58, 0.025], [-0.43, rackHeight - 0.3, 0.06], cream, 0, clothes)
+      box([0.4, 0.44, 0.025], [0.27, rackHeight - 0.23, 0.09], tomato, 0, clothes)
       contactSize = [1.95, 1.38]
       break
     }
@@ -459,9 +429,13 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     if (!Number.isFinite(width) || width <= 0) throw new Error('The bath tray needs a finite width.')
     root.scale.x *= 2.05 / width
   }
+  const contactWidth = (contactSize?.[0] ?? 0) * root.scale.x
+  const contactDepth = (contactSize?.[1] ?? 0) * root.scale.z
+  const cosine = Math.abs(Math.cos(root.rotation.y))
+  const sine = Math.abs(Math.sin(root.rotation.y))
   const contacts = contactSize ? [{
     position: [placement.position[0], placement.position[1] + 0.003, placement.position[2]] as Position,
-    size: [contactSize[0] * root.scale.x, contactSize[1] * root.scale.z] as [number, number],
+    size: [contactWidth * cosine + contactDepth * sine, contactWidth * sine + contactDepth * cosine] as [number, number],
   }] : []
   return { root, materials, finishes, styleSurfaces, contacts, indicator, stateObjects }
 }

@@ -152,7 +152,7 @@ export function buildLivingRoomComponentModel(
       book([-0.08, 0.369, 0.03], [0.76, 0.1, 0.52], tomato)
       book([-0.04, 0.738, 0.025], [0.72, 0.16, 0.51], linen)
       // Contact shadows are room-aligned; this console faces across the room.
-      return { contactSize: [1.12, 3.55] }
+      return { contactSize: [3.55, 1.12] }
     }
     case 'bookshelf': {
       repaint(wood, lightWood)

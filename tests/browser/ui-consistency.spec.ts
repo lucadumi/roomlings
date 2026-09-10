@@ -298,7 +298,7 @@ test('camera movement copy also describes zooming out', { tag: '@room' }, async 
   await page.getByRole('button', { name: 'Zoom out', exact: true }).click()
   // A slow real frame can finish the transition; hold one animation frame for the status assertion.
   await page.clock.runFor(16)
-  await expect(page.locator('.world-camera-controls > span')).toHaveText('80%')
+  await expect(page.locator('.world-camera-controls > span')).toHaveText('90%')
   await expect(world).toHaveAttribute('data-camera-moving', 'true')
   await expect(page.locator('.view-moving')).toHaveText('Adjusting view')
   const offset = await page.locator('.world-view-label').evaluate((element) => {

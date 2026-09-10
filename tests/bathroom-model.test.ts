@@ -5,7 +5,9 @@ import { Box3, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Raycaster,
 import type { BufferGeometry, Object3D } from 'three'
 import { bathroomFocusForRequest, bathroomFraming, bathroomTargets, buildBathroomModel } from '../src/bathroomModel.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds } from '../src/camera.ts'
+import { bathroomCaddyShelf, bathroomLayout, bathroomMat, roomFootprints, roomShellBounds, roomShellLayout } from '../src/roomLayout.ts'
+import { isSceneObjectVisible } from '../src/roomComponentScene.ts'
 import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
 
 function bathroom(t: TestContext) {
@@ -55,16 +57,22 @@ test('bathroom fixtures have distinct, pickable actor groups and attached label 
   assert.equal(model.contacts.length, 5)
 })
 
-test('bathroom geometry stays inside the existing room lighting envelope', (t) => {
+test('the bathroom uses a narrower and shallower floor while retaining its original wall height', (t) => {
   const { room, model } = bathroom(t)
+  const floorSize = new Box3().setFromObject(room.getObjectByName('Bathroom floor base')!).getSize(new Vector3())
+  assert.ok(Math.abs(floorSize.x - 9.4) < 0.0001)
+  const { outer } = roomShellLayout('bathroom')
+  assert.ok(Math.abs(floorSize.z - (outer.front - outer.back)) < 0.0001)
+  const tiles = new Box3().setFromObject(model.actors.get('floor')!).getSize(new Vector3())
+  assert.ok(tiles.x * tiles.z < (10.2 - 0.268) * (6.45 - 0.258) * 0.86, 'Keep the usable tiled floor compact, not just the camera magnification')
   const bounds = new Box3().setFromObject(room)
   const size = bounds.getSize(new Vector3())
-  assert.ok(size.x > 9 && size.x < 10)
+  assert.ok(size.x > 9.3 && size.x < 9.5)
   assert.ok(size.y > 4 && size.y < 5)
-  assert.ok(size.z > 6 && size.z < 7)
-  assert.ok(bounds.min.x >= -5 && bounds.max.x <= 5)
+  assert.ok(Math.abs(size.z - (outer.front - outer.back)) < 0.0001)
+  assert.ok(bounds.min.x >= -4.71 && bounds.max.x <= 4.71)
   assert.ok(bounds.min.y >= -0.3 && bounds.max.y <= 4.6)
-  assert.ok(bounds.min.z >= -3.4 && bounds.max.z <= 3.4)
+  assert.ok(bounds.min.z >= -3.24 && bounds.max.z <= roomShellBounds('bathroom').max.z + 0.0001)
   assert.deepEqual(bounds, model.bounds)
   assert.ok(meshes(room).filter((mesh) => mesh.geometry.type === 'LatheGeometry').length >= 4)
   for (const mesh of meshes(room)) {
@@ -73,6 +81,24 @@ test('bathroom geometry stays inside the existing room lighting envelope', (t) =
     for (let i = 0; i < positions.count; i++) {
       assert.ok([positions.getX(i), positions.getY(i), positions.getZ(i)].every(Number.isFinite))
     }
+  }
+})
+
+test('compacting the bathroom preserves the physical size of every original fixture', (t) => {
+  const { model } = bathroom(t)
+  const originalSizes = {
+    bath: [2.05, 1.7125, 3.04],
+    sink: [2.45, 2.2825, 1.3825],
+    mirror: [1.68, 1.865, 0.23],
+    toilet: [1.625, 1.9275, 1.95],
+    supplies: [1.13, 3.075, 0.9145],
+    chores: [0.72, 1.1075, 1.105],
+  }
+  for (const target of ['bath', 'sink', 'mirror', 'toilet', 'supplies', 'chores'] as const) {
+    const actor = model.actors.get(target)!
+    assert.deepEqual(actor.scale.toArray(), [1, 1, 1])
+    const size = new Box3().setFromObject(actor, true).getSize(new Vector3()).toArray()
+    assert.ok(size.every((value, index) => Math.abs(value - originalSizes[target][index]) < 0.0001), `${target} must stay full-size`)
   }
 })
 
@@ -120,21 +146,51 @@ test('batching combines static siblings without losing bathroom interaction or a
 })
 
 test('each bathroom object remains physically reachable from the open corner after batching', (t) => {
-  const { room } = bathroom(t)
+  const { room, model } = bathroom(t)
   batchStaticMeshes(room, new Set())
   room.updateMatrixWorld(true)
+  const pointOn = (target: typeof bathroomTargets[number], point: [number, number, number]) =>
+    model.actors.get(target)!.localToWorld(new Vector3(...point)).toArray()
   const points = {
-    sink: [0.15, 1.9, -2.22], mirror: [0.15, 3.06, -2.98], toilet: [2.2, 1.1, -1.92],
-    bath: [-2.85, 1.16, -1.3], floor: [-1.35, 0.07, 1.42], chores: [0.93, 0.3, 1.15], supplies: [3.92, 2.78, -2.4],
+    sink: pointOn('sink', [0, 1.9, 0.06]), mirror: pointOn('mirror', [0, 0, 0.075]), toilet: pointOn('toilet', [0, 1.1, 0.2]),
+    bath: pointOn('bath', [0, 1.16, 0]), floor: [bathroomLayout.bath[0] + 0.7, 0.07, 0.95],
+    chores: pointOn('chores', [0, 0.3, 0]), supplies: pointOn('supplies', [0, 2.78, 0]),
   }
   for (const target of bathroomTargets) {
     const point = new Vector3().fromArray(points[target])
     const offset = new Vector3(...baseCameraOffset)
     const ray = new Raycaster(point.clone().add(offset), offset.negate().normalize())
-    let object: Object3D | undefined = ray.intersectObject(room, true)[0]?.object
+    let object: Object3D | undefined = ray.intersectObject(room, true).find(({ object }) => isSceneObjectVisible(object, room))?.object
     while (object && object !== room && !object.userData.bathroomTarget) object = object.parent ?? undefined
     assert.equal(object?.userData.bathroomTarget, target, `${target} must not be hidden behind another fixture`)
   }
+})
+
+test('the large vanity mat and shelf-supported cleaning caddy keep their anchors and contact shadows aligned', (t) => {
+  const { room, model } = bathroom(t)
+  const mat = room.getObjectByName('Vanity bath mat')!
+  const matBounds = new Box3().setFromObject(mat)
+  const sinkBounds = new Box3().setFromObject(model.actors.get('sink')!)
+  assert.equal(bathroomMat.position[0], bathroomLayout.sink[0])
+  assert.ok(bathroomMat.width * bathroomMat.depth >= 4.5)
+  assert.ok(matBounds.min.z > sinkBounds.max.z + 0.1, 'The mat belongs in front of the vanity, not under its feet')
+  const floorAnchor = model.anchors.get('floor')!.getWorldPosition(new Vector3())
+  assert.equal(floorAnchor.x, bathroomMat.position[0])
+  assert.equal(floorAnchor.z, bathroomMat.position[2])
+
+  const shelf = new Box3().setFromObject(room.getObjectByName('Cleaning caddy wall shelf')!)
+  const caddy = new Box3().setFromObject(model.actors.get('chores')!)
+  assert.ok(Math.abs(shelf.max.y - bathroomCaddyShelf.top) < 0.0001)
+  assert.ok(Math.abs(caddy.min.y - shelf.max.y) < 0.0001, 'The caddy must rest on the shelf')
+  assert.ok(caddy.min.x >= shelf.min.x && caddy.max.x <= shelf.max.x)
+  assert.ok(caddy.min.z >= shelf.min.z && caddy.max.z <= shelf.max.z)
+  assert.ok(shelf.max.x > roomFootprints.bathroom.width / 2 - 0.15
+    && shelf.max.x < roomFootprints.bathroom.width / 2, 'The caddy shelf must be mounted along the open right wall')
+  const binding = model.componentBindings.get('bathroom-cleaning-caddy')!
+  assert.deepEqual(binding.anchor, model.anchors.get('chores')!.getWorldPosition(new Vector3()).toArray())
+  assert.deepEqual(binding.contacts?.[0].position, [
+    bathroomLayout.chores[0], bathroomCaddyShelf.top + 0.007, bathroomLayout.chores[2],
+  ])
 })
 
 test('room styles recolor existing bathroom materials while keeping every actor and geometry', (t) => {
@@ -223,13 +279,11 @@ test('the toilet sits against the rear wall with clearance from the vanity and s
   assert.ok(toilet.max.x < shelf.min.x)
 })
 
-test('the default bathroom view uses the kitchen zoom scale while whole-room framing stays available', (t) => {
+test('the bathroom overview measures its own geometry rather than borrowing the kitchen footprint', (t) => {
   const { model } = bathroom(t)
   for (const [width, height] of [[390, 550], [320, 360], [768, 800], [1440, 778]]) {
-    const kitchen = cameraFraming(width, height, 'room', false)
-    const bathroom = bathroomFraming(width, height, model.bounds, 0, 0, { closeRoom: true })
-    assert.deepEqual(bathroom, kitchen)
-    assert.ok(bathroomFraming(width, height, model.bounds).halfHeight > 0)
+    assert.deepEqual(bathroomFraming(width, height, model.bounds), fitRoomBounds(width, height, model.bounds))
+    assert.ok(bathroomFraming(width, height, model.bounds).halfHeight > bathroomFraming(width, height, model.actorBounds.get('bath')!).halfHeight)
+    assert.deepEqual(bathroomFraming(width, height, model.bounds, 0, 0, { closeRoom: true }), cameraFraming(width, height, 'room', false))
   }
-  assert.ok(bathroomFraming(390, 550, model.bounds).halfHeight > bathroomFraming(390, 550, model.bounds, 0, 0, { closeRoom: true }).halfHeight)
 })

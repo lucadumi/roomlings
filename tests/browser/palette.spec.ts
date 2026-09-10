@@ -1,4 +1,5 @@
 import type { Locator } from '@playwright/test'
+import { roomStyleSchema } from '../../shared/domain.ts'
 import { expect, test } from './account-fixtures.ts'
 import { closeRoomEditor, openRoomColors, selectRoom } from './fixtures.ts'
 
@@ -29,7 +30,7 @@ test('the Coolors palette keeps room surfaces white and accent controls readable
   await page.locator('.kitchen-world canvas').waitFor({ state: 'visible' })
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
-  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   for (const control of await page.locator('.dock-tool, .stock-button, .tool-count').all()) await expectReadable(control)
   const toolColors = await page.locator('.dock-tool').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).backgroundColor))
@@ -68,7 +69,7 @@ test('the Coolors palette keeps room surfaces white and accent controls readable
   await page.keyboard.press('Escape')
 
   const colors = await openRoomColors(page)
-  await expect(colors.locator('.room-style-option')).toHaveCount(4)
+  await expect(colors.locator('.room-style-option')).toHaveCount(roomStyleSchema.options.length)
   for (const option of await colors.locator('.room-style-option').all()) {
     await expectReadable(option)
     await expectReadable(option.locator('.room-style-description'), option)

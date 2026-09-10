@@ -9,6 +9,12 @@ export type ComponentAvailability = {
   free: number
 }
 
+export function preferredComponentSlot(kind: ComponentKind, available: ReturnType<typeof availableComponentSlots>, components: readonly RoomComponent[]) {
+  return available.find((slot) => components.some((component) => component.kind === kind && component.slotId === slot.id && !component.installed))
+    ?? available.find((slot) => slot.kinds.length === 1)
+    ?? available[0]
+}
+
 export function componentAvailability(
   kind: ComponentKind, roomId: RoomId, preview: readonly RoomComponent[], saved: readonly RoomComponent[],
 ): ComponentAvailability {

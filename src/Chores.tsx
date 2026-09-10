@@ -4,7 +4,7 @@ import { Archive, ArrowDown, ArrowUp, Check, History, ListChecks, Pencil, Plus, 
 import { billingDate, choreEditInputSchema, choreInputSchema, choreLimit } from '../shared/domain.ts'
 import type { Chore, ChoreCompletion, Household } from '../shared/domain.ts'
 import { canUndoChore, choreAssignee, choreStatus } from '../shared/chores.ts'
-import { componentChoreArea, componentChoreMatches, getRoomComponents, roomSlots } from '../shared/roomComponents.ts'
+import { componentChoreArea, componentChoreMatches, getRoomComponents } from '../shared/roomComponents.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { choreAreaSchema, choreLocationLabel, roomCatalog, roomIds, roomIdSchema } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
@@ -13,6 +13,7 @@ import { LoadingIcon } from './Branding.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { dateTitle } from './format.ts'
 import { Feedback } from './Feedback.tsx'
+import { componentDisplayName } from './componentNames.ts'
 import './chores.css'
 
 export type ChoreView = 'active' | 'history' | 'archived'
@@ -26,8 +27,7 @@ function repeats(days: number | null): string {
 }
 
 function componentLabel(component: RoomComponent, choices: readonly RoomComponent[]): string {
-  const duplicate = choices.some((choice) => choice.id !== component.id && choice.name === component.name && choice.roomId === component.roomId)
-  return duplicate ? `${component.name} at ${roomSlots.find((slot) => slot.id === component.slotId)?.name}` : component.name
+  return componentDisplayName(component, choices)
 }
 
 function inRoom(item: { roomId: RoomId | null; area: ChoreArea | null; componentId?: string | null }, filter: ChoreFilter, components: readonly RoomComponent[]): boolean {

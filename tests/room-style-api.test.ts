@@ -10,10 +10,18 @@ import { createApp } from '../server/app.ts'
 import { Store } from '../server/store.ts'
 import { balances, householdSchema, roomStyleSchema, suggestedTransfers } from '../shared/domain.ts'
 import type { Household, RoomStyle, Session } from '../shared/domain.ts'
+import { componentFinishSchema } from '../shared/componentFinishes.ts'
+import { getRoomComponents } from '../shared/roomComponents.ts'
+import type { RoomComponent } from '../shared/roomComponents.ts'
 import { createPopulatedHousehold } from './household-fixture.ts'
 
-const styles: RoomStyle[] = ['sage', 'clay', 'linen', 'original']
-const invalidStyles = [undefined, null, '', 'Sage', 'custom', '#7d9070', 1, ['sage'], { wall: '#7d9070' }]
+const styles: RoomStyle[] = [...roomStyleSchema.options.filter((style) => style !== 'original'), 'original']
+const invalidStyles = [undefined, null, '', 'Sage', 'Coastal', 'ocean', 'custom', '#7d9070', 1, ['sage'], { wall: '#7d9070' }]
+
+function finishChange(component: RoomComponent, finish: unknown) {
+  const { version, state: _state, stateChangedAt: _at, stateChangedBy: _by, ...fields } = component
+  return { ...fields, finish, componentVersion: version }
+}
 
 async function serve(store: Store) {
   const server = createApp(store).listen(0, '127.0.0.1')
@@ -110,7 +118,7 @@ describe('shared room style API', () => {
     for (const roomStyle of invalidStyles.filter((style) => style !== undefined)) {
       assert.equal(householdSchema.safeParse({ ...legacy, roomStyle }).success, false)
     }
-    assert.deepEqual(roomStyleSchema.options, ['original', 'sage', 'clay', 'linen'])
+    assert.deepEqual(roomStyleSchema.options, ['original', 'sage', 'clay', 'linen', 'coastal', 'lavender', 'citrus', 'rose'])
     assert.equal(roomStyleSchema.safeParse(undefined).success, false)
   })
 
@@ -151,6 +159,23 @@ describe('shared room style API', () => {
     }
     await error(await api.call('/household', { roomStyle: 'linen', version: before.version }, owner.token, 'PATCH'), 400)
     assert.deepEqual(await current(owner), before)
+    assert.equal(save.mock.callCount(), 0)
+  })
+
+  it('rejects unsupported object finishes in either room without changing the saved household', async (context) => {
+    const owner = await create()
+    const before = await current(owner)
+    const save = context.mock.method(store, 'save')
+    for (const roomId of ['kitchen', 'bathroom'] as const) {
+      const component = getRoomComponents(before).find((component) => component.roomId === roomId)
+      assert.ok(component)
+      for (const finish of [undefined, null, '', 'Teal', 'coastal', '#0a9396', 1, ['teal'], { color: '#0a9396' }]) {
+        await error(await api.call('/household/room-components', {
+          roomId, version: before.version, changes: [finishChange(component, finish)],
+        }, owner.token, 'PATCH'), 400)
+        assert.deepEqual(await current(owner), before)
+      }
+    }
     assert.equal(save.mock.callCount(), 0)
   })
 
@@ -232,7 +257,7 @@ describe('shared room style API', () => {
   })
 })
 
-it('loads legacy JSON without rewriting it and persists presets, ledger, shopping and access across restarts', async () => {
+it('loads legacy JSON without rewriting it and persists presets, object finishes, ledger, shopping and access across restarts', async () => {
   const filename = resolve('data', `test-room-style-${randomUUID()}.sqlite`)
   let store: Store | undefined = new Store(filename)
   let api: Awaited<ReturnType<typeof serve>> | undefined
@@ -293,6 +318,36 @@ it('loads legacy JSON without rewriting it and persists presets, ledger, shoppin
       assert.deepEqual(balances(expected), balances(original))
       assert.deepEqual(suggestedTransfers(expected), suggestedTransfers(original))
       before = expected
+    }
+
+    for (const finish of componentFinishSchema.options) {
+      for (const roomId of ['kitchen', 'bathroom'] as const) {
+        const components = getRoomComponents(before)
+        const component = components.find((component) => component.id === (roomId === 'kitchen' ? 'default-kitchen-fridge' : 'default-bathroom-sink'))
+        assert.ok(component)
+        const changed: Response = await api.call('/household/room-components', {
+          roomId, version: before.version, changes: [finishChange(component, finish)],
+        }, owner.token, 'PATCH')
+        assert.equal(changed.status, 200)
+        const expected: Household = {
+          ...before, version: before.version + 1,
+          roomComponents: components.map((item) => item.id === component.id ? { ...item, finish, version: item.version + 1 } : item),
+        }
+        assert.deepEqual(await changed.json(), { household: expected })
+        before = expected
+      }
+      await api.close()
+      api = undefined
+      await store.close()
+      store = new Store(filename)
+      api = await serve(store)
+      const restored = await api.call('/household', undefined, owner.token)
+      assert.equal(restored.status, 200)
+      assert.deepEqual(await restored.json(), { household: before, memberId: owner.memberId })
+      assert.deepEqual((await store.authenticate(phone.token))?.household, before)
+      assert.deepEqual((await store.byInvite(original.inviteCode)), before)
+      assert.deepEqual(balances(before), balances(original))
+      assert.deepEqual(suggestedTransfers(before), suggestedTransfers(original))
     }
 
     database = new DatabaseSync(filename)

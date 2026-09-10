@@ -13,7 +13,9 @@ import { tourArea, tourFrame } from './tour.ts'
 import type { TourLayout } from './tour.ts'
 import { tourChapterForObject } from './tourPicking.ts'
 import { baseCameraOffset, cameraProjection } from '../camera.ts'
+import { visibleRoomBounds } from '../roomComponentScene.ts'
 import { tourCameraFraming } from './tourCamera.ts'
+import { measureKitchenTourBounds, sharedTourOverviewBounds, tourDoorAngles } from './tourGeometry.ts'
 
 export type TourStatus = 'loading' | 'ready' | 'unavailable'
 
@@ -61,18 +63,19 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     const room = new Group()
     scene.add(room)
     const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 150)
-    const { group: lighting, sunlight, skyLight, fill } = createRoomLights()
-    sunlight.shadow.mapSize.setScalar(element.clientWidth < 760 ? 1024 : 2048)
-    scene.add(lighting)
-    const { kitchen, scenery, materials, doors, iceTray, interiorLight } = buildKitchenModel(room)
+    const model = buildKitchenModel(room)
+    const { kitchen, scenery, materials, doors, iceTray, interiorLight } = model
     scenery.portraits.forEach((portrait, index) => { portrait.visible = index < 4 })
     scenery.receipts.forEach((receipt, index) => { receipt.visible = index < 5 })
     scenery.hourHand.rotation.z = -(10 + 10 / 60) / 12 * Math.PI * 2
     scenery.minuteHand.rotation.z = -10 / 60 * Math.PI * 2
     iceTray.visible = false
-    batchStaticMeshes(room, new Set([
-      ...scenery.coins, ...scenery.receipts, ...scenery.steam, scenery.kettleLid,
-    ]))
+    const tourBounds = measureKitchenTourBounds(room, model)
+    const cameraBounds = { ...tourBounds, room: sharedTourOverviewBounds() }
+    const { group: lighting, sunlight, skyLight, fill } = createRoomLights(tourBounds.room)
+    sunlight.shadow.mapSize.setScalar(element.clientWidth < 760 ? 1024 : 2048)
+    scene.add(lighting)
+    batchStaticMeshes(room, scenery.preserved)
     const texture = createContactShadowTexture()
     const contacts = addContactShadows(room, texture, [
       ...scenery.contacts,
@@ -81,9 +84,12 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     const floorMaterial = new MeshBasicMaterial({
       map: texture, color: '#535d45', opacity: 0.2, transparent: true, depthWrite: false, toneMapped: false,
     })
-    const floor = new Mesh(new PlaneGeometry(16, 13), floorMaterial)
+    const floorWidth = tourBounds.room.max.x - tourBounds.room.min.x
+    const floorDepth = tourBounds.room.max.z - tourBounds.room.min.z
+    const floor = new Mesh(new PlaneGeometry(floorWidth * 1.45, floorDepth * 1.5), floorMaterial)
     floor.rotation.x = -Math.PI / 2
-    floor.position.set(0, -0.29, 0.4)
+    floor.position.set((tourBounds.room.min.x + tourBounds.room.max.x) / 2, visibleRoomBounds(room).min.y - 0.015,
+      (tourBounds.room.min.z + tourBounds.room.max.z) / 2)
     scene.add(floor)
     const dayWindow = new Color(daylight.window)
     const nightWindow = new Color(eveningLight.window)
@@ -138,7 +144,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       const area = tourArea(displayedProgress, measured, reduced)
       const visible = area.height >= 48
       const view = tourFrame(displayedProgress, area.width, Math.max(1, area.height), reduced)
-      const framing = tourCameraFraming(displayedProgress, area.width, Math.max(1, area.height), reduced)
+      const framing = tourCameraFraming(displayedProgress, area.width, Math.max(1, area.height), reduced, cameraBounds)
       camera.position.set(
         framing.center[0] + baseCameraOffset[0], framing.center[1] + baseCameraOffset[1], framing.center[2] + baseCameraOffset[2],
       )
@@ -159,7 +165,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       element.dataset.cameraScale = framing.halfHeight.toFixed(6)
 
       for (const [index, door] of doors.entries()) {
-        const rotation = (index ? -1.72 : -1.97) * view.door
+        const rotation = tourDoorAngles[index ? 1 : 0] * view.door
         shadowDirty ||= door.rotation.y !== rotation
         door.rotation.y = rotation
       }

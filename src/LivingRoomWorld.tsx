@@ -4,6 +4,7 @@ import type { ChoreRoomConfig, ChoreRoomWorldProps } from './ChoreRoomWorld.tsx'
 import { buildLivingRoomModel, livingRoomFocusForRequest, livingRoomFraming, livingRoomLabels, livingRoomLampPosition, livingRoomTargets, livingRoomTourFraming } from './livingRoomModel.ts'
 import type { LivingRoomTarget } from './livingRoomModel.ts'
 import { livingRoomTargetSlots } from './roomComponentScene.ts'
+import { roomCameraZoom } from './camera.ts'
 
 const livingRoomConfig: ChoreRoomConfig<LivingRoomTarget> = {
   roomId: 'living-room',
@@ -15,13 +16,13 @@ const livingRoomConfig: ChoreRoomConfig<LivingRoomTarget> = {
   },
   labels: livingRoomLabels,
   targetKey: 'livingRoomTarget',
-  entryFocus: 'sofa',
   choresTarget: 'chores',
   suppliesTarget: 'supplies',
   focusForRequest: livingRoomFocusForRequest,
   getTargetArea: (target) => target === 'sofa' ? 'seating' : target === 'chores' || target === 'supplies' ? null : target,
   buildModel: buildLivingRoomModel,
   framing: livingRoomFraming,
+  cameraZoom: roomCameraZoom,
   tourFraming: livingRoomTourFraming,
   minimumFocusHalfHeight: 2.05,
   lampPosition: livingRoomLampPosition,
@@ -31,8 +32,8 @@ const livingRoomConfig: ChoreRoomConfig<LivingRoomTarget> = {
     name: 'living room',
     room: 'The living room',
     preview: 'Interactive living room preview. Select an object to explore its household chores or supplies.',
-    interactive: 'Interactive low-poly shared living room. Select the sofa, coffee table, plant, floor or bin for chores, the cleaning caddy for room chores, or the shelf to restock supplies. Select other objects for their details. Drag to turn, scroll or pinch to zoom.',
-    editing: 'Living room editing preview. Select an object to edit its settings in its fixed position, or use the room objects list. Drag to turn, scroll or pinch to zoom.',
+    interactive: 'Interactive living room. Object plus markers open chores. Select the window to change lighting or the supply shelf to restock. Drag to turn 360 degrees, scroll or pinch to zoom.',
+    editing: 'Living room editing preview. Use the Components menu to edit objects. Drag to turn 360 degrees, scroll or pinch to zoom.',
     objects: 'Objects in your living room',
     unavailable: 'The 3D living room is unavailable.',
     restockHint: 'Restock living room supplies',

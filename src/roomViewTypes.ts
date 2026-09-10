@@ -24,5 +24,6 @@ export type RoomWorldProps = {
   components?: readonly RoomComponent[]
   editMode?: boolean
   selectedComponentId?: string | null
+  placementPreviewId?: string | null
   onComponentSelect?: (id: string) => void
 }

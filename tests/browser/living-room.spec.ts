@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { Box3, Mesh, OrthographicCamera, Raycaster, Vector2, Vector3 } from 'three'
 import { balances } from '../../shared/domain.ts'
 import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds } from '../../src/camera.ts'
+import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { isSceneObjectVisible } from '../../src/roomComponentScene.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
@@ -13,7 +13,7 @@ import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing
 test.use({ reducedMotion: 'reduce' })
 
 async function frameRoom(page: Page) {
-  await page.getByRole('button', { name: 'Frame the whole room', exact: true }).click()
+  await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   const world = page.locator('.living-room-world')
   await expect(world).toHaveAttribute('data-focus', 'room')
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
@@ -25,21 +25,29 @@ async function objectPoint(page: Page, id: string) {
     const canvas = element.getBoundingClientRect()
     const stage = element.previousElementSibling?.getBoundingClientRect()
     if (!stage) throw new Error('The measured living room scene area is missing.')
-    return { x: canvas.x, y: canvas.y, width: canvas.width, height: canvas.height, area: {
-      x: stage.x - canvas.x, y: stage.y - canvas.y, width: stage.width, height: stage.height,
-    } }
+    const controls = element.parentElement!.querySelector('.world-camera-controls')!.getBoundingClientRect()
+    return { x: canvas.x, y: canvas.y, width: canvas.width, height: canvas.height,
+      panelOpen: element.closest('.game-home')?.getAttribute('data-panel-open') === 'true',
+      area: { x: stage.x, y: stage.y, width: stage.width, height: stage.height },
+      controls: { x: controls.x, y: controls.y, width: controls.width, height: controls.height },
+    }
   })
   const preview = createConfiguredRoomPreview('living-room', 'original')
   try {
     preview.scene.updateMatrixWorld(true)
-    const frame = fitRoomBounds(layout.area.width, layout.area.height, preview.componentScene.bounds)
-    const projection = cameraProjection(layout.width, layout.height, layout.area, frame.halfHeight, 1)
+    const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
+      : { x: 0, y: 0, width: layout.width, height: layout.height }
+    const frame = roomEntryFraming(layout.width, layout.height, area)
+    const zoom = roomCameraZoom(1, true, 'living-room')
+    const projection = cameraProjection(layout.width, layout.height, area, frame.halfHeight, zoom)
     const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+    camera.zoom = zoom
+    camera.updateProjectionMatrix()
     const center = new Vector3(...frame.center)
     camera.position.copy(center).add(new Vector3(...baseCameraOffset))
     camera.lookAt(center)
     camera.updateMatrixWorld(true)
-    const actor = preview.componentScene.actors.get(id)
+    const actor = id === 'window' ? preview.room.getObjectByName('Recessed lounge window') : preview.componentScene.actors.get(id)
     if (!actor) throw new Error('The requested living room object is missing.')
     const raycaster = new Raycaster()
     const points: Vector3[] = []
@@ -49,20 +57,27 @@ async function objectPoint(page: Page, id: string) {
     const point = points.find((point) => {
       raycaster.setFromCamera(new Vector2(point.x, point.y), camera)
       const hit = raycaster.intersectObject(preview.room, true).find(({ object }) => isSceneObjectVisible(object, preview.room))
-      return hit && preview.componentScene.componentForObject(hit.object)?.id === id
+      if (!hit) return false
+      if (id === 'window') {
+        for (let object = hit.object; object !== preview.room && object.parent; object = object.parent) {
+          if (object.userData.roomLightSwitch) return true
+        }
+        return false
+      }
+      return preview.componentScene.componentForObject(hit.object)?.id === id
     })
     if (!point) throw new Error('The living room object needs a visible, pickable surface.')
     return { x: layout.x + (point.x * 0.5 + 0.5) * layout.width, y: layout.y + (-point.y * 0.5 + 0.5) * layout.height }
   } finally { preview.dispose() }
 }
 
-test('the living room opens on the sofa and shares the existing household across room navigation', { tag: '@room' }, async ({ page, accounts, populatedHousehold }, testInfo) => {
+test('the living room opens at its entry scale and preserves the household across navigation', { tag: '@room' }, async ({ page, accounts, populatedHousehold }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   const before = await accounts.store.get(populatedHousehold.household.id)
   await page.goto(roomPath('living-room'))
   const world = page.locator('.living-room-world')
   await expect(world.locator('canvas')).toBeVisible()
-  await expect(world).toHaveAttribute('data-focus', 'sofa')
+  await expect(world).toHaveAttribute('data-focus', 'room')
   await expect(world).toHaveAttribute('data-framing', 'close')
   await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Living room')
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
@@ -86,6 +101,25 @@ test('the living room opens on the sofa and shares the existing household across
   expect(await accounts.store.get(populatedHousehold.household.id)).toEqual(before)
 })
 
+test('the living room window switches day and night without opening chores or changing household data', { tag: '@room' }, async ({ page, accounts, populatedHousehold }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
+  const before = await accounts.store.get(populatedHousehold.household.id)
+  await page.goto(roomPath('living-room'))
+  await frameRoom(page)
+  await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+  const window = await objectPoint(page, 'window')
+  await page.mouse.click(window.x, window.y)
+  const world = page.locator('.living-room-world')
+  await expect(world).toHaveAttribute('data-evening', 'true')
+  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  await expect(world.getByRole('button', { name: 'Switch to daylight', exact: true })).toBeVisible()
+  await expect(page.locator('.room-panel')).toHaveCount(0)
+  await page.mouse.click(window.x, window.y)
+  await expect(world).toHaveAttribute('data-evening', 'false')
+  await expect(world).toHaveAttribute('data-focus', 'room')
+  expect(await accounts.store.get(populatedHousehold.household.id)).toEqual(before)
+})
+
 test('the sofa and TV remain directly pickable with their labels hidden', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('living-room'))
@@ -98,6 +132,9 @@ test('the sofa and TV remain directly pickable with their labels hidden', { tag:
   await frameRoom(page)
   const television = await objectPoint(page, 'default-living-room-tv')
   await page.mouse.click(television.x, television.y)
+  await expect(page.getByRole('combobox', { name: 'Chore object', exact: true })).toHaveAttribute('data-value', 'default-living-room-tv')
+  const objects = await openRoomObjects(page)
+  await objects.getByRole('button', { name: 'Open TV details', exact: true }).click()
   await expect(page.locator('.room-objects-panel').getByRole('heading', { name: 'TV', exact: true })).toBeVisible()
 })
 
@@ -118,6 +155,9 @@ test('living room objects open their own chore areas and shared supply shortcuts
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await frameRoom(page)
   await page.locator('[data-living-room-target="supplies"]').click()
+  await expect(page.getByRole('combobox', { name: 'Chore object', exact: true })).toHaveAttribute('data-value', 'default-living-room-supply-shelf')
+  await page.getByRole('button', { name: 'Close panel', exact: true }).click()
+  await page.getByRole('button', { name: 'Restock supplies', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Living room supplies.', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Restock Floor cleaner', exact: true }).click()
   await expect(page.getByRole('dialog').getByLabel('Item name', { exact: true })).toHaveValue('Floor cleaner')
@@ -137,9 +177,12 @@ test('removed and substituted living room objects expose only their actual actio
   const world = page.locator('.living-room-world')
   await expect(world.locator('[data-living-room-target="plants"]')).toHaveCount(0)
   await expect(world.locator('[data-component-id="default-living-room-tv"]')).toHaveCount(0)
-  const object = world.getByRole('button', { name: 'Open Air purifier', exact: true })
+  const object = world.getByRole('button', { name: 'Chores for Air purifier', exact: true })
   await object.focus()
   await page.keyboard.press('Enter')
+  await expect(page.getByRole('combobox', { name: 'Chore object', exact: true })).toHaveAttribute('data-value', purifier.id)
+  const objects = await openRoomObjects(page)
+  await objects.getByRole('button', { name: 'Open Air purifier details', exact: true }).click()
   await expect(page.locator('.room-objects-panel').getByRole('heading', { name: 'Air purifier', exact: true })).toBeVisible()
   await expect(page.locator('.room-objects-panel')).not.toContainText('Water the plant')
 })

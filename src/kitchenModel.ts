@@ -6,10 +6,11 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import type { Category, RoomStyle } from '../shared/domain.ts'
 import { buildRoom } from './room.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
+import { kitchenLayout } from './roomLayout.ts'
 
 export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const kitchen = new Group()
-  kitchen.position.set(-2.7, 0.025, -2.25)
+  kitchen.position.set(...kitchenLayout.fridge)
   kitchen.userData.action = 'fridge'
   room.add(kitchen)
   const materials: MeshStandardMaterial[] = []
@@ -57,8 +58,8 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const styleMaterials = { ...scenery.styleMaterials, fridge: sage, fridgeDoor: lightSage, fridgeEdge: edge }
   box(kitchen, [0.14, 3.48, 1.7], [-1.02, 1.97, 0], sage, 0.035)
   box(kitchen, [0.14, 3.48, 1.7], [1.02, 1.97, 0], sage, 0.035)
-  box(kitchen, [2, 3.48, 0.14], [0, 1.97, -0.78], sage, 0.035)
-  box(kitchen, [2.15, 0.15, 1.7], [0, 3.68, 0], lightSage, 0.035)
+  box(kitchen, [2, 3.48, 0.14], [0, 1.97, -0.78], sage, 0.035).name = 'Fridge back panel'
+  box(kitchen, [2.15, 0.15, 1.68], [0, 3.68, 0], lightSage, 0.035).name = 'Fridge top cover'
   box(kitchen, [2.15, 0.2, 1.7], [0, 0.3, 0], sage, 0.035)
   box(kitchen, [1.88, 3.15, 0.08], [0, 1.94, -0.66], inside)
   box(kitchen, [1.9, 0.08, 1.4], [0, 2.64, 0.02], porcelain)
@@ -170,7 +171,7 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   kitchen.add(iceTray)
   const foodMaterials: Record<Category, MeshStandardMaterial> = { produce: red, dairy: milk, pantry: yellow, drinks: blue, other: berry }
   scenery.componentBindings.set('kitchen-fridge', {
-    root: kitchen, finishes: [sage, lightSage, edge], anchor: [-2.7, 3.95, -2.1],
+    root: kitchen, finishes: [sage, lightSage, edge], anchor: [kitchen.position.x, 3.95, kitchen.position.z + 0.15],
     contacts: [{ position: [kitchen.position.x, 0.007, kitchen.position.z], size: [2.55, 2.1] }],
   })
   return { kitchen, scenery, materials, doors, foods, iceTray, interiorLight, foodMaterials, styleMaterials }

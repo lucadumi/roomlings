@@ -22,8 +22,12 @@ export async function trackDrawing(page: Page) {
       const original = WebGL2RenderingContext.prototype[method]
       Object.defineProperty(WebGL2RenderingContext.prototype, method, {
         value(this: WebGL2RenderingContext, ...args: number[]) {
-          draws++
-          if (framebuffers.get(this)) shadowDraws++
+          // Offscreen selector and object thumbnails do not belong to the live scene's budget.
+          if (this.canvas instanceof HTMLCanvasElement
+            && this.canvas.closest('.world-canvas, .welcome-canvas, .chore-room-preview-canvas')) {
+            draws++
+            if (framebuffers.get(this)) shadowDraws++
+          }
           return Reflect.apply(original, this, args)
         },
       })
@@ -84,6 +88,14 @@ export async function openRoomEditor(page: Page) {
   }
   await expect(editor).toBeVisible()
   return editor
+}
+
+export async function placeRoomObject(editor: Locator, name: string, restore = false) {
+  await editor.getByRole('button', { name: `${restore ? 'Preview restoring' : 'Preview'} ${name}`, exact: true }).click()
+  const placement = editor.getByRole('group', { name: 'Placement preview', exact: true })
+  await expect(placement).toBeVisible()
+  await placement.getByRole('button', { name: 'Place object', exact: true }).click()
+  await expect(placement).toHaveCount(0)
 }
 
 export async function openRoomColors(page: Page) {

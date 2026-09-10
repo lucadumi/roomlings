@@ -3,10 +3,11 @@ import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
 import { pauseRequest } from './fixtures.ts'
 import { buildKitchenModel } from '../../src/kitchenModel.ts'
-import { buildBathroomModel } from '../../src/bathroomModel.ts'
-import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
+import { bathroomTourFraming, buildBathroomModel } from '../../src/bathroomModel.ts'
+import { baseCameraOffset } from '../../src/camera.ts'
 import { tourCameraFraming } from '../../src/landing/tourCamera.ts'
-import { roomTourChapters } from '../../src/landing/roomTourChapters.ts'
+import { measureKitchenTourBounds, sharedTourOverviewBounds } from '../../src/landing/tourGeometry.ts'
+import { bathroomChapters, roomTourChapters } from '../../src/landing/roomTourChapters.ts'
 import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
@@ -17,7 +18,9 @@ async function kitchenPoint(page: Page, action: 'stock' | 'ledger' | 'budget' | 
   try {
     const bounds = await page.locator('.welcome-canvas canvas').boundingBox()
     if (!bounds) throw new Error('The kitchen canvas is missing.')
-    const frame = tourCameraFraming(0, bounds.width, bounds.height, true)
+    const frame = tourCameraFraming(0, bounds.width, bounds.height, true, {
+      ...measureKitchenTourBounds(room, model), room: sharedTourOverviewBounds(),
+    })
     const halfWidth = frame.halfHeight * bounds.width / bounds.height
     const camera = new OrthographicCamera(-halfWidth, halfWidth, frame.halfHeight, -frame.halfHeight, 0.1, 150)
     camera.position.set(...frame.center).add(new Vector3(...baseCameraOffset))
@@ -39,7 +42,8 @@ async function bathroomPoint(page: Page, target: 'sink' | 'mirror' | 'toilet' | 
   try {
     const bounds = await page.locator('.bathroom-preview-canvas canvas').boundingBox()
     if (!bounds) throw new Error('The bathroom canvas is missing.')
-    const frame = cameraFraming(bounds.width, bounds.height, 'room', true)
+    const frame = bathroomTourFraming(bounds.width, bounds.height, 0, sharedTourOverviewBounds(),
+      model.actorBounds, bathroomChapters.map((chapter) => chapter.target))
     const halfWidth = frame.halfHeight * bounds.width / bounds.height
     const camera = new OrthographicCamera(-halfWidth, halfWidth, frame.halfHeight, -frame.halfHeight, 0.1, 100)
     camera.position.set(...frame.center).add(new Vector3(...baseCameraOffset))

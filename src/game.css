@@ -273,7 +273,7 @@
 .game-panel-content .empty-state { padding: 33px 12px; }
 .game-panel-content .empty-state p { font-size: 12px; color: var(--muted); }
 .game-app .modal-backdrop { background: #3f512a1f; backdrop-filter: blur(2px); justify-content: flex-end; padding: 85px 25px 105px; }
-.game-app .modal { --control-height: 44px; width: min(100%, 450px); max-height: calc(100dvh - 190px); background: var(--control-surface); border: 1px solid var(--control-border); box-shadow: 0 5px 0 #809b5947, 0 24px 65px #334b2733; border-radius: 15px; padding: 29px; }
+.game-app .modal { --control-height: 44px; width: min(100%, 450px); max-height: calc(100dvh - 190px); background: var(--control-surface); border: 1px solid var(--control-border); box-shadow: var(--modal-shadow); border-radius: 15px; padding: 29px; }
 .game-app .modal h2 { color: var(--section-ink); font-size: 1.75rem; }
 .game-app .modal-subtitle { font-size: 0.75rem; color: var(--muted); line-height: 1.8; }
 .game-app .field { color: var(--section-ink); font-size: 0.75rem; }
@@ -484,6 +484,18 @@
   .game-panel-content .balance-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; }
   .game-panel-content .balance-row > .avatar { grid-row: 1 / span 2; }
   .game-panel-content .balance-amount { grid-column: 2; margin: 0; white-space: normal; }
+}
+
+.game-app[data-component-panel="true"][data-placement-preview="true"] {
+  --panel-width: min(320px, 45vw);
+  --sheet-height: var(--placement-panel-height, 150px);
+}
+.room-panel[data-compact="true"] { height: auto; bottom: auto; max-height: calc(100dvh - 220px); }
+.room-panel[data-compact="true"] .room-panel-header { padding: 14px 18px 12px; }
+.room-panel[data-compact="true"] .room-panel-header h2 { font-size: 1.25rem; letter-spacing: -0.5px; line-height: 1.3; }
+.room-panel[data-compact="true"] .room-panel-scroll { padding: 14px 18px 18px; }
+@media (max-width: 800px) and (min-height: 621px), (max-width: 560px) {
+  .room-panel[data-compact="true"] { top: auto; bottom: var(--game-dock-space, 105px); max-height: calc(100dvh - var(--game-dock-space, 105px) - 100px); }
 }
 
 @container room-panel (max-width: 20rem) {

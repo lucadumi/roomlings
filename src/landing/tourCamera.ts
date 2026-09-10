@@ -1,8 +1,9 @@
 import { Box3, Vector3 } from 'three'
 import { cameraFraming, fitRoomBounds } from '../camera.ts'
 import { tourChapters, tourFrame } from './tour.ts'
+import type { KitchenTourBounds } from './tourGeometry.ts'
 
-export function tourCameraFraming(progress: number, width: number, height: number, reducedMotion = false): {
+export function tourCameraFraming(progress: number, width: number, height: number, reducedMotion = false, bounds?: KitchenTourBounds): {
   center: [number, number, number]; halfHeight: number
 } {
   if (!Number.isFinite(progress)) throw new Error('Room exploration needs finite progress.')
@@ -12,6 +13,10 @@ export function tourCameraFraming(progress: number, width: number, height: numbe
   const amount = step - index
   const eased = amount * amount * (3 - 2 * amount)
   const frame = (at: number) => {
+    if (bounds) {
+      const volume = [bounds.room, bounds.groceries, bounds.receipts, bounds.budget, bounds.room][at]
+      return fitRoomBounds(width, height, volume)
+    }
     if (at === 0 || at === last) return cameraFraming(width, height, 'room', true)
     const view = tourFrame(at / last, width, height)
     return fitRoomBounds(width, height, new Box3(new Vector3(...view.bounds[0]), new Vector3(...view.bounds[1])))

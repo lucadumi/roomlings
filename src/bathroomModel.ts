@@ -10,6 +10,8 @@ import type { ContactShadow } from './lighting.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
+import { bathroomCaddyShelf, bathroomLayout, bathroomMat, componentPlacements, roomFootprints, roomShellLayout } from './roomLayout.ts'
+import { buildRoomWalls } from './roomShell.ts'
 
 export const bathroomTargets = ['sink', 'mirror', 'toilet', 'bath', 'floor', 'chores', 'supplies'] as const
 export type BathroomTarget = typeof bathroomTargets[number]
@@ -107,34 +109,35 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   }
 
   room.name = 'Open-corner bathroom'
-  box(room, [9.4, 0.24, 6.4], [0, -0.145, 0], styleMaterials.lightWood, 0.1)
-  box(room, [9.4, 4.45, 0.14], [0, 2.15, -3.16], styleMaterials.wall, 0.045)
-  box(room, [0.14, 4.45, 3.7], [-4.63, 2.15, -1.38], styleMaterials.wall, 0.045)
-  box(room, [9.2, 1.35, 0.028], [0, 0.83, -3.07], styleMaterials.floor)
-  box(room, [9.22, 0.08, 0.07], [0, 1.54, -3.06], styleMaterials.trim)
-  box(room, [9.22, 0.13, 0.07], [0, 0.13, -3.06], styleMaterials.trim)
-  box(room, [0.065, 0.13, 3.62], [-4.53, 0.13, -1.38], styleMaterials.trim)
-  for (let x = 0; x < 12; x++) {
-    box(room, [0.018, 1.28, 0.012], [-4.2 + x * 0.76, 0.84, -3.048], styleMaterials.trim)
-  }
-  box(room, [9.18, 0.018, 0.012], [0, 0.83, -3.048], styleMaterials.trim)
-  const floor = actor('floor', [0, 0, 0], [-1.45, 0.16, 1.42])
-  for (let x = 0; x < 9; x++) {
+  const footprint = roomFootprints.bathroom
+  const { outer } = roomShellLayout('bathroom')
+  const floorBase = box(room, [outer.right - outer.left, 0.24, outer.front - outer.back],
+    [(outer.left + outer.right) / 2, -0.145, (outer.back + outer.front) / 2], styleMaterials.lightWood, 0.1)
+  floorBase.name = 'Bathroom floor base'
+  buildRoomWalls(room, 'bathroom', { name: 'Bathroom', centerY: 2.15, wall: styleMaterials.wall, trim: styleMaterials.trim, lowerPanel: styleMaterials.floor })
+  const floor = actor('floor', [0, 0, 0], [bathroomMat.position[0], 0.16, bathroomMat.position[2]])
+  const tileWidth = (footprint.width - 0.26) / 10
+  const tileDepth = (footprint.depth - 0.25) / 6
+  for (let x = 0; x < 10; x++) {
     for (let z = 0; z < 6; z++) {
-      const tile = box(floor, [1.021, 0.025, 1.029], [-4.12 + x * 1.03, -0.006, -2.59 + z * 1.037],
+      const tile = box(floor, [tileWidth - 0.008, 0.025, tileDepth - 0.008],
+        [(x - 4.5) * tileWidth, -0.006, footprint.centerZ + (z - 2.5) * tileDepth],
         (x + z) % 2 ? styleMaterials.floor : styleMaterials.floorAlternate)
       tile.castShadow = false
     }
   }
-  box(floor, [2.25, 0.045, 1.12], [-1.35, 0.04, 1.42], styleMaterials.fridgeDoor, 0.02)
+  const mat = box(floor, [bathroomMat.width, 0.045, bathroomMat.depth], bathroomMat.position, styleMaterials.fridgeDoor, 0.02)
+  mat.name = 'Vanity bath mat'
   for (const side of [-1, 1]) {
-    box(floor, [0.055, 0.012, 1.03], [-1.35 + side * 0.94, 0.07, 1.42], styleMaterials.fridgeEdge)
-    for (let i = 0; i < 7; i++) {
-      box(floor, [0.16, 0.025, 0.035], [-1.35 + side * 1.16, 0.035, 0.98 + i * 0.145], linen)
+    box(floor, [0.055, 0.012, bathroomMat.depth - 0.09],
+      [bathroomMat.position[0] + side * (bathroomMat.width / 2 - 0.18), 0.07, bathroomMat.position[2]], styleMaterials.fridgeEdge)
+    for (let i = 0; i < 10; i++) {
+      box(floor, [0.16, 0.025, 0.035],
+        [bathroomMat.position[0] + side * (bathroomMat.width / 2 + 0.035), 0.035, bathroomMat.position[2] - 0.7 + i * 0.155], linen)
     }
   }
 
-  const bath = actor('bath', [-2.85, 0, -1.3], [0, 1.45, 0.55])
+  const bath = actor('bath', bathroomLayout.bath, [0, 1.45, 0.55])
   basin(bath, [[0, 0.13], [0.69, 0.13], [0.79, 0.22], [0.98, 1.03], [1, 1.13],
     [0.97, 1.19], [0.86, 1.19], [0.8, 1.02], [0.67, 0.43], [0, 0.43]], [1, 1, 1.52], [0, 0, 0])
   const bathWater = cylinder(bath, 0.695, 0.025, [0, 0.52, 0], water, 0.695, 16)
@@ -149,18 +152,18 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   box(bathTray, [2.02, 0.085, 0.31], [0, 1.24, 0.5], styleMaterials.wood, 0.025)
   box(bathTray, [0.58, 0.035, 0.29], [0.47, 1.302, 0.5], linen, 0.012)
   box(bathTray, [0.2, 0.09, 0.15], [-0.49, 1.322, 0.5], tomato, 0.035)
-  contacts.push({ position: [-2.85, 0.014, -1.3], size: [2.35, 3.55] })
+  contacts.push({ position: [bath.position.x, 0.014, bath.position.z], size: [2.35, 3.55] })
 
-  const sink = actor('sink', [0.15, 0, -2.28], [0, 2.37, 0.42])
-  for (const x of [-0.85, 0.85]) for (const z of [-0.44, 0.44]) {
+  const sink = actor('sink', bathroomLayout.sink, [0, 2.37, 0.42])
+  for (const x of [-0.95, 0.95]) for (const z of [-0.44, 0.44]) {
     cylinder(sink, 0.075, 0.24, [x, 0.14, z], styleMaterials.wood)
   }
-  box(sink, [2.08, 1.34, 1.2], [0, 0.84, 0], styleMaterials.cabinet, 0.045)
-  for (const x of [-0.51, 0.51]) {
-    box(sink, [0.97, 1.19, 0.055], [x, 0.86, 0.625], styleMaterials.cabinetPanel, 0.025)
+  box(sink, [2.31, 1.34, 1.2], [0, 0.84, 0], styleMaterials.cabinet, 0.045)
+  for (const x of [-0.58, 0.58]) {
+    box(sink, [1.08, 1.19, 0.055], [x, 0.86, 0.625], styleMaterials.cabinetPanel, 0.025)
     box(sink, [0.24, 0.045, 0.075], [x, 1.27, 0.675], silver, 0.014)
   }
-  box(sink, [2.22, 0.13, 1.34], [0, 1.59, 0], styleMaterials.counter, 0.035)
+  box(sink, [2.45, 0.13, 1.34], [0, 1.59, 0], styleMaterials.counter, 0.035)
   basin(sink, [[0, 0], [0.55, 0], [0.83, 0.13], [1, 0.38], [1, 0.44],
     [0.89, 0.44], [0.71, 0.14], [0, 0.12]], [0.68, 1, 0.49], [0, 1.66, 0.04])
   cylinder(sink, 0.048, 0.024, [0, 1.796, 0.04], silver, 0.048, 8)
@@ -168,9 +171,9 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   box(sink, [0.075, 0.065, 0.4], [0, 2.27, -0.36], silver, 0.02)
   cylinder(sink, 0.035, 0.11, [0, 2.22, -0.18], silver)
   const sinkSoap = bottle(sink, [-0.85, 1.66, 0.09], tomato, 0.26)
-  contacts.push({ position: [0.15, 0.014, -2.28], size: [2.5, 1.65] })
+  contacts.push({ position: [sink.position.x, 0.014, sink.position.z], size: [2.7, 1.65] })
 
-  const mirror = actor('mirror', [0.15, 3.06, -3.055], [0, 0.92, 0.11])
+  const mirror = actor('mirror', bathroomLayout.mirror, [0, 0.92, 0.11])
   const frame = cylinder(mirror, 0.84, 0.11, [0, 0, 0], styleMaterials.wood, 0.84, 16)
   frame.rotation.x = Math.PI / 2
   const glass = cylinder(mirror, 0.735, 0.035, [0, 0, 0.073], mirrorGlass, 0.735, 16)
@@ -182,7 +185,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   box(mirror, [0.98, 0.09, 0.2], [0, 0.98, 0.075], styleMaterials.cabinet, 0.025)
   box(mirror, [0.8, 0.035, 0.14], [0, 0.922, 0.095], lampMaterial, 0.015)
 
-  const toilet = actor('toilet', [2.2, 0, -2.12], [0, 2.14, 0.06])
+  const toilet = actor('toilet', bathroomLayout.toilet, [0, 2.14, 0.06])
   const foot = cylinder(toilet, 0.4, 0.14, [0, 0.09, 0.18], porcelain, 0.34, 12)
   foot.scale.z = 1.3
   cylinder(toilet, 0.34, 0.54, [0, 0.4, 0.16], porcelain, 0.25, 12)
@@ -200,9 +203,9 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const paperRoll = cylinder(toilet, 0.15, 0.25, [0.88, 1.34, -0.52], linen, 0.15, 10)
   paperRoll.rotation.z = Math.PI / 2
   box(toilet, [0.24, 0.22, 0.025], [0.88, 1.18, -0.365], linen)
-  contacts.push({ position: [2.2, 0.014, -1.95], size: [1.55, 1.9] })
+  contacts.push({ position: [toilet.position.x, 0.014, toilet.position.z + 0.17], size: [1.55, 1.9] })
 
-  const supplies = actor('supplies', [3.92, 0, -2.4], [0, 3.46, 0.03])
+  const supplies = actor('supplies', bathroomLayout.supplies, [0, 3.46, 0.03])
   for (const x of [-0.51, 0.51]) for (const z of [-0.36, 0.36]) {
     box(supplies, [0.075, 2.84, 0.075], [x, 1.47, z], styleMaterials.wood, 0.012)
   }
@@ -222,9 +225,19 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   bottle(supplies, [0.23, 1.97, 0.02], tomato, 0.28)
   box(supplies, [0.74, 0.15, 0.59], [0, 2.91, 0.01], linen, 0.045)
   box(supplies, [0.66, 0.13, 0.56], [0, 3.06, 0.01], styleMaterials.fridgeDoor, 0.045)
-  contacts.push({ position: [3.92, 0.014, -2.4], size: [1.4, 1.25] })
+  contacts.push({ position: [supplies.position.x, 0.014, supplies.position.z], size: [1.4, 1.25] })
 
-  const chores = actor('chores', [0.93, 0, 1.15], [0, 1.45, 0])
+  const chores = actor('chores', bathroomLayout.chores, [0, 1.45, 0])
+  chores.rotation.y = -Math.PI / 2
+  const caddyShelf = new Group()
+  caddyShelf.name = 'Cleaning caddy wall shelf'
+  caddyShelf.position.set(...bathroomCaddyShelf.position)
+  room.add(caddyShelf)
+  box(caddyShelf, [bathroomCaddyShelf.width, 0.08, bathroomCaddyShelf.depth], [0, 0, 0], styleMaterials.lightWood, 0.018)
+  for (const z of [-0.48, 0.48]) {
+    box(caddyShelf, [0.055, 0.38, 0.055], [0.38, -0.2, z], styleMaterials.wood, 0.01)
+    box(caddyShelf, [0.66, 0.055, 0.055], [0.08, -0.06, z], styleMaterials.wood, 0.01)
+  }
   box(chores, [1.1, 0.08, 0.72], [0, 0.1, 0], styleMaterials.fridge, 0.03)
   for (const x of [-0.51, 0.51]) {
     box(chores, [0.085, 0.38, 0.7], [x, 0.29, 0], styleMaterials.fridge, 0.02)
@@ -238,24 +251,55 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const brush = cylinder(chores, 0.027, 0.77, [-0.32, 0.61, 0.19], styleMaterials.wood, 0.027, 8)
   brush.rotation.z = 0.18
   box(chores, [0.18, 0.15, 0.12], [-0.25, 0.23, 0.19], linen, 0.02)
-  contacts.push({ position: [0.93, 0.014, 1.15], size: [1.45, 1] })
+  contacts.push({ position: [chores.position.x, bathroomCaddyShelf.top + 0.007, chores.position.z], size: [0.86, 1.3] })
+
+  const laundryFrame = new Group()
+  laundryFrame.name = 'Wall-backed laundry stacking frame'
+  const laundryPosition = componentPlacements['bathroom-laundry']!.position
+  laundryFrame.position.set(laundryPosition[0], 0, laundryPosition[2])
+  laundryFrame.rotation.y = componentPlacements['bathroom-laundry']!.rotation ?? 0
+  laundryFrame.visible = false
+  room.add(laundryFrame)
+  for (const x of [-0.715, 0.715]) for (const z of [-0.615, 0.615]) {
+    box(laundryFrame, [0.055, 1.54, 0.055], [x, 0.79, z], styleMaterials.wood, 0.01)
+  }
+  box(laundryFrame, [1.49, 0.08, 1.32], [0, 1.56, 0], styleMaterials.lightWood, 0.012)
+  const lowerStorage = new Group()
+  lowerStorage.name = 'Laundry cabinet below a standalone dryer'
+  laundryFrame.add(lowerStorage)
+  box(lowerStorage, [1.28, 1.42, 1.15], [0, 0.77, 0], styleMaterials.cabinet, 0.025)
+  box(lowerStorage, [1.18, 1.22, 0.045], [0, 0.79, 0.6], styleMaterials.cabinetPanel, 0.02)
+  box(lowerStorage, [0.26, 0.045, 0.065], [0, 1.31, 0.655], silver, 0.012)
+  const careShelves = [2.44, 3.02].map((height) => {
+    const group = new Group()
+    group.name = 'Vanity care ledge'
+    group.visible = false
+    box(group, [1.3, 0.06, 0.42], [1.8, height - 0.03, -2.96], styleMaterials.lightWood, 0.012)
+    room.add(group)
+    return group
+  })
 
   room.updateMatrixWorld(true)
   const bounds = new Box3().setFromObject(room)
   const actorBounds = new Map([...actors].map(([target, group]) => [
     target, new Box3().setFromObject(group).expandByPoint(anchors.get(target)!.getWorldPosition(new Vector3())),
   ]))
+  const anchorPosition = (target: BathroomTarget): Position => anchors.get(target)!.getWorldPosition(new Vector3()).toArray()
   const componentBindings: ComponentBindings = new Map([
-    ['bathroom-sink', { root: sink, finishes: [styleMaterials.cabinet, styleMaterials.cabinetPanel], contacts: contacts.slice(1, 2), anchor: [0.15, 2.37, -1.86] }],
-    ['bathroom-mirror', { root: mirror, finishes: [styleMaterials.wood], anchor: [0.15, 3.98, -2.945] }],
-    ['bathroom-toilet', { root: toilet, finishes: [porcelain], contacts: contacts.slice(2, 3), anchor: [2.2, 2.14, -2.06] }],
-    ['bathroom-bath', { root: bath, finishes: [porcelain], contacts: contacts.slice(0, 1), anchor: [-2.85, 1.45, -0.75] }],
-    ['bathroom-supply-shelf', { root: supplies, finishes: [styleMaterials.wood, styleMaterials.lightWood, styleMaterials.woodGrain], contacts: contacts.slice(3, 4), anchor: [3.92, 3.46, -2.37] }],
-    ['bathroom-cleaning-caddy', { root: chores, finishes: [styleMaterials.fridge, styleMaterials.fridgeEdge], contacts: contacts.slice(4, 5), anchor: [0.93, 1.45, 1.15] }],
+    ['bathroom-sink', { root: sink, finishes: [styleMaterials.cabinet, styleMaterials.cabinetPanel], contacts: contacts.slice(1, 2), anchor: anchorPosition('sink') }],
+    ['bathroom-mirror', { root: mirror, finishes: [styleMaterials.wood], anchor: anchorPosition('mirror') }],
+    ['bathroom-toilet', { root: toilet, finishes: [porcelain], contacts: contacts.slice(2, 3), anchor: anchorPosition('toilet') }],
+    ['bathroom-bath', { root: bath, finishes: [porcelain], contacts: contacts.slice(0, 1), anchor: anchorPosition('bath') }],
+    ['bathroom-supply-shelf', { root: supplies, finishes: [styleMaterials.wood, styleMaterials.lightWood, styleMaterials.woodGrain], contacts: contacts.slice(3, 4), anchor: anchorPosition('supplies') }],
+    ['bathroom-cleaning-caddy', { root: chores, finishes: [styleMaterials.fridge, styleMaterials.fridgeEdge], contacts: contacts.slice(4, 5), anchor: anchorPosition('chores') }],
   ])
   const componentFixtures: ComponentFixtures = new Map([
     ['bathroom-soap-dispenser', { vacant: [sinkSoap], occupied: [] }],
     ['bathroom-bath-tray', { vacant: [bathTray], occupied: [] }],
+    ['bathroom-laundry', { vacant: [lowerStorage], occupied: [] }],
+    ['bathroom-dryer', { vacant: [], occupied: [laundryFrame] }],
+    ['bathroom-storage-jars', { vacant: [], occupied: [careShelves[0]], occupiedBy: ['bathroom-storage-jars', 'bathroom-tissue-box'] }],
+    ['bathroom-first-aid', { vacant: [], occupied: [careShelves[1]], occupiedBy: ['bathroom-first-aid', 'bathroom-diffuser'] }],
   ])
   return { materials, styleMaterials, actors, anchors, bounds, actorBounds, contacts, lampMaterial, componentBindings, componentFixtures }
 }
@@ -269,11 +313,10 @@ export function bathroomFraming(width: number, height: number, bounds: Box3, rot
     throw new Error('Bathroom framing needs positive scene dimensions and finite bounds.')
   }
 
-  const axis = new Vector3(0, 1, 0)
   if (options.closeRoom) {
     const view = cameraFraming(width, height, 'room', false)
-    const center = new Vector3(...view.center).applyAxisAngle(axis, rotation)
-    return { center: [center.x, center.y, center.z], halfHeight: view.halfHeight }
+    const center = new Vector3(...view.center).applyAxisAngle(new Vector3(0, 1, 0), rotation)
+    return { center: center.toArray(), halfHeight: view.halfHeight }
   }
   return fitRoomBounds(width, height, bounds, rotation, pitch)
 }
@@ -291,7 +334,7 @@ export function bathroomTourFraming(
   const amount = step - index
   const eased = amount * amount * (3 - 2 * amount)
   const frame = (focus: BathroomFocus) => {
-    if (focus === 'room') return cameraFraming(width, height, 'room', true)
+    if (focus === 'room') return fitRoomBounds(width, height, bounds)
     const box = actorBounds.get(focus)
     if (!box) throw new Error('The bathroom exploration stop is missing its measured bounds.')
     return bathroomFraming(width, height, box)
