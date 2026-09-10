@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { postgresPoolConfig } from '../server/database.ts'
 
 const root = new URL('../', import.meta.url)
 const workflow = readFileSync(new URL('.github/workflows/ci.yml', root), 'utf8')
@@ -11,16 +12,26 @@ const lock: { packages: Record<string, { version?: string }> } = JSON.parse(read
 test('browser jobs use the locked Playwright image without runtime system-package installation', () => {
   const version = lock.packages['node_modules/@playwright/test'].version
   assert.ok(version)
-  const images = [...workflow.matchAll(/image:\s*mcr\.microsoft\.com\/playwright:v([^\s]+)-noble/g)].map((match) => match[1])
+  const images = [...workflow.matchAll(/mcr\.microsoft\.com\/playwright:v([^\s]+)-noble/g)].map((match) => match[1])
   assert.equal(images.length, 2)
   for (const image of images) assert.equal(image, version)
   assert.doesNotMatch(workflow, /playwright install|apt-get/)
-  assert.match(workflow, /TEST_DATABASE_URL: postgres:\/\/roomlings:roomlings@postgres:5432\/roomlings_test/)
   const triggers = workflow.split('permissions:')[0]
   assert.match(triggers, /pull_request:/)
   assert.match(triggers, /workflow_dispatch:/)
   assert.match(triggers, /branches: \[main\]/)
   assert.doesNotMatch(triggers, /feat\//)
+})
+
+test('PostgreSQL CI retains the real loopback connection required for unencrypted test databases', () => {
+  const postgres = workflow.split('\n  postgres:\n')[1].split('\n  kitchen:\n')[0]
+  const url = postgres.match(/TEST_DATABASE_URL:\s*(\S+)/)?.[1]
+  assert.ok(url)
+  assert.equal(postgresPoolConfig({ url, schema: 'roomlings_ci_test', tls: 'disable' }).ssl, false)
+  assert.doesNotMatch(postgres, /\n    container:/)
+  assert.match(postgres, /ports: \['5432:5432'\]/)
+  assert.match(postgres, /docker run --rm --init --ipc=host --network host/)
+  assert.match(postgres, /--env TEST_DATABASE_URL --env TEST_DATABASE_TLS --env REQUIRE_POSTGRES_TESTS/)
 })
 
 type ListedSuite = { suites?: ListedSuite[]; specs?: { id: string; tests: { projectId: string }[] }[] }

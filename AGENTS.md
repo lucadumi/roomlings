@@ -54,3 +54,5 @@ Use the smallest relevant existing test selection while iterating. Cover the cha
 Tag browser rendering and 3D interaction scenarios with `@room`. CI runs household and room suites in two shards each, with one worker per shard. Browser tests must remain independent so `--fully-parallel` can partition them safely; the normal browser command still runs every test.
 
 Browser CI uses the official Playwright image with preinstalled browsers and OS libraries. Keep its version aligned with the locked `@playwright/test` version; do not reintroduce runtime `apt` or `playwright install --with-deps` steps. CI runs for pull requests and pushes to main, with manual dispatch available for branch checks.
+
+Keep unencrypted PostgreSQL tests on loopback. The PostgreSQL job publishes its service to the host and runs its browser container with host networking; do not relax the application's TLS guard for a Docker service hostname.

@@ -176,6 +176,9 @@ The pinned Playwright container supplies browsers and system libraries without
 installing OS packages during a run. Its version must match `package-lock.json`.
 Pull requests and main pushes run CI; manual dispatch supports branch checks
 without duplicating every pull-request run on its source-branch push.
+PostgreSQL coverage uses the host's loopback service. Its browser container shares
+the host network, preserving the application's loopback-only rule for tests
+without TLS.
 
 Room IDs and legacy chore areas are registered in `shared/rooms.ts`. The component catalog, fixed positions, supported variants, manual states and default supply/chore suggestions live in `shared/roomComponents.ts`; configuration and state rules live in `shared/componentChanges.ts`. `src/roomNavigation.ts` resolves routes. Every room needs a view in `src/roomViews.ts`, a model in `src/roomModels.ts`, and public preview artwork and tour chapters. The model registry also drives saved room previews and object thumbnails. Add implemented rooms and components instead of placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
