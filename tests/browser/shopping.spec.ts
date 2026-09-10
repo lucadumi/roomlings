@@ -142,7 +142,7 @@ test.describe('shared shopping', () => {
       await route.fallback()
     })
     await page.getByRole('button', { name: 'Claim Milk', exact: true }).click()
-    await expect(page.getByRole('alert')).toContainText('changed the kitchen')
+    await expect(page.getByRole('alert')).toHaveText('Kitchen changed. Review the latest details and try again.')
     await expect(page.getByRole('article', { name: 'Milk', exact: true })).toContainText('Dana is buying')
     await expect(page.getByRole('button', { name: 'Edit Milk', exact: true })).toBeDisabled()
     await page.unroute(`**/api/shopping/items/${item.id}/claim`)

@@ -219,7 +219,7 @@ test('unimplemented rooms do not create households or show placeholder controls'
   const requests: string[] = []
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()) })
   await page.goto('/rooms/bedroom')
-  await expect(page.getByRole('alert')).toContainText('That room is not available')
+  await expect(page.getByRole('alert')).toHaveText('Room unavailable. Sign in to open your home.')
   await expect(page.locator('.game-house')).toHaveCount(0)
   expect(requests).toEqual([])
 })

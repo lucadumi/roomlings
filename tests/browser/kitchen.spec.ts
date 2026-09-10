@@ -294,7 +294,7 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
 
-test('the kitchen stops drawing behind a finance panel and resumes when it closes', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+test('the kitchen ignores nonvisual household refreshes while paused and still renders scene updates', { tag: '@room' }, async ({ page, accounts, populatedHousehold }) => {
   await page.addInitScript(() => {
     let draws = 0
     const original = WebGL2RenderingContext.prototype.drawElements
@@ -314,10 +314,28 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const pausedAt = await drawCalls()
+  const refreshed = { ...populatedHousehold.household, name: 'A refreshed household name', version: populatedHousehold.household.version + 1 }
+  await accounts.store.save(refreshed)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.locator('.game-house')).toContainText(refreshed.name)
   await page.waitForTimeout(250)
   expect(await drawCalls()).toBe(pausedAt)
-  await page.keyboard.press('Escape')
+  const latest = await accounts.store.get(refreshed.id)
+  if (!latest?.roomComponents) throw new Error('The isolated household needs its persisted room components.')
+  const fridge = latest.roomComponents.find((component) => component.slotId === 'kitchen-fridge')
+  if (!fridge) throw new Error('The isolated household needs its original fridge.')
+  fridge.finish = 'sage'
+  fridge.version++
+  latest.version++
+  await accounts.store.save(latest)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  const updatedAt = await drawCalls()
+  await page.waitForTimeout(250)
+  expect(await drawCalls()).toBe(updatedAt)
+  await page.keyboard.press('Escape')
+  await expect.poll(drawCalls).toBeGreaterThan(updatedAt)
 })
 
 test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {

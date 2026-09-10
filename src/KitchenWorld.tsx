@@ -666,7 +666,8 @@ export default function KitchenWorld({
     }
   }, [])
 
-  useEffect(() => { controls.current?.wake(0) }, [showLabels, components, editMode, selectedComponentId, overviewFocus])
+  // The loop detects component content changes; refreshed copies must not wake a paused scene.
+  useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, selectedComponentId, overviewFocus])
 
   const toggle = () => {
     if (editMode) {
