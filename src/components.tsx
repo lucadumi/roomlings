@@ -3,6 +3,7 @@ import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { Apple, Check, Coffee, Cookie, Copy, Egg, ShoppingBasket, X } from 'lucide-react'
 import { money, splitAmount } from '../shared/domain.ts'
 import type { Category, Member } from '../shared/domain.ts'
+import { Feedback, FeedbackAction } from './Feedback.tsx'
 
 export function CategoryIcon({ category, size = 20 }: { category: Category; size?: number }) {
   const Icon = { produce: Apple, dairy: Egg, pantry: Cookie, drinks: Coffee, other: ShoppingBasket }[category]
@@ -140,13 +141,10 @@ export function Form({ children, onSubmit }: { children: ReactNode; onSubmit: ()
 export function DraftConflict({ children, onLatest, onKeep }: {
   children: ReactNode; onLatest: () => void; onKeep: () => void
 }) {
-  return <div className="shopping-conflict">
-    <p role="alert">{children}</p>
-    <div className="button-row">
-      <button type="button" className="text-button" onClick={onLatest}>Use latest values</button>
-      <button type="button" className="text-button" onClick={onKeep}>Keep my draft</button>
-    </div>
-  </div>
+  return <Feedback className="shopping-conflict" actions={<>
+    <FeedbackAction onClick={onLatest}>Use latest values</FeedbackAction>
+    <FeedbackAction onClick={onKeep}>Keep my draft</FeedbackAction>
+  </>}>{children}</Feedback>
 }
 
 export function CopyField({ label, value, buttonLabel, copiedLabel, multiline = false }: {
@@ -181,7 +179,7 @@ export function CopyField({ label, value, buttonLabel, copiedLabel, multiline = 
         if (currentValue.current === value && copyAttempt.current === attempt) setError('Your browser could not copy this value. Select the field above and copy it manually.')
       })
     }}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? copiedLabel : buttonLabel}</button>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <Feedback>{error}</Feedback>}
   </>
 }
 

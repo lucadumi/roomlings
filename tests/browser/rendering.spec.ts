@@ -1,7 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
-import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
+import { baseCameraOffset, cameraFraming, roomCameraZoom } from '../../src/camera.ts'
 import { kitchenLayout } from '../../src/roomLayout.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
@@ -24,6 +24,8 @@ async function frameKitchenBag(page: Page) {
   const framing = cameraFraming(layout.width, layout.height, 'room', false)
   const halfWidth = framing.halfHeight * layout.width / layout.height
   const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)
+  camera.zoom = roomCameraZoom(1, true)
+  camera.updateProjectionMatrix()
   const center = new Vector3(...framing.center)
   camera.position.copy(center).add(new Vector3(...baseCameraOffset))
   camera.lookAt(center)

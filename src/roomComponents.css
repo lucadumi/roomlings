@@ -7,7 +7,8 @@
 .room-editor-fields, .room-supply-editor { min-width: 0; padding: 0; margin: 0; border: 0; }
 .room-admin-link { margin: 0; }
 .room-editor-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 16px; }
-.room-editor-toolbar .receipt-tabs { flex: 1 1 220px; margin: 0; }
+.room-editor-navigation { display: flex; align-items: center; flex: 1 1 264px; min-width: 0; gap: 8px; }
+.room-editor-toolbar .receipt-tabs { flex: 1; min-width: 0; margin: 0; }
 .room-editor-tools, .room-objects-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .room-objects-tools > :first-child { flex: 0 1 auto; }
 .room-position-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 16px; }

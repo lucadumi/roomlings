@@ -62,7 +62,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
     console.error('The kitchen scene could not be displayed:', error.message)
   }
   render() {
-    if (this.state.failed) return <div className="scene-loading scene-error" role="alert"><Snowflake size={36} /><strong>The 3D room could not open.</strong><p>Your ledger is safe. The tools below still work.</p></div>
+    if (this.state.failed) return <div className="scene-loading scene-error" role="alert"><Snowflake size={36} /><strong>3D view unavailable.</strong><p>All household tools still work.</p></div>
     return this.props.children
   }
 }

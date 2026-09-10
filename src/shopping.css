@@ -25,5 +25,3 @@
 .checkout-items { padding: 0; margin: 0 0 12px; border: 0; min-width: 0; }
 .checkout-items legend { margin-bottom: 8px; color: var(--control-ink); font-size: 0.75rem; font-weight: 550; }
 .checkout-item { padding-block: 7px; border-bottom: 1px solid var(--control-border); }
-.shopping-conflict { padding: 12px; margin-bottom: 18px; border: 1px solid var(--tomato-border); border-radius: var(--control-radius); background: var(--tomato-soft); }
-.shopping-conflict > p { color: var(--tomato-ink); font-size: 0.75rem; line-height: 1.7; overflow-wrap: anywhere; }

@@ -25,6 +25,8 @@ import { roomPresets } from './roomStyles.ts'
 import { ComponentPreview } from './ComponentPreview.tsx'
 import { componentAvailability, groupedRoomComponents } from './componentAvailability.ts'
 import type { ComponentAvailability } from './componentAvailability.ts'
+import { errorMessage } from './api.ts'
+import { Feedback, FeedbackAction } from './Feedback.tsx'
 import './roomComponents.css'
 
 type ComponentConfiguration = Omit<RoomComponentChange, 'componentVersion' | 'linkedChores'>
@@ -150,6 +152,7 @@ export type RoomEditorProps = {
   onSelect: (id: string | null) => void
   onPreview: (components: readonly RoomComponent[] | null, placement?: RoomComponent | null) => void
   onSubmit: (patch: RoomComponentsPatch) => Promise<boolean>
+  onBack: () => void
   onClose: () => void
   onManageAdmins: () => void
   onRoomColors: () => void
@@ -159,7 +162,7 @@ export function RoomEditor(props: RoomEditorProps) {
   return <RoomEditorDraft key={`${props.household.id}:${props.roomId}`} {...props} />
 }
 
-function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selectedComponentId, cancelPlacementRequest = 0, initialRemovalId = null, onSelect, onPreview, onSubmit, onClose, onManageAdmins, onRoomColors }: RoomEditorProps) {
+function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selectedComponentId, cancelPlacementRequest = 0, initialRemovalId = null, onSelect, onPreview, onSubmit, onBack, onClose, onManageAdmins, onRoomColors }: RoomEditorProps) {
   const current = useMemo(() => getRoomComponents(household), [household.id, household.roomComponents])
   const [drafts, setDrafts] = useState<ComponentDrafts>({})
   const [placement, setPlacement] = useState<PlacementPreview | null>(null)
@@ -336,9 +339,9 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
       ...previous, [value.id]: { ...draft, base: latest, value },
     })
     setLocalError('')
-    setNotice('Your edited fields are kept. Other changes from your roommates are included. Review the preview before applying.')
+    setNotice('Draft kept and roommate changes included. Review before applying.')
   }
-  const discard = () => { onPreview(null); onClose() }
+  const discard = (leave: () => void) => { onPreview(null); leave() }
 
   useEffect(() => {
     if (lastCancelRequest.current === cancelPlacementRequest) return
@@ -357,7 +360,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
         event.stopPropagation()
         discardPlacement()
       }}>
-      {previewError && <p className="form-error" role="alert">{previewError}</p>}{error}
+      {previewError && <Feedback>{previewError}</Feedback>}{error}
       <div className="room-placement-actions" role="group" aria-label="Placement preview">
         <button type="button" className="button primary small-button" ref={placeButton}
           disabled={locked || !!placementIssue || !!invalidLayout || !!conflicts.length} onClick={acceptPlacement}><Check size={15} />Place object</button>
@@ -377,7 +380,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
     <Form onSubmit={() => {
       if (locked) return
       if (placement) { setLocalError('Place or discard the previewed object before applying your draft.'); return }
-      if (removing) { setLocalError('Finish reviewing the object removal before applying.'); return }
+      if (removing) { setLocalError('Finish reviewing the removal before applying.'); return }
       if (conflicts.length) { setLocalError('Review the changed objects before applying your draft.'); return }
       if (invalidLayout) { setLocalError(invalidLayout); return }
       const input = roomComponentsPatchSchema.safeParse({
@@ -398,34 +401,36 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
       void onSubmit(input.data).then((saved) => {
         if (saved) { setDrafts({}); onPreview(null); onClose() }
       }).catch((cause: unknown) => {
-        setLocalError(cause instanceof Error ? cause.message : 'The room could not be saved. Your draft is still here.')
+        setLocalError(errorMessage(cause, 'Save not confirmed. Your draft is still here.'))
       }).finally(() => setSaving(false))
     }}>
+      <div className="room-editor-toolbar">
+        <div className="room-editor-navigation">
+          <button type="button" className="icon-button control-surface" disabled={busy || saving} onClick={() => discard(onBack)} aria-label="Back to room objects" title="Back to room objects"><ArrowLeft size={17} /></button>
+          <nav className="receipt-tabs" aria-label="Room editor sections">
+            <button type="button" disabled={locked} aria-pressed={section === 'installed'} onClick={() => select(null)}>In this room <span>{groups.length}</span></button>
+            <button type="button" disabled={locked} aria-pressed={section === 'catalog'} onClick={() => select(null, 'catalog')}><Plus size={14} />Add objects</button>
+          </nav>
+        </div>
+        <div className="room-editor-tools">
+          <button type="button" className="icon-button control-surface" disabled={locked} onClick={onRoomColors} aria-label="Room colors" title="Room colors"><Palette size={17} /></button>
+          <button type="button" className="icon-button control-surface" disabled={locked} onClick={onManageAdmins} aria-label="Room admins" title="Room admins"><Users size={17} /></button>
+        </div>
+      </div>
       <fieldset className="room-editor-fields" disabled={locked}>
         <legend className="sr-only">Room object settings</legend>
-        <div className="room-editor-toolbar"><nav className="receipt-tabs" aria-label="Room editor sections">
-          <button type="button" disabled={locked} aria-pressed={section === 'installed'} onClick={() => select(null)}>In this room <span>{groups.length}</span></button>
-          <button type="button" disabled={locked} aria-pressed={section === 'catalog'} onClick={() => select(null, 'catalog')}><Plus size={14} />Add objects</button>
-        </nav>
-          <div className="room-editor-tools">
-            <button type="button" className="icon-button control-surface" disabled={locked} onClick={onRoomColors} aria-label="Room colors" title="Room colors"><Palette size={17} /></button>
-            <button type="button" className="icon-button control-surface" disabled={locked} onClick={onManageAdmins} aria-label="Room admins" title="Room admins"><Users size={17} /></button>
-          </div>
-        </div>
         {conflicts.map((draft) => {
           const latest = currentById.get(draft.value.id)
           return <div key={draft.value.id} className="room-object-conflict" aria-label={`Changed object: ${objectName(draft.value)}`}>
             {latest ? <DraftConflict onLatest={() => useLatest(draft.value.id)} onKeep={() => keepDraft(draft, latest)}>
               {objectName(draft.value)} changed while you were editing. Latest: {latest.name}, {positionName(latest)}, {finishName(latest)}, {latest.installed ? 'in the room' : 'removed'}.
               {' '}Supplies: {latest.supplies.length ? latest.supplies.map((supply) => `${supply.quantity} ${supply.name}`).join(', ') : 'none'}.
-              {' '}Keep your draft to retain the fields you edited and include your roommates' other changes.
-            </DraftConflict> : <div className="shopping-conflict">
-              <p role="alert">{objectName(draft.value)} is no longer available. Remove this draft and choose an object from the current catalog.</p>
-              <button type="button" className="text-button" onClick={() => useLatest(draft.value.id)}>Use latest values</button>
-            </div>}
+            </DraftConflict> : <Feedback className="shopping-conflict" actions={<FeedbackAction onClick={() => useLatest(draft.value.id)}>Use latest values</FeedbackAction>}>
+              {objectName(draft.value)} is unavailable. Discard its draft and choose another object.
+            </Feedback>}
           </div>
         })}
-        {invalidLayout && !placementIssue && <p className="form-error" role="alert">{invalidLayout} Review the objects below before applying.</p>}
+        {invalidLayout && !placementIssue && <Feedback>{invalidLayout} Review before applying.</Feedback>}
         {section === 'installed' && <>
           {selected ? <div className="room-object-settings" aria-label={`Settings for ${objectName(selected)}`}>
             <button type="button" className="text-button" disabled={locked} onClick={() => select(null)}><ArrowLeft size={14} />All room objects</button>
@@ -533,7 +538,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
                     select(null)
                   } else update(removal, { installed: false }, removalChoice || 'keep')
                   setRemoving(null)
-                  setNotice(`${objectName(removal)} was removed from your preview.`)
+                  setNotice(`${objectName(removal)} removed from preview.`)
                 }}><Trash2 size={14} />Remove from preview</button>
               </div>
             </div>}
@@ -577,7 +582,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
             {availabilityFilters.map((filter) => <button type="button" key={filter.id} className="control-surface" disabled={locked}
               aria-pressed={availabilityFilter === filter.id} onClick={() => setAvailabilityFilter(filter.id)}>{filter.label}<span>{filter.count}</span></button>)}
           </nav>
-          {!catalog.length && <p className="field-hint" role="status">No objects match these filters. Try All objects, another name or another category.</p>}
+          {!catalog.length && <Feedback tone="info">No matching objects. Try another name or filter.</Feedback>}
           <div className="room-catalog-grid">{catalog.map((kind) => {
             const definition = componentCatalog[kind]
             const available = availableComponentSlots(preview, roomId, kind)
@@ -623,12 +628,12 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
           })}</div>
         </div>}
       </fieldset>
-      {notice && <p className="field-hint" role="status">{notice}</p>}
-      {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+      {notice && <Feedback tone="info">{notice}</Feedback>}
+      {localError && <Feedback>{localError}</Feedback>}{error}
       <div className="room-editor-footer">
         <p className="field-hint" role="status">{pending.length ? `${pending.length} ${pending.length === 1 ? 'object has' : 'objects have'} unapplied changes.` : 'No unapplied changes.'}</p>
         <div className="button-row room-editor-actions">
-          <button type="button" className="button secondary" disabled={busy || saving} onClick={discard}>Cancel</button>
+          <button type="button" className="button secondary" disabled={busy || saving} onClick={() => discard(onClose)}>Cancel</button>
           <button className="button primary" disabled={locked || !!placement || !pending.length || !!conflicts.length || !!invalidLayout || !!removing}>
             {busy || saving ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{busy || saving ? 'Saving...' : 'Apply for everyone'}
           </button>
@@ -748,9 +753,9 @@ export function RoomObjectsPanel({
         {household.chores.items.length >= choreLimit && <p className="field-hint">This home has reached its {choreLimit}-chore limit.</p>}
       </section>
     </> : <>
-      {selectedComponentId && <p className="field-hint" role="status">This object is no longer in the room. Existing shopping entries and chore history are kept.</p>}
+      {selectedComponentId && <Feedback tone="info">Object removed. Shopping entries and chore history are kept.</Feedback>}
       <div className="room-object-heading room-objects-tools">
-        {canEdit && <button type="button" className="button secondary small-button" disabled={busy} onClick={() => onEdit(null)}><Palette size={14} />Edit room</button>}
+        {canEdit && <button type="button" className="button secondary small-button" disabled={busy} onClick={() => onEdit(null)}><Pencil size={14} />Edit room</button>}
         <button type="button" className="icon-button control-surface" disabled={busy} onClick={onHelp} aria-label="How to play" title="How to play"><CircleHelp size={17} /></button>
       </div>
       <ul className="room-object-list" aria-label="Installed room objects">{groups.map((group) => {

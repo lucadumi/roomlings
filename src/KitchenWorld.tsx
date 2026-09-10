@@ -14,7 +14,7 @@ import { roomSlots } from '../shared/roomComponents.ts'
 import { kitchenUtilities, kitchenUtilityAnchors, sceneAnchors } from './room.ts'
 import type { KitchenAction, KitchenUtility, SceneAction } from './room.ts'
 import { buildKitchenModel } from './kitchenModel.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels, placementPreviewZoom, preferredRoomRotation, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from './camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels, placementPreviewZoom, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
@@ -527,7 +527,7 @@ export default function KitchenWorld({
       camera.position.copy(desiredCamera)
       camera.lookAt(cameraCenter)
       halfHeight = reducedMotion.matches ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const desiredZoom = roomCameraZoom(latest.overviewFocus ? 1 : currentControls.zoom, closeRoom)
       camera.zoom = reducedMotion.matches ? desiredZoom : dampTo(camera.zoom, desiredZoom, 8, delta, 0.002)
       const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
       camera.left = projection.left
@@ -724,7 +724,8 @@ export default function KitchenWorld({
     }
   }, [])
 
-  useEffect(() => { controls.current?.wake(0) }, [showLabels, components, editMode, selectedComponentId, placementPreviewId, overviewFocus])
+  // The loop detects component content changes; refreshed copies must not wake a paused scene.
+  useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, selectedComponentId, placementPreviewId, overviewFocus])
 
   const toggle = () => {
     if (editMode) {

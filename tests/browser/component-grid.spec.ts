@@ -51,6 +51,34 @@ test('menu status labels sit on the right beside the close button', { tag: '@roo
   }
 })
 
+test('the editor Back button stays beside the section tabs on desktop and narrow screens', { tag: '@room' }, async ({ page, emptyHousehold: _owner }) => {
+  await withoutWebGL(page)
+  await page.goto('/kitchen')
+  const editor = await openEditor(page)
+  const back = editor.getByRole('button', { name: 'Back to room objects', exact: true })
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 960 })
+    await expect(back).toBeInViewport({ ratio: 1 })
+    const alignment = await editor.locator('.room-editor-navigation').evaluate((element) => {
+      const button = element.querySelector('button')!.getBoundingClientRect()
+      const tabs = element.querySelector('nav')!.getBoundingClientRect()
+      return { gap: tabs.left - button.right, offset: Math.abs(button.y + button.height / 2 - (tabs.y + tabs.height / 2)) }
+    })
+    expect(alignment.gap).toBeCloseTo(8, 0)
+    expect(alignment.offset).toBeLessThan(1)
+    expect(await editor.locator('.room-editor-toolbar').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    for (const control of await editor.locator('.room-editor-toolbar button').all()) {
+      await expect(control).toBeInViewport({ ratio: 1 })
+      if (width <= 390) {
+        const bounds = await control.boundingBox()
+        expect(bounds).not.toBeNull()
+        expect(bounds!.width).toBeGreaterThanOrEqual(44)
+        expect(bounds!.height).toBeGreaterThanOrEqual(44)
+      }
+    }
+  }
+})
+
 test('the object browser is a large left-side grid with real previews and hover/focus details', { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
   const failures: string[] = []
   page.on('pageerror', (error) => failures.push(error.message))

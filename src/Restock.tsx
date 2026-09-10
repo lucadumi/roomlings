@@ -26,7 +26,7 @@ export function SupplyShortcuts({ household, components, busy, onAdd }: {
     }
   }
   return <>
-    {[...groups].map(([key, sources]) => {
+    <div className="restock-grid">{[...groups].map(([key, sources]) => {
       const { component, supply } = sources.find(({ component, supply }) => `${component.id}:${supply.id}` === selectedSources[key]) ?? sources[0]
       const listed = household.shopping.items.find((item) => normalizeShoppingName(item.name) === key)
       return <article className="restock-item" key={key} aria-label={supply.name}>
@@ -47,7 +47,7 @@ export function SupplyShortcuts({ household, components, busy, onAdd }: {
               componentSource: { componentId: component.id, supplyId: supply.id },
             })}><Plus size={14} />Add to list</button>}
       </article>
-    })}
+    })}</div>
     {household.shopping.items.length >= shoppingItemLimit && <p className="field-hint">The shared list has reached {shoppingItemLimit} items. Finish a run or remove an unused item before adding more.</p>}
   </>
 }

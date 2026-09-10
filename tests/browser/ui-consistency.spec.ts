@@ -101,12 +101,26 @@ test.describe('UI consistency', () => {
     })
   }
 
+  test('the empty grocery summary stays borderless across desktop and narrow screens', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
+    await page.goto('/kitchen')
+    await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+    const summary = page.locator('.grocery-summary')
+    for (const width of [1440, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect(summary).toBeVisible()
+      await expect(summary).toHaveCSS('border-width', '0px')
+      await expect(summary.locator(':scope > div > strong')).toHaveText(['\u20ac0.00', '0'])
+      expect(await summary.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    }
+  })
+
   test('grocery counts and category selections agree with the visible ledger', async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
     await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
     const rows = page.locator('.expense-row')
     const total = await rows.count()
     const summaryCount = page.locator('.grocery-summary > div').filter({ has: page.getByText('GROCERY RUNS', { exact: true }) }).locator('strong')
+    await expect(page.locator('.grocery-summary')).toHaveCSS('border-width', '0px')
     const resultCount = page.locator('.ledger-section .count-pill')
     await expect(summaryCount).toHaveText(String(total))
     await expect(resultCount).toHaveText(String(total))

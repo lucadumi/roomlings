@@ -17,7 +17,7 @@ export class RoomComponentError extends Error {
 export function requireInstalledComponent(household: Household, id: string): RoomComponent {
   const component = getRoomComponents(household).find((component) => component.id === id)
   if (!component) throw new RoomComponentError(404, 'That object was not found in this home.')
-  if (!component.installed) throw new RoomComponentError(409, 'This object has been removed from the room. Your existing shopping and history are still safe.')
+  if (!component.installed) throw new RoomComponentError(409, 'Object removed. Shopping entries and history are kept.')
   return component
 }
 

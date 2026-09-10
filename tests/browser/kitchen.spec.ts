@@ -1,7 +1,7 @@
 import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
-import { baseCameraOffset, cameraProjection, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { kitchenLayout } from '../../src/roomLayout.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { localDate } from '../../shared/domain.ts'
@@ -32,8 +32,11 @@ async function clickRoomPoint(page: Page, position: [number, number, number]) {
   const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomEntryFraming(layout.width, layout.height, area)
-  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, 1)
+  const zoom = roomCameraZoom(1, true)
+  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+  camera.zoom = zoom
+  camera.updateProjectionMatrix()
   const center = new Vector3(...framing.center)
   camera.position.copy(center).add(new Vector3(...baseCameraOffset))
   camera.lookAt(center)
@@ -298,20 +301,20 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await page.getByLabel('Total (EUR)').fill('8.70')
   await page.getByRole('button', { name: 'Add & split the groceries' }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(page.getByRole('status')).toContainText('Fridge stocked')
+  await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
   await frameRoom(page)
   await clickRoomPoint(page, [kitchenLayout.ledger[0], kitchenLayout.ledger[1] + 0.1, kitchenLayout.ledger[2]])
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
   await expect(page.getByText('Groceries from the 3D bag', { exact: true })).toBeVisible()
 })
 
-test('the kitchen stops drawing behind a finance panel and resumes when it closes', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+test('the kitchen ignores nonvisual household refreshes while paused and still renders scene updates', { tag: '@room' }, async ({ page, accounts, populatedHousehold }) => {
   await page.addInitScript(() => {
     let draws = 0
     const original = WebGL2RenderingContext.prototype.drawElements
     Object.defineProperty(WebGL2RenderingContext.prototype, 'drawElements', {
       value(this: WebGL2RenderingContext, ...args: Parameters<WebGL2RenderingContext['drawElements']>) {
-        draws++
+        if (this.canvas instanceof HTMLCanvasElement && this.canvas.closest('.world-canvas')) draws++
         return Reflect.apply(original, this, args)
       },
     })
@@ -325,10 +328,28 @@ test('the kitchen stops drawing behind a finance panel and resumes when it close
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const pausedAt = await drawCalls()
+  const refreshed = { ...populatedHousehold.household, name: 'A refreshed household name', version: populatedHousehold.household.version + 1 }
+  await accounts.store.save(refreshed)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.locator('.game-house')).toContainText(refreshed.name)
   await page.waitForTimeout(250)
   expect(await drawCalls()).toBe(pausedAt)
-  await page.keyboard.press('Escape')
+  const latest = await accounts.store.get(refreshed.id)
+  if (!latest?.roomComponents) throw new Error('The isolated household needs its persisted room components.')
+  const fridge = latest.roomComponents.find((component) => component.slotId === 'kitchen-fridge')
+  if (!fridge) throw new Error('The isolated household needs its original fridge.')
+  fridge.finish = 'sage'
+  fridge.version++
+  latest.version++
+  await accounts.store.save(latest)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  const updatedAt = await drawCalls()
+  await page.waitForTimeout(250)
+  expect(await drawCalls()).toBe(updatedAt)
+  await page.keyboard.press('Escape')
+  await expect.poll(drawCalls).toBeGreaterThan(updatedAt)
 })
 
 test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {

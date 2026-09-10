@@ -4,6 +4,9 @@ import { billingDate, householdSchema } from '../../shared/domain.ts'
 import type { Household, Session } from '../../shared/domain.ts'
 import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { ComponentKind, RoomComponent, RoomComponentChange, RoomSlotId } from '../../shared/roomComponents.ts'
+import { roomCatalog } from '../../shared/rooms.ts'
+import type { RoomId } from '../../shared/rooms.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 import { expect, test } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 import { chooseOption, openRoomEditor, placeRoomObject } from './fixtures.ts'
@@ -57,13 +60,70 @@ async function openEditor(page: Page) {
   return editor
 }
 
-async function openObject(page: Page, name: string) {
+async function openObject(page: Page, name: string, roomId: RoomId = 'kitchen') {
   await page.getByRole('button', { name: 'Room objects', exact: true }).click()
   await page.getByRole('button', { name: `Open ${name} details`, exact: true }).click()
-  const panel = page.getByRole('region', { name: 'Kitchen objects', exact: true })
+  const panel = page.getByRole('region', { name: `${roomCatalog[roomId].name} objects`, exact: true })
   await expect(panel.getByRole('heading', { name, exact: true })).toBeVisible()
   return panel
 }
+
+test('supply cards use compact adaptive columns and preserve their shopping sources', { tag: '@room' }, async ({ page, accounts, request, emptyHousehold: owner }) => {
+  const machine = await install(request, accounts, owner, 'washing-machine', 'bathroom-laundry')
+  const basin = getRoomComponents(await current(accounts, owner)).find((component) => component.slotId === 'bathroom-sink')!
+  await change(request, accounts, owner, '/household/room-components', {
+    roomId: 'bathroom', changes: [configuration(basin, {
+      supplies: [...basin.supplies, { id: 'shared-detergent', name: 'Laundry detergent', quantity: '2 bottles' }],
+    })],
+  })
+  await page.goto(roomPath('bathroom'))
+  const objects = await openObject(page, 'Washing machine', 'bathroom')
+  const grid = objects.locator('.restock-grid')
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(grid).toHaveCSS('display', 'grid')
+    const layout = await grid.evaluate((element) => ({
+      columns: getComputedStyle(element).gridTemplateColumns.split(' ').length, width: element.getBoundingClientRect().width,
+    }))
+    expect(layout.columns).toBe(width === 1440 ? 3 : layout.width >= 268 ? 2 : 1)
+    for (const title of await grid.getByRole('heading', { level: 3 }).all()) await expect(title).toHaveCSS('font-size', '14px')
+    expect(await grid.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await grid.locator('.restock-item').evaluateAll((cards) => cards.every((card) => card.scrollWidth <= card.clientWidth))).toBe(true)
+  }
+
+  await objects.getByRole('button', { name: 'Restock Fabric softener', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('button', { name: 'Add to shopping list', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(objects.getByRole('article', { name: 'Fabric softener', exact: true })).toContainText('On the list')
+
+  await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
+  await page.getByRole('button', { name: 'Restock room supplies', exact: true }).click()
+  const supplies = page.getByRole('region', { name: 'Bathroom supplies', exact: true })
+  const laundry = supplies.getByRole('article', { name: 'Laundry detergent', exact: true })
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect(laundry.getByRole('heading')).toHaveCSS('font-size', '14px')
+    const layout = await supplies.locator('.restock-grid').evaluate((element) => ({
+      columns: getComputedStyle(element).gridTemplateColumns.split(' ').length, width: element.getBoundingClientRect().width,
+    }))
+    expect(layout.columns).toBe(width === 1440 || layout.width >= 268 ? 2 : 1)
+    expect(await supplies.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+  await chooseOption(laundry.getByRole('combobox', { name: 'Supply shortcut for Laundry detergent', exact: true }), `${machine.id}:laundry-detergent`)
+  await laundry.getByRole('button', { name: 'Restock Laundry detergent', exact: true }).click()
+  await expect(dialog.getByLabel('Quantity', { exact: true })).toHaveValue(machine.supplies.find((supply) => supply.id === 'laundry-detergent')!.quantity)
+  await dialog.getByRole('button', { name: 'Add to shopping list', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(laundry).toContainText('On the list')
+  await expect(laundry.getByRole('button', { name: 'Restock Laundry detergent', exact: true })).toHaveCount(0)
+  const saved = await current(accounts, owner)
+  expect(saved.shopping.items.find((item) => item.name === 'Laundry detergent')?.componentSources).toEqual([{
+    componentId: machine.id, supplyId: 'laundry-detergent', roomId: 'bathroom', componentName: machine.name,
+  }])
+  expect(saved.expenses).toEqual([])
+  expect(saved.settlements).toEqual([])
+})
 
 test('room drafts cancel cleanly and keep their model, finish, supplies and identifier after a failed apply', async ({ page, accounts, emptyHousehold: owner }) => {
   const original = await current(accounts, owner)

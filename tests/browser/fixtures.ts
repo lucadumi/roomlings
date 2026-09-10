@@ -22,8 +22,12 @@ export async function trackDrawing(page: Page) {
       const original = WebGL2RenderingContext.prototype[method]
       Object.defineProperty(WebGL2RenderingContext.prototype, method, {
         value(this: WebGL2RenderingContext, ...args: number[]) {
-          draws++
-          if (framebuffers.get(this)) shadowDraws++
+          // Offscreen selector and object thumbnails do not belong to the live scene's budget.
+          if (this.canvas instanceof HTMLCanvasElement
+            && this.canvas.closest('.world-canvas, .welcome-canvas, .chore-room-preview-canvas')) {
+            draws++
+            if (framebuffers.get(this)) shadowDraws++
+          }
           return Reflect.apply(original, this, args)
         },
       })

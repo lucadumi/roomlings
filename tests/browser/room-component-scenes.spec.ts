@@ -6,7 +6,7 @@ import type { Box3 } from 'three'
 import type { Session } from '../../shared/domain.ts'
 import { componentPositionSupported, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { baseCameraOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomIds } from '../../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
@@ -122,8 +122,11 @@ async function roomPoint(page: Page, position: [number, number, number], rotatio
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomBounds ? fitRoomBounds(area.width, area.height, roomBounds, rotation)
     : roomEntryFraming(layout.width, layout.height, area, rotation)
-  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, 1)
+  const zoom = roomCameraZoom(1, !roomBounds)
+  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+  camera.zoom = zoom
+  camera.updateProjectionMatrix()
   const axis = new Vector3(0, 1, 0)
   const center = new Vector3(...framing.center)
   camera.position.copy(center).add(new Vector3(...baseCameraOffset))

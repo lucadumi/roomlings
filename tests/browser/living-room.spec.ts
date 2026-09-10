@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { Box3, Mesh, OrthographicCamera, Raycaster, Vector2, Vector3 } from 'three'
 import { balances } from '../../shared/domain.ts'
 import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
-import { baseCameraOffset, cameraProjection, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { isSceneObjectVisible } from '../../src/roomComponentScene.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
@@ -38,8 +38,11 @@ async function objectPoint(page: Page, id: string) {
     const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
       : { x: 0, y: 0, width: layout.width, height: layout.height }
     const frame = roomEntryFraming(layout.width, layout.height, area)
-    const projection = cameraProjection(layout.width, layout.height, area, frame.halfHeight, 1)
+    const zoom = roomCameraZoom(1, true)
+    const projection = cameraProjection(layout.width, layout.height, area, frame.halfHeight, zoom)
     const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+    camera.zoom = zoom
+    camera.updateProjectionMatrix()
     const center = new Vector3(...frame.center)
     camera.position.copy(center).add(new Vector3(...baseCameraOffset))
     camera.lookAt(center)

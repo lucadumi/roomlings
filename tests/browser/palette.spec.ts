@@ -24,8 +24,11 @@ async function expectReadable(text: Locator, surface = text) {
 }
 
 test('the Coolors palette keeps room surfaces white and accent controls readable', { tag: '@room' }, async ({ page, populatedHousehold: _household }, testInfo) => {
+  await page.clock.setFixedTime(new Date())
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/kitchen')
+  await page.locator('.kitchen-world canvas').waitFor({ state: 'visible' })
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
@@ -74,6 +77,8 @@ test('the Coolors palette keeps room surfaces white and accent controls readable
   await colors.getByRole('button', { name: 'Cancel', exact: true }).click()
   await closeRoomEditor(page)
   await selectRoom(page, 'bathroom')
+  await page.locator('.bathroom-world canvas').waitFor({ state: 'visible' })
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-rendering', 'paused')
   await page.screenshot({ path: testInfo.outputPath('garden-pop-bathroom.png'), animations: 'disabled' })
   await page.setViewportSize({ width: 390, height: 844 })

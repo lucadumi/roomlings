@@ -143,10 +143,10 @@
 .stock-button small { display: block; margin-top: 5px; font-size: 10px; color: inherit; font-weight: 400; }
 .stock-button:hover:not(:disabled) { background: var(--action-hover); box-shadow: 0 5px 0 var(--action-shadow), inset 0 1px 0 #efab8155; transform: translateY(-1px); }
 .stock-button:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--action-shadow); }
-.game-balance { display: grid; grid-template-columns: auto auto; gap: 2px 7px; align-items: baseline; padding: 8px 12px; text-align: left; color: var(--control-ink); background: var(--control-surface); border-color: var(--control-border); }
-.game-balance .balance-caption { grid-column: 1 / -1; font-size: 8px; font-weight: 600; color: var(--sky-ink); letter-spacing: 1px; margin-bottom: 3px; }
-.game-balance > strong { font-size: 21px; letter-spacing: -0.6px; font-weight: 500; }
-.game-balance > span:last-child { font-size: 10px; color: var(--sky-ink); }
+.game-balance { display: grid; grid-template-columns: auto auto; gap: 3px 9px; align-items: baseline; padding: 11px 16px; text-align: left; color: var(--control-ink); background: var(--control-surface); border-color: var(--control-border); }
+.game-balance .balance-caption { grid-column: 1 / -1; font-size: 11px; font-weight: 600; color: var(--sky-ink); letter-spacing: 1px; margin-bottom: 4px; }
+.game-balance > strong { font-size: 28px; letter-spacing: -0.6px; font-weight: 500; }
+.game-balance > span:last-child { font-size: 13px; color: var(--sky-ink); }
 .game-app .game-balance:hover:not(:disabled), .game-balance[aria-pressed="true"] { background: var(--sky-soft); border-color: var(--sky-ink); color: var(--sky-ink); }
 .game-balance:hover:not(:disabled) > strong { color: var(--leaf-ink); }
 .room-sync { font-size: 10px; color: var(--muted); display: grid; grid-template-columns: 6px auto; gap: 5px 7px; align-items: center; text-align: right; }
@@ -172,7 +172,7 @@
 .game-panel-content .panel-period .button { padding: 6px 8px; font-size: 0.75rem; }
 .game-app .month-control > span { min-width: 72px; font-size: 0.6875rem; }
 .game-panel-content .eyebrow { font-size: 0.5625rem; color: var(--muted); }
-.game-panel-content .grocery-summary { padding: 16px; gap: 16px 27px; background: var(--control-surface); border-color: var(--line); border-radius: 10px; }
+.game-panel-content .grocery-summary { padding: 16px; gap: 16px 27px; background: var(--control-surface); border-radius: 10px; }
 .game-panel-content .grocery-summary > div { min-width: 0; max-width: 100%; }
 .game-panel-content .grocery-summary > div > strong { font-size: 1.6875rem; color: var(--sky-ink); }
 .game-panel-content .grocery-summary .eyebrow { font-size: 0.5625rem; color: var(--sky-ink); }
@@ -290,12 +290,9 @@
 .game-app .split-preview { background: var(--surface-muted); gap: 12px; }
 .game-app .split-preview > span { color: var(--muted); font-size: 0.6875rem; }
 .game-app .split-preview strong { color: var(--ink); }
-.game-app .form-error { color: var(--tomato-ink); font-size: 0.75rem; }
 .game-guide p { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; color: var(--muted); font-size: 0.6875rem; line-height: 1.8; margin: 0; }
 .game-guide svg { flex-shrink: 0; margin-top: 3px; color: var(--muted); }
 .game-guide strong { display: block; color: var(--leaf-ink); font-weight: 600; }
-.game-app .toast { top: 80px; bottom: auto; background: var(--leaf-ink); border: 1px solid var(--sage); box-shadow: 0 4px 0 #354e2370, 0 8px 30px #3a542225; border-radius: 10px; font-size: 12px; }
-.game-app .error-banner { position: fixed; z-index: 65; top: 80px; left: 50%; transform: translateX(-50%); border: 1px solid var(--tomato-border); border-radius: 10px; width: min(92vw, 560px); padding: 12px 15px; color: var(--tomato-ink); }
 @keyframes panel-in { from { opacity: 0; transform: translateX(15px); } to { opacity: 1; transform: translateX(0); } }
 @media (max-width: 1250px) {
   .game-hud { padding-inline: 22px; }
@@ -412,7 +409,6 @@
   .game-app .field-row .field { font-size: 0.8125rem; }
   .game-panel-content .search-input input { font-size: max(16px, 1rem); }
   .game-app .modal .button { min-height: 44px; font-size: 0.8125rem; }
-  .game-app .toast { top: 83px; width: calc(100vw - 24px); font-size: 11px; }
 }
 @media (max-width: 365px) {
   .game-hud { padding-inline: 13px; }

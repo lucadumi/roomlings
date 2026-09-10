@@ -3,14 +3,15 @@ import type { ReactNode } from 'react'
 import { Check, KeyRound, LogOut, RefreshCw } from 'lucide-react'
 import { accessStateSchema, deviceNameInputSchema, recoverInputSchema, recoveryRotationSchema } from '../shared/access.ts'
 import type { AccessState, Device } from '../shared/access.ts'
-import { request, RequestError } from './api.ts'
+import { errorMessage, request, RequestError } from './api.ts'
 import { CopyField, Form, Modal } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
+import { Feedback, FeedbackAction } from './Feedback.tsx'
 import './access.css'
 
 function currentDevice(access: AccessState): Device {
   const device = access.devices.find((device) => device.current)
-  if (!device) throw new Error('The current browser is missing from your access settings.')
+  if (!device) throw new Error('Current browser missing. Refresh browser access.')
   return device
 }
 
@@ -61,9 +62,9 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
       savedLabel.current = name
     }).catch((failure: unknown) => {
       if (!active) return
-      if (timedOut) setError('Browser access took too long to load. Try again.')
+      if (timedOut) setError('Browser access timed out. Try again.')
       else if (failure instanceof RequestError && failure.status === 401) expired.current(failure.message)
-      else setError(failure instanceof Error ? failure.message : 'Browser access could not be loaded.')
+      else setError(errorMessage(failure, 'Could not load browser access. Try again.'))
     }).finally(() => {
       clearTimeout(timeout)
       if (active) setLoading(false)
@@ -109,13 +110,13 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
         }
         setMode('main')
         setTarget(null)
-        setNotice(operation === 'name' ? 'Browser name saved.' : 'That browser session has been signed out.')
+        setNotice(operation === 'name' ? 'Browser name saved.' : 'Browser session signed out.')
       }
     } catch (failure) {
       if (!mounted.current || activeToken.current !== token) return
       if (failure instanceof RequestError && failure.status === 401) expired.current(failure.message)
       else {
-        setError(failure instanceof Error ? failure.message : 'Your access settings could not be saved.')
+        setError(errorMessage(failure, 'Access change not confirmed. Try again.'))
         if (failure instanceof RequestError && (failure.status === 409 || failure.status === 404)) {
           setMode('main')
           setRefreshId((value) => value + 1)
@@ -133,10 +134,10 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
     onClose={onClose} busy={busy}
   >
     <div className="access-content" ref={content}>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {notice && <p className="access-notice" role="status">{notice}</p>}
+      {error && <Feedback actions={!loading && !access
+        ? <FeedbackAction aria-label="Retry browser access" onClick={() => { setError(''); setRefreshId((value) => value + 1) }}>Retry</FeedbackAction> : undefined}>{error}</Feedback>}
+      {notice && <Feedback tone="success" className="access-notice">{notice}</Feedback>}
       {loading && !access && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Loading browser access...</p>}
-      {!loading && !access && <button className="button secondary full" onClick={() => { setError(''); setRefreshId((value) => value + 1) }}>Try again</button>}
       {mode === 'code' && secret && <>
         <p className="field-hint">Anyone with this code can return as you. Save it in a password manager. It stays valid until you replace it, but it is only displayed here now.</p>
         <CopyField label="Your private recovery code" value={secret} buttonLabel="Copy recovery code" copiedLabel="Recovery code copied" />
@@ -195,7 +196,7 @@ export function RecoveryForm({ busy, error, onSubmit }: {
     <label className="field">Recovery code<input type="password" required value={code} onChange={(event) => setCode(event.target.value)} disabled={busy} autoComplete="off" autoCapitalize="none" spellCheck={false} /></label>
     <label className="field">Name this browser<input required maxLength={50} value={label} onChange={(event) => setLabel(event.target.value)} disabled={busy} autoComplete="off" /></label>
     <p className="field-hint">Use the private code saved from your original roommate profile. It is not a kitchen invitation.</p>
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+    {localError && <Feedback>{localError}</Feedback>}{error}
     <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size={17} />}{busy ? 'Restoring access...' : 'Recover my access'}</button>
   </Form>
 }

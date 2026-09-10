@@ -4,6 +4,7 @@ import type { ChoreRoomConfig, ChoreRoomWorldProps } from './ChoreRoomWorld.tsx'
 import { buildLivingRoomModel, livingRoomFocusForRequest, livingRoomFraming, livingRoomLabels, livingRoomLampPosition, livingRoomTargets, livingRoomTourFraming } from './livingRoomModel.ts'
 import type { LivingRoomTarget } from './livingRoomModel.ts'
 import { livingRoomTargetSlots } from './roomComponentScene.ts'
+import { roomCameraZoom } from './camera.ts'
 
 const livingRoomConfig: ChoreRoomConfig<LivingRoomTarget> = {
   roomId: 'living-room',
@@ -21,6 +22,7 @@ const livingRoomConfig: ChoreRoomConfig<LivingRoomTarget> = {
   getTargetArea: (target) => target === 'sofa' ? 'seating' : target === 'chores' || target === 'supplies' ? null : target,
   buildModel: buildLivingRoomModel,
   framing: livingRoomFraming,
+  cameraZoom: roomCameraZoom,
   tourFraming: livingRoomTourFraming,
   minimumFocusHalfHeight: 2.05,
   lampPosition: livingRoomLampPosition,

@@ -59,7 +59,7 @@ export function completeChore(
 ): { chore: Chore; completion: ChoreCompletion } {
   requireActiveMember(members, memberId)
   if (chore.archived) throw new ChoreError(409, 'Restore this archived chore before completing it.')
-  if (chore.dueDate === null) throw new ChoreError(409, 'This one-off chore is already completed. Undo its completion or set a new due date.')
+  if (chore.dueDate === null) throw new ChoreError(409, 'Chore already completed. Undo it or choose a new due date.')
   const currentTurn = activeTurn(chore, members) ?? chore.turn
   const nextTurn = (currentTurn + 1) % chore.rotation.length
   const updated = choreSchema.parse({

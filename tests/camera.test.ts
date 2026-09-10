@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseCameraOffset, cameraFraming, cameraProjection, preferredRoomRotation, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
@@ -31,6 +31,14 @@ describe('room-first camera framing', () => {
     assert.deepEqual(roomFramingArea(canvas, stage, { ...controls, y: 700 }), stage)
     assert.deepEqual(roomFramingArea(canvas, stage, { ...controls, width: 0 }), stage)
     assert.deepEqual(roomFramingArea({ ...canvas, x: 5, y: 20 }, stage, controls), { x: 7, y: 220, width: 298, height: 420 })
+  })
+  it('uses the former 120 percent scale as the default 100 percent room view', () => {
+    assert.equal(roomCameraZoom(1, true), 1.2)
+    for (const zoom of [0.65, 1, 1.2, 1.9]) {
+      assert.ok(Math.abs(roomCameraZoom(zoom, true) / zoom - 1.2) < 1e-12)
+      assert.equal(roomCameraZoom(zoom, false), zoom)
+    }
+    for (const zoom of [0, -1, NaN, Infinity]) assert.throws(() => roomCameraZoom(zoom, true), /positive finite/)
   })
   it('keeps the immersive phone close-up separate from the measured whole-room overview', () => {
     const close = cameraFraming(390, 636, 'room', false)

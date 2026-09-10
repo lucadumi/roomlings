@@ -56,6 +56,19 @@ describe('shared kitchen API', () => {
     const other = await create()
     assert.notEqual(other.household.id, first.household.id)
   })
+  it('keeps unexpected read failures distinct from unconfirmed writes', async (context) => {
+    const session = await create()
+    const authenticate = context.mock.method(store, 'authenticate', () => { throw new Error('Private store diagnostic') })
+    const read = await call('/household', undefined, session.token)
+    assert.equal(read.status, 500)
+    assert.deepEqual(await read.json(), { error: 'Server unavailable. Try again.' })
+    const write = await call('/expenses', {}, session.token)
+    assert.equal(write.status, 500)
+    assert.deepEqual(await write.json(), { error: 'Server unavailable. Request not confirmed. Try again.' })
+    authenticate.mock.restore()
+    const current = await call('/household', undefined, session.token)
+    assert.deepEqual((await current.json()).household, session.household)
+  })
   it('protects updates against stale versions and unknown roommates', async () => {
     const session = await create()
     const input = { description: 'Milk', amount: 301, paidBy: session.memberId, participants: [session.memberId], category: 'dairy', date: '2026-09-01', version: 0 }
@@ -158,7 +171,7 @@ describe('shared kitchen API', () => {
   it('does not expose a sample household creation endpoint', async () => {
     const response = await call('/demo', {})
     assert.equal(response.status, 404)
-    assert.deepEqual(await response.json(), { error: 'This kitchen action could not be found.' })
+    assert.deepEqual(await response.json(), { error: 'Action not found.' })
   })
   it('records one bill expense per month even with concurrent or repeated submissions', async () => {
     const owner = await create()

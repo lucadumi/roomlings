@@ -59,6 +59,7 @@ export type ChoreRoomConfig<Target extends string> = {
   getTargetArea: (target: Target) => ChoreArea | null
   buildModel: (room: Group, style: RoomStyle) => ChoreRoomModel<Target>
   framing: (width: number, height: number, bounds: Box3, rotation?: number, pitch?: number, options?: { closeRoom?: boolean }) => Framing
+  cameraZoom?: (zoom: number, closeRoom: boolean) => number
   tourFraming: (width: number, height: number, progress: number, bounds: Box3, actorBounds: ReadonlyMap<Target, Box3>, stops: readonly ChoreRoomFocus<Target>[]) => Framing
   reducedTourFraming?: (width: number, height: number, bounds: Box3) => Framing
   minimumFocusHalfHeight?: number
@@ -444,7 +445,8 @@ export default function ChoreRoomWorld<Target extends string>({
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
       halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom) : displayedZoom
       camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
       camera.position.copy(cameraCenter).add(offset.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
       camera.lookAt(cameraCenter)

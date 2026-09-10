@@ -119,7 +119,7 @@ test('presets require admin confirmation and sync to another roommate without We
     await picker.getByRole('radio', { name: 'Sage', exact: true }).check()
     await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     await expect(picker).toHaveCount(0)
-    await expect(page.getByRole('status').filter({ hasText: 'Room style saved for everyone.' })).toBeVisible()
+    await expect(page.locator('.toast').getByRole('status')).toHaveText('Room style saved.')
     await page.reload()
     await openPicker(page)
     await expect(picker.getByRole('radio', { name: 'Sage', exact: true })).toBeChecked()

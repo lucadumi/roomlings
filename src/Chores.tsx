@@ -12,6 +12,7 @@ import { Avatar, DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { dateTitle } from './format.ts'
+import { Feedback } from './Feedback.tsx'
 import './chores.css'
 
 export type ChoreView = 'active' | 'history' | 'archived'
@@ -113,7 +114,7 @@ export function ChoresPanel({
     </div>
     <label className="chore-mine"><input type="checkbox" checked={mine} disabled={busy} onChange={(event) => onMine(event.target.checked)} />{view === 'history' ? 'My turns and completions' : 'My turn only'}</label>
     <button className="text-button chore-supplies" disabled={busy} onClick={onRestock}>Restock room supplies</button>
-    {filterError && <p className="form-error" role="alert">{filterError}</p>}
+    {filterError && <Feedback>{filterError}</Feedback>}
     {busy && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Saving chores...</p>}
     {view !== 'history' && <div className="chore-toolbar">
       <span>{view === 'active' ? `${due} due / ${scheduled.length} scheduled` : `${items.length} archived`}</span>
@@ -211,7 +212,7 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
   }
   return <Form onSubmit={() => {
     if (blocked || changed) { setLocalError('Review the current chore before saving.'); return }
-    if (invalidComponent) { setLocalError('Choose an installed object at this location, or choose No object.'); return }
+    if (invalidComponent) { setLocalError('Choose an installed object here, or choose No object.'); return }
     if (rotation.some((id) => !household.members.some((member) => member.id === id && !member.inactive))) {
       setLocalError('Remove former roommates from the assignment before saving.')
       return
@@ -248,7 +249,7 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
       {componentId && !availableObjects.some((component) => component.id === componentId) && <option value={componentId} disabled>{`${selectedComponent?.name ?? chore?.componentName ?? 'Object'} (unavailable)`}</option>}
       {availableObjects.map((component) => <option key={component.id} value={component.id}>{componentLabel(component, availableObjects)}</option>)}
     </Dropdown></label>}
-    {invalidComponent && <p className="form-error" role="alert">This object was removed or no longer matches this location. Choose another object or choose No object.</p>}
+    {invalidComponent && <Feedback>Object unavailable here. Choose another object or No object.</Feedback>}
     <label className="field">Notes<textarea rows={2} maxLength={240} value={notes} disabled={busy} onChange={(event) => setNotes(event.target.value)} /></label>
     <div className="field-row">
       <label className="field">Due date<input type="date" min="1900-01-01" required value={dueDate} disabled={busy} onChange={(event) => setDueDate(event.target.value)} /></label>
@@ -276,11 +277,11 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
       {rotation.map((id) => <option key={id} value={id}>{household.members.find((member) => member.id === id)?.name ?? 'Former roommate'}</option>)}
     </Dropdown></label>
     <p className="field-hint">One person keeps the assignment. Multiple people rotate in the order above after each completion. Dates use {household.billingTimeZone}.</p>
-    {blocked && <p className="form-error" role="alert">This chore is unavailable or archived. Close the form and review the chore list.</p>}
+    {blocked && <Feedback>Chore unavailable or archived. Close this form and review the list.</Feedback>}
     {!blocked && changed && latest && <DraftConflict onLatest={() => restoreValues(latest)}
       onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
     >This chore changed. Review the latest schedule before saving your draft.</DraftConflict>}
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+    {localError && <Feedback>{localError}</Feedback>}{error}
     <button className="button primary full" disabled={busy || blocked || changed || invalidComponent}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{chore ? 'Save chore' : 'Create chore'}</button>
   </Form>
 }

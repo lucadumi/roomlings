@@ -1,7 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { OrthographicCamera, Vector3 } from 'three'
-import { baseCameraOffset, cameraProjection, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { bathroomLayout } from '../../src/roomLayout.ts'
 import { selectRoom, trackDrawing } from './fixtures.ts'
@@ -29,8 +29,11 @@ async function clickFixture(page: Page, point: [number, number, number]) {
   const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomEntryFraming(layout.width, layout.height, area)
-  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, 1)
+  const zoom = roomCameraZoom(1, true)
+  const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
+  camera.zoom = zoom
+  camera.updateProjectionMatrix()
   const center = new Vector3(...framing.center)
   camera.position.copy(center).add(new Vector3(...baseCameraOffset))
   camera.lookAt(center)
