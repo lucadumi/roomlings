@@ -1,5 +1,6 @@
 import { expect, test } from './account-fixtures.ts'
 import { savedKitchen, trackDrawing } from './fixtures.ts'
+import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -34,7 +35,7 @@ test('the hero keeps only the home illustration and links to the room tour', asy
 
   const explore = page.locator('#tour')
   await expect(explore.getByRole('radio', { name: 'Kitchen', exact: true })).toBeChecked()
-  await expect(explore.locator('.welcome-preview-choice img')).toHaveCount(2)
+  await expect(explore.locator('.welcome-preview-choice img')).toHaveCount(roomIds.length)
   await explore.getByRole('radio', { name: 'Kitchen', exact: true }).focus()
   await page.keyboard.press('ArrowRight')
   await expect(explore.getByRole('radio', { name: 'Bathroom', exact: true })).toBeChecked()
@@ -88,7 +89,7 @@ test('room choices and shared exploration controls remain contained through resi
   ]) {
     await page.setViewportSize(viewport)
     for (const choice of await explore.getByRole('radio').all()) {
-      await choice.scrollIntoViewIfNeeded()
+      await choice.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' }))
       await expect(choice).toBeInViewport({ ratio: 1 })
       const bounds = await choice.boundingBox()
       expect(bounds?.width).toBeGreaterThanOrEqual(44)

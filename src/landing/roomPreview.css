@@ -1,5 +1,5 @@
 .welcome-home-frame { min-width: 0; padding: 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; }
-.welcome-preview-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; width: min(100%, 600px); min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
+.welcome-preview-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; width: min(100%, 800px); min-width: 0; margin: 0 0 18px; padding: 0; border: 0; }
 .welcome-preview-choice { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid var(--control-border); border-radius: var(--control-radius); background: var(--control-surface); color: var(--control-ink); font-size: 14px; font-weight: 550; line-height: 1.4; cursor: pointer; transition: background-color 150ms, border-color 150ms, color 150ms; }
 .welcome-preview-choice > img { flex-shrink: 0; width: 84px; height: 58px; object-fit: contain; border-radius: 4px; background: var(--control-surface); }
 .welcome-preview-choice > span { min-width: 0; overflow-wrap: anywhere; }
@@ -24,6 +24,6 @@
   .welcome-stage-shell { border-right: 0; border-bottom: 1px solid var(--control-border); }
   .welcome-home-frame { width: min(100%, 430px); margin-inline: auto; }
   .welcome-preview-options { gap: 10px; }
-  .welcome-preview-choice { gap: 8px; font-size: 13px; }
+  .welcome-preview-choice { flex-direction: column; justify-content: center; gap: 4px; font-size: 13px; text-align: center; }
   .welcome-preview-choice > img { width: 52px; height: 42px; }
 }

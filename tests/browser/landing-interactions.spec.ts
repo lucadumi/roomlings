@@ -8,6 +8,7 @@ import { baseCameraOffset } from '../../src/camera.ts'
 import { tourCameraFraming } from '../../src/landing/tourCamera.ts'
 import { measureKitchenTourBounds, sharedTourOverviewBounds } from '../../src/landing/tourGeometry.ts'
 import { bathroomChapters, roomTourChapters } from '../../src/landing/roomTourChapters.ts'
+import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -170,17 +171,17 @@ test('both room overviews use the same template, angle and world scale', { tag: 
   await expect(tour.getByRole('link', { name: /^Open (kitchen|bathroom)$/ })).toHaveCount(0)
 })
 
-for (const room of ['kitchen', 'bathroom'] as const) {
+for (const room of roomIds) {
   test(`${room} pins its title through the shared scroll animation and releases afterward`, { tag: '@room' }, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await page.setViewportSize({ width: 1440, height: 960 })
-    await page.goto(room === 'kitchen' ? '/#tour' : '/#tour-bathroom')
+    await page.goto(`/#tour-${room}`)
     const tour = page.locator('.welcome-tour')
     const track = tour.locator('.welcome-tour-track')
     await expect(tour).toHaveAttribute('data-scene', 'ready')
     await expect(track).toHaveAttribute('data-flow', 'false')
     const chapters = roomTourChapters[room]
-    const renderer = page.locator(room === 'kitchen' ? '.welcome-canvas' : '.bathroom-preview-canvas')
+    const renderer = page.locator(room === 'kitchen' ? '.welcome-canvas' : `.${room}-preview-canvas`)
     for (const index of [1, chapters.length - 1, 0]) {
       const fraction = index / (chapters.length - 1)
       await track.evaluate((element, fraction) => {

@@ -4,6 +4,7 @@ import { OrthographicCamera, Vector3 } from 'three'
 import { baseCameraOffset, cameraFraming } from '../../src/camera.ts'
 import { kitchenLayout } from '../../src/roomLayout.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
+import { roomIds } from '../../shared/rooms.ts'
 import { trackDrawing } from './fixtures.ts'
 
 test.beforeEach(({ populatedHousehold }) => {
@@ -142,7 +143,7 @@ test('kitchen picking ignores secondary clicks and releases abandoned pointer ca
   await expect(page.locator('.room-panel')).toBeVisible()
 })
 
-for (const room of ['kitchen', 'bathroom'] as const) {
+for (const room of roomIds) {
   test(`${room} pinch zoom stays continuous when one of three contacts is lifted`, { tag: '@room' }, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 390, height: 844 })
@@ -175,7 +176,7 @@ for (const room of ['kitchen', 'bathroom'] as const) {
   })
 }
 
-for (const room of ['kitchen', 'bathroom'] as const) {
+for (const room of roomIds) {
   test(`${room} hotspots stay inside the unobscured scene while a panel is open`, { tag: '@room' }, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 1440, height: 960 })

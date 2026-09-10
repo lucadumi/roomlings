@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { roomIdSchema } from './rooms.ts'
+import { roomCatalog, roomIdSchema } from './rooms.ts'
 import type { ChoreArea, RoomId } from './rooms.ts'
 import { normalizeShoppingName } from './shopping.ts'
 import { componentFinishSchema } from './componentFinishes.ts'
@@ -19,6 +19,7 @@ export const componentKinds = [
   'stand-mixer', 'waffle-maker', 'kitchen-scale', 'cutting-boards', 'mug-tree', 'cereal-dispenser',
   'egg-basket', 'wall-shelf', 'ironing-board', 'toilet-brush', 'shower-squeegee', 'tissue-box',
   'first-aid-kit', 'reed-diffuser', 'board-game', 'record-player',
+  'sofa', 'coffee-table', 'tv', 'media-unit', 'bookshelf', 'floor-lamp',
 ] as const
 export const componentKindSchema = z.enum(componentKinds)
 export type ComponentKind = z.infer<typeof componentKindSchema>
@@ -26,7 +27,7 @@ export const componentCategories = {
   appliances: 'Appliances', fixtures: 'Fixtures', furniture: 'Furniture', decor: 'Decor and plants', household: 'Household tools',
 } as const
 export type ComponentCategory = keyof typeof componentCategories
-export const roomComponentLimit = 120
+export const roomComponentLimit = 160
 export const componentSupplyLimit = 12
 export const roomComponentIdSchema = z.string().min(1).max(80).regex(/^[a-z0-9][a-z0-9-]*$/, 'Choose a valid room object.')
 export const componentSupplySchema = z.object({
@@ -60,6 +61,8 @@ const surfaceCleaner = supply('surface-cleaner', 'Surface cleaner')
 const bathroomCleaner = supply('bathroom-cleaner', 'Bathroom cleaner')
 const descaler = supply('descaler', 'Descaler')
 const handSoap = supply('hand-soap', 'Hand soap')
+const floorCleaner = supply('floor-cleaner', 'Floor cleaner')
+const dustingCloths = supply('dusting-cloths', 'Dusting cloths', '1 pack')
 
 export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
   fridge: define('Fridge', 'Keep the familiar fridge, with its own care and grocery shortcuts.', 'appliances', {
@@ -186,7 +189,7 @@ export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
   'wall-art': define('Wall art', 'A botanical print or a small geometric composition.', 'decor', {
     variants: variants('Botanical', 'Geometric'), chores: [chore('Dust the picture frame', 30)],
   }),
-  curtains: define('Kitchen curtains', 'Dress the existing window without changing how the room is lit.', 'decor', {
+  curtains: define('Curtains', 'Dress the existing window without changing how the room is lit.', 'decor', {
     chores: [chore('Wash the curtains', 90)],
   }),
   'soap-dispenser': define('Soap dispenser', 'A small refillable dispenser with a direct restocking shortcut.', 'fixtures', {
@@ -323,6 +326,32 @@ export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
   'record-player': define('Record player', 'A turntable corner with a vinyl record and a care routine.', 'decor', {
     supplies: [supply('record-cleaner', 'Record cleaner')], chores: [chore('Dust the record player', 14)],
   }),
+  sofa: define('Sofa', 'The shared spot for a quiet evening, with a corner or straight layout.', 'furniture', {
+    area: 'seating', variants: variants('Corner', 'Straight'),
+    supplies: [supply('upholstery-cleaner', 'Upholstery cleaner')],
+    chores: [chore('Vacuum the sofa', 7), chore('Wash the cushion covers', 30)],
+    states: states('Tidy', 'Needs tidying'),
+  }),
+  'coffee-table': define('Coffee table', 'A low table for games and tea, with its own wipe-down routine.', 'furniture', {
+    area: 'surfaces', variants: variants('Rectangular', 'Round'), supplies: [surfaceCleaner],
+    chores: [chore('Wipe the coffee table', 7)], states: states('Clear', 'Needs clearing'),
+  }),
+  tv: define('TV', 'A screen on the shared media unit, with reminders to keep it dust-free.', 'appliances', {
+    area: 'surfaces', supplies: [dustingCloths, supply('batteries', 'Batteries', '1 pack')],
+    chores: [chore('Dust the TV and remote', 14)],
+  }),
+  'media-unit': define('Media unit', 'Low storage for the shared screen, records and speakers.', 'furniture', {
+    area: 'surfaces', supplies: [dustingCloths],
+    chores: [chore('Dust the media unit', 14), chore('Tidy the media shelf', 30)],
+  }),
+  bookshelf: define('Bookshelf', 'A home for shared books and games, with space for a small object.', 'furniture', {
+    area: 'surfaces', supplies: [dustingCloths],
+    chores: [chore('Dust the bookshelf', 14), chore('Tidy the books and games', 30)],
+  }),
+  'floor-lamp': define('Floor lamp', 'A warm reading light beside the sofa.', 'decor', {
+    area: 'surfaces', supplies: [supply('light-bulbs', 'Light bulbs', '1 pack')],
+    chores: [chore('Dust the floor lamp', 30)],
+  }),
 }
 
 type PlacementRequirement = { slotId: string; variant: string; message: string }
@@ -437,6 +466,24 @@ export const roomSlots = [
   slot('bathroom-first-aid', 'bathroom', 'Vanity first-aid spot', ['first-aid-kit']),
   slot('bathroom-diffuser', 'bathroom', 'Vanity fragrance spot', ['reed-diffuser']),
   slot('bathroom-vacuum', 'bathroom', 'Laundry cleaning station', ['vacuum']),
+  slot('living-room-sofa', 'living-room', 'Sofa corner', ['sofa'], 'sofa', false),
+  slot('living-room-coffee-table', 'living-room', 'Coffee table', ['coffee-table'], 'coffee-table', false),
+  slot('living-room-media-unit', 'living-room', 'Media unit', ['media-unit'], 'media-unit', false),
+  slot('living-room-tv', 'living-room', 'On the media unit', ['tv'], 'tv'),
+  slot('living-room-bookshelf', 'living-room', 'Books and games shelf', ['bookshelf'], 'bookshelf', false),
+  slot('living-room-floor-lamp', 'living-room', 'Reading light', ['floor-lamp'], 'floor-lamp'),
+  slot('living-room-rug', 'living-room', 'Lounge rug', ['rug'], 'rug'),
+  slot('living-room-plant', 'living-room', 'Floor planter', ['plant', 'air-purifier', 'storage-cabinet'], 'plant'),
+  slot('living-room-curtains', 'living-room', 'Window curtains', ['curtains'], 'curtains'),
+  slot('living-room-supply-shelf', 'living-room', 'Room supply shelf', ['supply-shelf'], 'supply-shelf', false),
+  slot('living-room-cleaning-caddy', 'living-room', 'Room cleaning caddy', ['cleaning-caddy'], 'cleaning-caddy', false),
+  slot('living-room-bins', 'living-room', 'Lounge bin', ['bins'], 'bins'),
+  slot('living-room-table-top', 'living-room', 'Coffee table centerpiece', ['board-game', 'tea-set', 'tissue-box', 'reed-diffuser', 'plant'], 'board-game'),
+  slot('living-room-media-accessory', 'living-room', 'Beside the TV', ['record-player', 'speaker', 'plant']),
+  slot('living-room-shelf-accessory', 'living-room', 'Open shelf space', ['board-game', 'speaker', 'plant', 'reed-diffuser']),
+  slot('living-room-wall-art', 'living-room', 'Lounge wall picture', ['wall-art', 'wall-calendar', 'key-hooks', 'wall-shelf']),
+  slot('living-room-cleaning-station', 'living-room', 'Cleaning station', ['vacuum', 'air-purifier', 'storage-cabinet']),
+  slot('living-room-windowsill', 'living-room', 'Window ledge', ['plant', 'reed-diffuser', 'watering-can']),
 ] as const
 export type RoomSlotId = typeof roomSlots[number]['id']
 export const roomSlotIdSchema = z.enum(roomSlots.map((slot) => slot.id), { error: 'Choose a designed position in this home.' })
@@ -509,9 +556,11 @@ export function suggestedComponentSupplies(component: Pick<RoomComponent, 'kind'
   let supplies = componentCatalog[kind].supplies
   if (kind === 'sink' && roomId === 'bathroom') supplies = [handSoap]
   if (kind === 'cleaning-caddy' && roomId === 'bathroom') supplies = [bathroomCleaner]
+  if (kind === 'cleaning-caddy' && roomId === 'living-room') supplies = [floorCleaner, surfaceCleaner, dustingCloths]
   if (kind === 'supply-shelf') supplies = roomId === 'kitchen'
     ? [supply('rubbish-bags', 'Rubbish bags', '1 roll')]
-    : [supply('toilet-paper', 'Toilet paper', '1 pack'), handSoap, bathroomCleaner]
+    : roomId === 'bathroom' ? [supply('toilet-paper', 'Toilet paper', '1 pack'), handSoap, bathroomCleaner]
+      : [floorCleaner, dustingCloths, supply('rubbish-bags', 'Rubbish bags', '1 roll')]
   if (kind === 'coffee-machine' && variant === 'capsule') supplies = [supply('coffee-capsules', 'Coffee capsules', '1 box'), descaler]
   if (kind === 'coffee-machine' && variant === 'filter') supplies = [
     supply('ground-coffee', 'Ground coffee', '1 bag'), supply('coffee-filters', 'Coffee filters', '1 pack'), descaler,
@@ -526,7 +575,9 @@ export function createRoomComponent(kind: ComponentKind, slotId: RoomSlotId, id:
   const definition = componentCatalog[kind]
   const variant = definition.variants[0].id
   return roomComponentSchema.parse({
-    id, kind, slotId, roomId: position.roomId, name: kind === 'sink' && position.roomId === 'bathroom' ? 'Bathroom sink' : definition.name,
+    id, kind, slotId, roomId: position.roomId,
+    name: kind === 'sink' && position.roomId === 'bathroom' ? 'Bathroom sink'
+      : kind === 'curtains' ? `${roomCatalog[position.roomId].name} curtains` : definition.name,
     variant, finish: 'room', supplies: suggestedComponentSupplies({ kind, roomId: position.roomId, variant }),
     version: 0, installed: true, state: null, stateChangedAt: null, stateChangedBy: null,
   })
@@ -537,7 +588,12 @@ export function defaultRoomComponents(): RoomComponent[] {
 }
 
 export function getRoomComponents(household: { roomComponents?: readonly RoomComponent[] }): readonly RoomComponent[] {
-  return household.roomComponents ?? defaultRoomComponents()
+  const components = household.roomComponents
+  if (!components) return defaultRoomComponents()
+  // Older saved layouts have no living room. Any saved record, including a removed
+  // object, marks it as initialized so customization is never reset.
+  if (components.some((component) => component.roomId === 'living-room')) return components
+  return [...components, ...defaultRoomComponents().filter((component) => component.roomId === 'living-room')]
 }
 
 export function availableComponentSlots(components: readonly RoomComponent[], roomId: RoomId, kind: ComponentKind) {
@@ -560,6 +616,10 @@ export function componentPositionSupported(slotId: RoomSlotId, components: reado
 }
 
 export function componentChoreArea(component: Pick<RoomComponent, 'kind' | 'roomId'>): ChoreArea | null {
+  if (component.roomId === 'living-room') {
+    if (component.kind === 'plant') return 'plants'
+    if (component.kind === 'rug' || component.kind === 'vacuum') return 'floor'
+  }
   const area = componentCatalog[component.kind].area
   return component.roomId === 'bathroom' && area === 'bins' ? null : area
 }

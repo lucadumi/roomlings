@@ -7,6 +7,7 @@ import type { Session } from '../../shared/domain.ts'
 import { componentPositionSupported, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
 import { baseCameraOffset, cameraProjection, fitRoomBounds, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { roomIds } from '../../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { componentPlacements, kitchenLayout } from '../../src/roomLayout.ts'
@@ -262,7 +263,7 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
   expect(getRoomComponents((await accounts.store.get(populatedHousehold.household.id))!)).toEqual(originalComponents)
 })
 
-for (const roomId of ['kitchen', 'bathroom'] as const) {
+for (const roomId of roomIds) {
   test(`all compatible ${roomId} kinds fit with their original models`, { tag: '@room' }, async ({ page, accounts, emptyHousehold }, testInfo) => {
     const components = await configureDesignedSlots(accounts, emptyHousehold, false)
     const installed = components.filter((component) => component.roomId === roomId && component.installed)
@@ -273,7 +274,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
-    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : 34)
+    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 18)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-all-components-original.png`), animations: 'disabled' })
   })
 
@@ -310,14 +311,14 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-designed-components-narrow.png`), animations: 'disabled' })
     await page.goto('/#tour')
-    await expect(page.locator('.welcome-preview-choice img')).toHaveCount(2)
+    await expect(page.locator('.welcome-preview-choice img')).toHaveCount(roomIds.length)
     expect(await page.locator('.welcome-preview-choice img').evaluateAll((images) => images.every((image) =>
       image instanceof HTMLImageElement && !image.src.startsWith('data:') && /\/(?:assets|src)\//.test(image.src)))).toBe(true)
     await expect(page.locator('[data-preview-source="saved"]')).toHaveCount(0)
     expect(failures).toEqual([])
   })
 
-  test(`the expanded ${roomId} object opens from its mesh and saves its own manual state`, { tag: '@room' }, async ({ page, accounts, emptyHousehold }) => {
+  if (roomId !== 'living-room') test(`the expanded ${roomId} object opens from its mesh and saves its own manual state`, { tag: '@room' }, async ({ page, accounts, emptyHousehold }) => {
     const drawing = await trackDrawing(page)
     const components = await configureDesignedSlots(accounts, emptyHousehold)
     const slotId = roomId === 'kitchen' ? 'kitchen-stand-mixer' : 'bathroom-dryer'
@@ -379,7 +380,7 @@ test('configured objects remain reachable without WebGL and saved previews never
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
-  await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(2)
+  await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(roomIds.length)
   expect(await picker.locator('img').evaluateAll((images) => images.every((image) => !image.getAttribute('src')))).toBe(true)
   await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).focus()
   await page.keyboard.press('Enter')

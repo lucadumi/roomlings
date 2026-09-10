@@ -1,15 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import { expect, rememberBrowserHousehold, test } from './account-fixtures.ts'
 import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
+import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
-for (const roomId of ['kitchen', 'bathroom'] as const) {
+for (const roomId of roomIds) {
   test(`${roomId} placement uses a short two-action dialog and stays private until applied`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }, testInfo) => {
-    const name = roomId === 'kitchen' ? 'Dishwasher' : 'Washing machine'
-    const count = roomId === 'kitchen' ? 20 : 6
+    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Speaker'
+    const count = roomId === 'kitchen' ? 20 : roomId === 'bathroom' ? 6 : 13
     const before = await accounts.store.get(owner.household.id)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
@@ -68,7 +69,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await page.reload()
     await openRoomObjects(page)
     await page.getByRole('button', { name: `Open ${name} details`, exact: true }).click()
-    await expect(page.getByRole('region', { name: `${roomId === 'kitchen' ? 'Kitchen' : 'Bathroom'} objects`, exact: true })).toContainText('Teal')
+    await expect(page.getByRole('region', { name: `${roomCatalog[roomId].name} objects`, exact: true })).toContainText('Teal')
   })
 }
 

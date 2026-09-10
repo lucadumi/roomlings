@@ -1,10 +1,10 @@
 import { z } from 'zod'
 
-export const roomIds = ['kitchen', 'bathroom'] as const
+export const roomIds = ['kitchen', 'bathroom', 'living-room'] as const
 export const roomIdSchema = z.enum(roomIds)
 export type RoomId = z.infer<typeof roomIdSchema>
 
-export const choreAreas = ['sink', 'counters', 'fridge', 'floor', 'bins', 'mirror', 'toilet', 'bath'] as const
+export const choreAreas = ['sink', 'counters', 'fridge', 'floor', 'bins', 'mirror', 'toilet', 'bath', 'seating', 'surfaces', 'plants'] as const
 export const choreAreaSchema = z.enum(choreAreas)
 export type ChoreArea = z.infer<typeof choreAreaSchema>
 
@@ -38,6 +38,18 @@ export const roomCatalog: Record<RoomId, RoomDefinition> = {
       { id: 'toilet-paper', name: 'Toilet paper', quantity: '1 pack' },
       { id: 'hand-soap', name: 'Hand soap', quantity: '1 bottle' },
       { id: 'bathroom-cleaner', name: 'Bathroom cleaner', quantity: '1 bottle' },
+    ],
+  },
+  'living-room': {
+    name: 'Living room', label: 'The living room',
+    areas: [
+      { id: 'seating', label: 'Sofa and seating' }, { id: 'surfaces', label: 'Tables and shelves' },
+      { id: 'floor', label: 'Floor' }, { id: 'bins', label: 'Rubbish' }, { id: 'plants', label: 'Plants' },
+    ],
+    supplies: [
+      { id: 'floor-cleaner', name: 'Floor cleaner', quantity: '1 bottle' },
+      { id: 'dusting-cloths', name: 'Dusting cloths', quantity: '1 pack' },
+      { id: 'rubbish-bags', name: 'Rubbish bags', quantity: '1 roll' },
     ],
   },
 }

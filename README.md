@@ -5,16 +5,18 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 ## What it does
 
 - Plan grocery runs with a shared list and individual shopping baskets.
-- Assign one-off or recurring chores across the kitchen, bathroom and whole home.
+- Assign one-off or recurring chores across the kitchen, bathroom, living room and whole home.
 - Split paid groceries and recurring bills between the people sharing them.
 - Track the monthly grocery budget and record roommate repayments.
 - Share a household through verified-email accounts, invitations and saved access.
-- Customize the kitchen and bathroom with optional appliances, furniture and decorations across compatible, live-previewed positions.
+- Customize all three rooms with optional appliances, furniture and decorations across compatible, live-previewed positions.
 - Give room admins editing access while everyone uses the same supplies, chores and manually recorded object states.
 
 The room's objects open these tools, and a toolbar keeps them available without 3D. **Room objects** groups each kind into one preview card, with position choices for repeated objects. Its **Edit room** action lets admins preview and apply a shared layout. Installing or moving an object never creates a purchase, debt or chore. Every balance comes from the same shared ledger.
 
 The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, mug tree, record player, board game and reed diffuser. **Rooms** opens a compact preview menu directly beneath its button.
+
+The living room includes a corner sofa, coffee table, TV and media unit, bookshelf, reading lamp, rug and curtained window. All three rooms use the same starting camera scale. Their objects share the same chores, shopping list and ledger. Existing saved layouts gain the living room without resetting their furniture or browser access.
 
 ## Run locally
 
@@ -30,13 +32,13 @@ Open http://localhost:5173 (API: port 4311). Explore the rooms on the public lan
 | Entry | Purpose |
 | --- | --- |
 | `/` | Public landing page |
-| `/rooms/kitchen`, `/rooms/bathroom` | Personal rooms and sign-in |
+| `/rooms/kitchen`, `/rooms/bathroom`, `/rooms/living-room` | Personal rooms and sign-in |
 
 Email sign-in needs [Supabase setup](docs/accounts.md). Existing real browser access and recovery remain supported. Public room previews do not create households or anonymous sessions.
 
 ## Development
 
-TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. Kitchen and bathroom share household access, chores, shopping and financial history; room registration supports further expansion.
+TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. All rooms share household access, chores, shopping and financial history.
 
 | Command | Purpose |
 | --- | --- |

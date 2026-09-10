@@ -1,8 +1,49 @@
 import { expect, test } from './account-fixtures.ts'
 import { openRoomEditor, selectRoom } from './fixtures.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
+import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
+
+test('saved room images are warmed before opening and reused without illustration backgrounds', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
+  await page.addInitScript(() => {
+    let renders = 0
+    const original = HTMLCanvasElement.prototype.getContext
+    Object.defineProperty(window, 'savedRoomPreviewRenders', { get: () => renders })
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      value(this: HTMLCanvasElement, name: string, options?: WebGLContextAttributes) {
+        if (name === 'webgl2' && options?.preserveDrawingBuffer) renders++
+        return Reflect.apply(original, this, [name, options])
+      },
+    })
+  })
+  await page.goto(roomPath())
+  const renders = () => page.evaluate(() => Number(Reflect.get(window, 'savedRoomPreviewRenders')))
+  await expect.poll(renders).toBe(1)
+  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  await trigger.click()
+  const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
+  await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
+  await expect(picker.locator('.room-menu-preview-status')).toHaveCount(0)
+  for (const image of await picker.locator('.room-menu-preview').all()) {
+    await expect(image).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  }
+  const first = await picker.locator('img').evaluateAll((images) => images.map((image) => image.getAttribute('src')))
+  await page.keyboard.press('Escape')
+  await trigger.click()
+  await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
+  expect(await picker.locator('img').evaluateAll((images) => images.map((image) => image.getAttribute('src')))).toEqual(first)
+  expect(await renders()).toBe(1)
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Room style', exact: true }).click()
+  await page.getByRole('radio', { name: 'Coastal', exact: true }).check()
+  await page.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+  await expect.poll(renders).toBe(2)
+  await trigger.click()
+  await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
+  expect(await picker.locator('img').evaluateAll((images) => images.map((image) => image.getAttribute('src')))).not.toEqual(first)
+  expect(await renders()).toBe(2)
+})
 
 test('the Rooms menu shows real previews beneath its button and preserves the household', { tag: '@room' }, async ({ page, populatedHousehold }, testInfo) => {
   await page.goto(roomPath())
@@ -15,7 +56,7 @@ test('the Rooms menu shows real previews beneath its button and preserves the ho
   const menu = await picker.boundingBox()
   expect(menu!.y).toBeGreaterThanOrEqual(trigger!.y + trigger!.height)
   expect(menu!.y - trigger!.y - trigger!.height).toBeLessThanOrEqual(12)
-  await expect(picker.locator('img')).toHaveCount(2)
+  await expect(picker.locator('img')).toHaveCount(roomIds.length)
   await expect.poll(() => picker.locator('img').evaluateAll((images) => images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true)
   await page.screenshot({ path: testInfo.outputPath('anchored-rooms-menu.png'), animations: 'disabled' })
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(populatedHousehold.token)

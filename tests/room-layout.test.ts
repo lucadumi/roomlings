@@ -49,8 +49,8 @@ function pickablePoint(room: Group, root: Object3D, identifies: (object: Object3
 test('all compatible catalog kinds coexist without changing the original installed defaults or object limit', () => {
   const original = defaultRoomComponents()
   const complete = completeRoomLayout()
-  assert.equal(original.length, 26)
-  assert.equal(complete.length, 100)
+  assert.equal(original.length, 39)
+  assert.equal(complete.length, 118)
   assert.ok(complete.length < roomComponentLimit)
   assert.deepEqual(new Set(complete.map((component) => component.kind)), new Set(componentKinds))
   assert.equal(validateRoomComponents(complete), null)
@@ -58,6 +58,7 @@ test('all compatible catalog kinds coexist without changing the original install
   assert.deepEqual(complete.filter((component) => component.id.startsWith('default-')), original)
   assert.equal(original.filter((component) => component.roomId === 'kitchen').length, 20)
   assert.equal(original.filter((component) => component.roomId === 'bathroom').length, 6)
+  assert.equal(original.filter((component) => component.roomId === 'living-room').length, 13)
   for (const roomId of ['kitchen', 'bathroom'] as const) {
     const allowed = new Set(roomSlots.filter((slot) => slot.roomId === roomId).flatMap((slot) => slot.kinds))
     assert.deepEqual(new Set(complete.filter((component) => component.roomId === roomId).map((component) => component.kind)), allowed)

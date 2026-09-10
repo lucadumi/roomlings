@@ -10,7 +10,10 @@ test('the public home and personal rooms are distinct entries', () => {
   assert.deepEqual(resolveEntry(roomPath()), { kind: 'room', roomId: defaultRoom })
   assert.deepEqual(resolveEntry('/rooms'), resolveEntry(roomPath()))
   assert.deepEqual(resolveEntry(roomPath('bathroom')), { kind: 'room', roomId: 'bathroom' })
+  assert.deepEqual(resolveEntry(roomPath('living-room')), { kind: 'room', roomId: 'living-room' })
+  assert.deepEqual(resolveEntry('/rooms/living-room/'), { kind: 'room', roomId: 'living-room' })
   assert.deepEqual(resolveEntry('/', '#tour-bathroom'), { kind: 'home' })
+  assert.deepEqual(resolveEntry('/', '#tour-living-room'), { kind: 'home' })
 })
 
 test('registered rooms have implementations and unknown rooms never open a placeholder', () => {

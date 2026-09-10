@@ -5,7 +5,7 @@ import type { RoomStyle } from '../shared/domain.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../shared/rooms.ts'
 import type { RoomId } from '../shared/rooms.ts'
-import { householdRoomPreviews } from './roomPreviews.ts'
+import { cachedHouseholdRoomPreviews, householdRoomPreviews, roomSelectorPreviewSizes } from './roomPreviews.ts'
 import type { RoomPreviewLedger } from './householdRoomPreview.ts'
 import './roomPicker.css'
 
@@ -18,11 +18,50 @@ function menuPosition(bounds: DOMRect) {
   }
 }
 
-export function RoomPicker({ currentRoom, onSelect, onClose, anchor, components, roomStyle = 'original', roomStyles, ledger }: {
+type SavedPreviewProps = {
+  householdId: string
+  components?: readonly RoomComponent[]
+  roomStyle?: RoomStyle
+  roomStyles?: Partial<Record<RoomId, RoomStyle>>
+  ledger?: RoomPreviewLedger
+}
+
+export function RoomPreviewPreloader({ householdId, components, roomStyle = 'original', roomStyles, ledger }: SavedPreviewProps) {
+  const appearance = JSON.stringify([components, roomStyles, ledger])
+  useEffect(() => {
+    let cancelled = false
+    let scheduled = false
+    let idle: number | undefined
+    let frame = 0
+    const warm = () => {
+      if (cancelled) return
+      void householdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio) }, householdId)
+        .catch((error: unknown) => console.warn('Saved room previews could not be prepared:', error instanceof Error ? error.message : error))
+    }
+    const schedule = () => {
+      if (scheduled || !document.querySelector('.world-canvas:not([hidden]) canvas')) return
+      scheduled = true
+      observer.disconnect()
+      if (window.requestIdleCallback) idle = window.requestIdleCallback(warm, { timeout: 1500 })
+      else frame = requestAnimationFrame(() => { frame = requestAnimationFrame(warm) })
+    }
+    const observer = new MutationObserver(schedule)
+    const home = document.querySelector('.game-home')
+    if (home) observer.observe(home, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] })
+    schedule()
+    return () => {
+      cancelled = true
+      observer.disconnect()
+      if (idle !== undefined) window.cancelIdleCallback(idle)
+      cancelAnimationFrame(frame)
+    }
+  }, [householdId, roomStyle, appearance])
+  return null
+}
+
+export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId, components, roomStyle = 'original', roomStyles, ledger }: SavedPreviewProps & {
   currentRoom: RoomId; onSelect: (roomId: RoomId) => void; onClose: () => void
   anchor: HTMLButtonElement
-  components?: readonly RoomComponent[]; roomStyle?: RoomStyle
-  roomStyles?: Partial<Record<RoomId, RoomStyle>>; ledger?: RoomPreviewLedger
 }) {
   const areas = useRef(new Map<RoomId, HTMLSpanElement>())
   const menu = useRef<HTMLDivElement>(null)
@@ -32,8 +71,11 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, components,
   const [focusedRoom, setFocusedRoom] = useState(currentRoom)
   const [position, setPosition] = useState(() => menuPosition(anchor.getBoundingClientRect()))
   const lastPosition = useRef(position)
-  const [images, setImages] = useState<Partial<Record<RoomId, string>>>({})
-  const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const initialImages = cachedHouseholdRoomPreviews({
+    components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio),
+  }, householdId)
+  const [images, setImages] = useState<Partial<Record<RoomId, string>>>(initialImages ?? {})
+  const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>(initialImages ? 'ready' : 'loading')
   const appearance = JSON.stringify([components, roomStyles, ledger])
   close.current = onClose
 
@@ -115,15 +157,18 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, components,
       if (size === previousSize) return
       previousSize = size
       const request = ++version
+      const options = { components, roomStyle, roomStyles, ledger, sizes }
+      const cached = cachedHouseholdRoomPreviews(options, householdId)
+      if (cached) { setImages(cached); setStatus('ready'); return }
       setStatus('loading')
-      householdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes }).then((previews) => {
+      householdRoomPreviews(options, householdId).then((previews) => {
         if (cancelled || request !== version) return
         setImages(previews)
         setStatus('ready')
       }).catch((error: unknown) => {
         if (cancelled || request !== version) return
         console.warn('Saved room previews could not render:', error instanceof Error ? error.message : error)
-        setImages({})
+        if (!initialImages) setImages({})
         setStatus('unavailable')
       })
     }
@@ -132,7 +177,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, components,
     areas.current.forEach((area) => observer.observe(area))
     render()
     return () => { cancelled = true; observer.disconnect() }
-  }, [appearance, roomStyle])
+  }, [appearance, roomStyle, householdId])
 
   return createPortal(<div className="room-picker-menu" ref={menu} id="room-selection-menu" role="menu" aria-label="Rooms"
     style={position}

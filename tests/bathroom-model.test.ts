@@ -62,7 +62,7 @@ test('bathroom geometry fills the expanded floor while retaining its original wa
   const size = bounds.getSize(new Vector3())
   assert.ok(size.x > 10.1 && size.x < 10.3)
   assert.ok(size.y > 4 && size.y < 5)
-  assert.ok(size.z > 6.7 && size.z < 6.9)
+  assert.ok(size.z > 6.4 && size.z < 6.6)
   assert.ok(bounds.min.x >= -5.11 && bounds.max.x <= 5.11)
   assert.ok(bounds.min.y >= -0.3 && bounds.max.y <= 4.6)
   assert.ok(bounds.min.z >= -3.4 && bounds.max.z <= 3.61)

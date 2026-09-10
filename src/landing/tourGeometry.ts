@@ -1,7 +1,8 @@
 import { Box3, Group, Mesh } from 'three'
 import type { BufferGeometry, Object3D } from 'three'
-import { buildBathroomModel } from '../bathroomModel.ts'
-import { buildKitchenModel } from '../kitchenModel.ts'
+import type { buildKitchenModel } from '../kitchenModel.ts'
+import { roomIds } from '../../shared/rooms.ts'
+import { roomModels } from '../roomModels.ts'
 import { visibleRoomBounds } from '../roomComponentScene.ts'
 
 export type KitchenTourBounds = { room: Box3; groceries: Box3; receipts: Box3; budget: Box3 }
@@ -11,9 +12,9 @@ let overviewBounds: Box3 | undefined
 export function sharedTourOverviewBounds(): Box3 {
   if (overviewBounds) return overviewBounds.clone()
   const bounds = new Box3()
-  for (const roomId of ['kitchen', 'bathroom'] as const) {
+  for (const roomId of roomIds) {
     const room = new Group()
-    const model = roomId === 'kitchen' ? buildKitchenModel(room) : buildBathroomModel(room)
+    const model = roomModels[roomId](room)
     try {
       bounds.union('scenery' in model ? measureKitchenTourBounds(room, model).room : visibleRoomBounds(room).expandByScalar(0.25))
     } finally {

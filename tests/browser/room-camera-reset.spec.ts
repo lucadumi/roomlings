@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
+import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
@@ -18,7 +19,7 @@ async function sceneImage(page: Page) {
   }
 }
 
-for (const roomId of ['kitchen', 'bathroom'] as const) for (const viewport of [
+for (const roomId of roomIds) for (const viewport of [
   { width: 1440, height: 960 }, { width: 390, height: 844 },
 ]) {
   test(`${roomId} reset restores the exact entry view and tracks all zoom inputs at ${viewport.width}px`, { tag: '@room' }, async ({ page, emptyHousehold: _owner }) => {

@@ -10,9 +10,9 @@ import type { Material, Object3D } from 'three'
 import { componentFinishes, createRoomComponent, defaultRoomComponents } from '../shared/roomComponents.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import type { RoomId } from '../shared/rooms.ts'
+import { roomIds } from '../shared/rooms.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
-import { buildBathroomModel } from '../src/bathroomModel.ts'
-import { buildKitchenModel } from '../src/kitchenModel.ts'
+import { roomModels } from '../src/roomModels.ts'
 import { createContactShadowTexture } from '../src/lighting.ts'
 import { dampTo } from '../src/motion.ts'
 import { createRoomComponentScene, isSceneObjectVisible, visibleRoomBounds } from '../src/roomComponentScene.ts'
@@ -89,7 +89,7 @@ function fixture(t: TestContext) {
 
 function roomFixture(t: TestContext, roomId: RoomId) {
   const room = new Group()
-  const model = roomId === 'kitchen' ? buildKitchenModel(room) : buildBathroomModel(room)
+  const model = roomModels[roomId](room)
   const componentModel = 'scenery' in model ? model.scenery : model
   const shadowTexture = createContactShadowTexture()
   const scene = createRoomComponentScene(room, roomId, {
@@ -314,16 +314,17 @@ test('geometry and material replacements retire only stale hologram resources', 
   assert.equal(replacementDisposed, 1)
 })
 
-for (const roomId of ['kitchen', 'bathroom'] as const) {
+for (const roomId of roomIds) {
   test(`${roomId} batching, palette changes and object finishes stay live throughout a placement`, (t) => {
     const { room, model, scene, ground, hologram } = roomFixture(t, roomId)
     const component = roomId === 'kitchen'
       ? createRoomComponent('dishwasher', 'kitchen-undercounter', 'preview')
-      : createRoomComponent('washing-machine', 'bathroom-laundry', 'preview')
+      : roomId === 'bathroom' ? createRoomComponent('washing-machine', 'bathroom-laundry', 'preview')
+        : createRoomComponent('speaker', 'living-room-media-accessory', 'preview')
     const defaults = defaultRoomComponents()
     const layout = [...defaults, component]
     scene.update(layout, 'original')
-    batchStaticMeshes(room, 'scenery' in model ? model.scenery.preserved : new Set())
+    batchStaticMeshes(room, 'scenery' in model ? model.scenery.preserved : 'preserved' in model ? model.preserved : new Set())
     const originals = meshes(room).map((mesh) => ({
       mesh, geometry: mesh.geometry, material: mesh.material, castShadow: mesh.castShadow, receiveShadow: mesh.receiveShadow,
     }))
@@ -346,7 +347,8 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
         assert.equal(saved.mesh.receiveShadow, false)
       }
     }
-    const neighborId = roomId === 'kitchen' ? 'default-kitchen-fridge' : 'default-bathroom-bath'
+    const neighborId = roomId === 'kitchen' ? 'default-kitchen-fridge'
+      : roomId === 'bathroom' ? 'default-bathroom-bath' : 'default-living-room-sofa'
     const edited: RoomComponent[] = layout.map((entry) => entry.id === component.id ? { ...entry, finish: 'tomato' }
       : entry.id === neighborId ? { ...entry, finish: 'walnut' } : entry)
     assert.deepEqual(scene.update(edited, 'coastal'), { changed: true, shadowsChanged: false })
@@ -444,7 +446,7 @@ test('manual-state visibility stays live for candidate and holographic actors', 
 })
 
 test('both world integrations use the actual pending actor, suppress its edit tint and restore before disposal', () => {
-  for (const file of ['KitchenWorld.tsx', 'BathroomWorld.tsx']) {
+  for (const file of ['KitchenWorld.tsx', 'ChoreRoomWorld.tsx']) {
     const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')
     assert.match(source, /placementPreviewId = null/)
     assert.match(source, /componentScene\.actors\.get\(previewId\)/)
@@ -453,7 +455,7 @@ test('both world integrations use the actual pending actor, suppress its edit ti
     assert.match(source, /shadowsDirty \|\|= hologramUpdate\.shadowsChanged/)
     assert.ok(source.indexOf('hologram.dispose()') < source.indexOf('componentScene.dispose()'))
   }
-  const bathroom = readFileSync(new URL('../src/BathroomWorld.tsx', import.meta.url), 'utf8')
+  const bathroom = readFileSync(new URL('../src/ChoreRoomWorld.tsx', import.meta.url), 'utf8')
   assert.match(bathroom, /latest\.editMode && !preview && !latest\.tour \? latest\.placementPreviewId : null/)
   const kitchen = readFileSync(new URL('../src/KitchenWorld.tsx', import.meta.url), 'utf8')
   assert.match(kitchen, /targetRotation = preferredRoomRotation\(selectedObject\.slotId\)/)
@@ -461,7 +463,7 @@ test('both world integrations use the actual pending actor, suppress its edit ti
 })
 
 test('placement cameras use measured room bounds instead of candidate closeups without locking manual zoom', () => {
-  for (const file of ['KitchenWorld.tsx', 'BathroomWorld.tsx']) {
+  for (const file of ['KitchenWorld.tsx', 'ChoreRoomWorld.tsx']) {
     const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')
     assert.match(source, /const closeRoom = usesRoomEntryFraming\(/)
     assert.match(source, /placementPreview: !!placementCandidate/)
@@ -478,15 +480,15 @@ test('placement cameras use measured room bounds instead of candidate closeups w
   assert.match(kitchen, /const focusedBounds = placementCandidate \|\| latest\.overviewFocus \|\| currentControls\.roomView \? undefined/)
   assert.match(kitchen, /cameraFraming\(area\.width, area\.height, 'room', true, \{\s*bounds: roomBounds/)
   assert.match(kitchen, /closeRoom \? roomEntryFraming\(viewport\.width, viewport\.height, area\)/)
-  const bathroom = readFileSync(new URL('../src/BathroomWorld.tsx', import.meta.url), 'utf8')
+  const bathroom = readFileSync(new URL('../src/ChoreRoomWorld.tsx', import.meta.url), 'utf8')
   assert.match(bathroom, /const framedFocus = placementCandidate \|\| latest\.overviewFocus/)
   assert.match(bathroom, /const bounds = framedFocus === 'room' \? componentScene\.bounds/)
-  assert.match(bathroom, /closeRoom \? roomEntryFraming\(viewport\.width, viewport\.height, frameArea, room\.rotation\.y\)/)
-  assert.match(bathroom, /bathroomFraming\(frameArea\.width, frameArea\.height, bounds, room\.rotation\.y, pitch\)/)
+  assert.match(bathroom, /roomEntryFraming\(viewport\.width, viewport\.height, frameArea, room\.rotation\.y\)/)
+  assert.match(bathroom, /config\.framing\(frameArea\.width, frameArea\.height, bounds, room\.rotation\.y, pitch\)/)
 })
 
 test('both reset controls use the entry camera path and are unpressed whenever zoom differs from 100%', () => {
-  for (const file of ['KitchenWorld.tsx', 'BathroomWorld.tsx']) {
+  for (const file of ['KitchenWorld.tsx', 'ChoreRoomWorld.tsx']) {
     const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')
     assert.match(source, /aria-label="Reset room view" title="Reset room view" aria-pressed=\{roomViewReset && zoom === 1\}><Maximize/)
     assert.doesNotMatch(source, /Frame the whole room|currentControls\.wholeRoom/)

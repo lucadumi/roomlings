@@ -1,6 +1,7 @@
 import { Box3, Vector3 } from 'three'
 import type { RoomId } from '../shared/rooms.ts'
 import type { RoomSlotId } from '../shared/roomComponents.ts'
+import { livingRoomPlacements } from './livingRoomComponentModels.ts'
 
 export type RoomPosition = [number, number, number]
 export type ComponentPlacement = {
@@ -12,7 +13,8 @@ export type ComponentPlacement = {
 
 export const roomFootprints = {
   kitchen: { width: 11.4, depth: 6.9, centerZ: 0.05, wallHeight: 4.65, backZ: -3.32, leftX: -5.61 },
-  bathroom: { width: 10.2, depth: 6.8, centerZ: 0.2, wallHeight: 4.45, backZ: -3.16, leftX: -5.03 },
+  bathroom: { width: 10.2, depth: 6.45, centerZ: 0.025, wallHeight: 4.45, backZ: -3.16, leftX: -5.03 },
+  'living-room': { width: 10, depth: 6.6, centerZ: 0, wallHeight: 4.5, backZ: -3.23, leftX: -4.92 },
 } as const
 
 const cookingSurface: RoomPosition = [4.875, 0, 0.3075]
@@ -82,6 +84,12 @@ export const bathroomMat = { position: [0.55, 0.04, -0.6] as RoomPosition, width
 export const bathroomCaddyShelf = { position: [4.52, 1.42, -0.6] as RoomPosition, width: 0.9, depth: 1.4, top: 1.46 }
 
 export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>> = {
+  ...Object.fromEntries(Object.entries(livingRoomPlacements).map(([slotId, placement]) => [slotId, {
+    ...placement,
+    surface: slotId === 'living-room-wall-art' || slotId === 'living-room-curtains' ? 'wall'
+      : slotId === 'living-room-table-top' ? 'table'
+        : ['living-room-tv', 'living-room-media-accessory', 'living-room-shelf-accessory', 'living-room-windowsill'].includes(slotId) ? 'counter' : 'floor',
+  } satisfies ComponentPlacement])),
   'kitchen-table': { position: kitchenLayout.table, surface: 'floor' },
   'kitchen-plant-floor': { position: kitchenLayout.plant, surface: 'floor' },
   'kitchen-plant-counter': { position: kitchenLayout.counterPlant, scale: 0.48, rotation: -Math.PI / 2, surface: 'counter' },
@@ -132,7 +140,7 @@ export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>
   'bathroom-bath': { position: bathroomLayout.bath, surface: 'floor' },
   'bathroom-laundry': { position: [-4.3, 0.02, 2.4], rotation: Math.PI / 2, surface: 'floor' },
   'bathroom-laundry-basket': { position: [-4.48, 0.02, 1.15], rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-drying-rack': { position: [-0.6, 0.02, 2.8], surface: 'floor' },
+  'bathroom-drying-rack': { position: [-0.6, 0.02, 2.54], surface: 'floor' },
   'bathroom-towel-rack': { position: [-4.955, 2.65, -1.25], rotation: Math.PI / 2, surface: 'wall' },
   'bathroom-plant': { position: [4.48, 0.02, 0.65], scale: 0.86, surface: 'floor' },
   'bathroom-wall-art': { position: [3.12, 3.25, -3.088], surface: 'wall' },
@@ -147,7 +155,7 @@ export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>
   'bathroom-storage-cabinet': { position: [-1.65, 0.02, -2.7], surface: 'floor' },
   'bathroom-stool': { position: [-2.17, 0.02, 0.8], surface: 'floor' },
   'bathroom-air-purifier': { position: [4.47, 0.02, 1.75], surface: 'floor' },
-  'bathroom-ironing-board': { position: [1.78, 0.02, 2.88], surface: 'floor' },
+  'bathroom-ironing-board': { position: [1.78, 0.02, 2.72], surface: 'floor' },
   'bathroom-wall-calendar': { position: [-4.955, 3.15, 1.1], rotation: Math.PI / 2, surface: 'wall' },
   'bathroom-key-hooks': { position: [-4.955, 3.42, 2.4], rotation: Math.PI / 2, surface: 'wall' },
   'bathroom-wall-shelf': { position: [-1.65, 2.35, -3.088], surface: 'wall' },
