@@ -42,6 +42,7 @@ it('keeps legacy household JSON and browser access intact while deriving the ori
     await store.close()
     for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) rmSync(path, { force: true })
   })
+
   const session = await store.create('An older home', 'Original owner', 'EUR', 50000)
   const legacy = { ...session.household }
   delete legacy.roomComponents
@@ -59,4 +60,51 @@ it('keeps legacy household JSON and browser access intact while deriving the ori
   try {
     assert.equal(reader.prepare('SELECT state FROM households WHERE id = ?').get(legacy.id)?.state, originalJson)
   } finally { reader.close() }
+})
+
+it('upgrades a saved two-room layout without changing its session, furniture or stored history', async (context) => {
+  const filename = resolve('data', `test-living-room-upgrade-${randomUUID()}.sqlite`)
+  let store = new Store(filename)
+  context.after(async () => {
+    await store.close()
+    for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) rmSync(path, { force: true })
+  })
+  const session = await store.create('A furnished home', 'Ada', 'EUR', 50000)
+  const legacy = {
+    ...session.household,
+    roomComponents: defaultRoomComponents().filter((component) => component.roomId !== 'living-room')
+      .map((component) => component.slotId === 'bathroom-bath'
+        ? { ...component, name: 'Our shower', variant: 'shower', version: 4 } : component),
+  }
+  const originalJson = JSON.stringify(legacy)
+  await store.close()
+  const database = new DatabaseSync(filename)
+  database.prepare('UPDATE households SET state = ? WHERE id = ?').run(originalJson, legacy.id)
+  database.close()
+  store = new Store(filename)
+  const restored = await store.authenticate(session.token)
+  assert.ok(restored)
+  assert.equal(restored.memberId, session.memberId)
+  assert.equal(restored.household.version, legacy.version)
+  assert.deepEqual(restored.household.roomComponents?.filter((component) => component.roomId !== 'living-room'), legacy.roomComponents)
+  assert.deepEqual(restored.household.chores, legacy.chores)
+  assert.deepEqual(restored.household.shopping, legacy.shopping)
+  const reader = new DatabaseSync(filename, { readOnly: true })
+  try {
+    assert.equal(reader.prepare('SELECT state FROM households WHERE id = ?').get(legacy.id)?.state, originalJson)
+  } finally { reader.close() }
+
+  const television = getRoomComponents(restored.household).find((component) => component.kind === 'tv')!
+  const { version, state: _state, stateChangedAt: _at, stateChangedBy: _by, ...fields } = television
+  applyRoomComponentPatch(restored.household, {
+    roomId: 'living-room', changes: [{ ...fields, installed: false, componentVersion: version }],
+  }, new Date().toISOString())
+  restored.household.version++
+  await store.save(restored.household)
+  await store.close()
+  store = new Store(filename)
+  const reopened = await store.authenticate(session.token)
+  assert.ok(reopened)
+  assert.deepEqual(reopened.household, restored.household)
+  assert.equal(getRoomComponents(reopened.household).find((component) => component.id === television.id)?.installed, false)
 })

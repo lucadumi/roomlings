@@ -15,7 +15,7 @@ function subscribeToMotion(callback: () => void) {
 }
 
 const features = [
-  { number: '01', title: 'Rooms & chores.', description: 'Assign chores, rotate turns and restock your kitchen and bathroom.' },
+  { number: '01', title: 'Rooms & chores.', description: 'Assign chores, rotate turns and restock the rooms in your shared home.' },
   { number: '02', title: 'Shopping & bills.', description: 'Claim items, save paid receipts and split recurring household bills.' },
   { number: '03', title: 'Balances & access.', description: 'Record repayments and return on any device with your account.' },
 ]
@@ -93,7 +93,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       <section className="welcome-hero welcome-container" aria-labelledby="welcome-title">
         <div className="welcome-hero-copy">
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
-          <p>Preview your kitchen and bathroom, then step inside to share chores, shopping and household costs.</p>
+          <p>Preview your kitchen, bathroom and living room, then step inside to share chores, shopping and household costs.</p>
           <div className="welcome-actions">
             <a className="button primary welcome-enter" id="home-start" href={createPath}>Create our household <ArrowRight size={18} /></a>
             <a className="welcome-text-link" href="#tour">Explore rooms <ArrowUpRight size={16} /></a>
@@ -125,7 +125,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <div className="welcome-questions-heading"><h2 id="questions-title">Questions</h2></div>
         <div className="welcome-faq">
           <details><summary><span>Does Roomlings send money?</span><Plus size={19} /></summary><p>No. Roomlings never moves money. Choose who shares a paid receipt or bill, and it splits the cost equally in exact cents. Pay roommates outside the app, then record or correct repayments here. Shopping plans and unpaid bills create no debt.</p></details>
-          <details><summary><span>What do the rooms share?</span><Plus size={19} /></summary><p>The kitchen and bathroom belong to one household, with the same shopping list, people and financial ledger. Chores can cover a room or the whole home, with one-off tasks, recurring schedules and rotating turns. The fridge shows purchases, not how much food is left.</p></details>
+          <details><summary><span>What do the rooms share?</span><Plus size={19} /></summary><p>The kitchen, bathroom and living room belong to one household, with the same shopping list, people and financial ledger. Chores can cover a room or the whole home, with one-off tasks, recurring schedules and rotating turns. The fridge shows purchases, not how much food is left.</p></details>
           <details><summary><span>How do roommates join and return?</span><Plus size={19} /></summary><p>Each roommate signs in to their own account with an email code and accepts an invitation from the household owner. Single-use account recovery codes provide another way back in. You can also link an older kitchen without replacing its history, or <a href="/#recover">recover browser-only access</a> with its separate private kitchen code. These are different kinds of recovery code.</p></details>
           <details><summary><span>Can I use it without 3D?</span><Plus size={19} /></summary><p>Yes. Every household tool is also available from the toolbar, on desktop and phone browsers. Your account opens the same home on each device, including your saved chores, shopping, bills and repayments. No separate app is needed.</p></details>
         </div>

@@ -556,7 +556,7 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     }
     case 'reed-diffuser': {
       repaint(wood, lightWood)
-      disc(0.09, 0.015, [0, 0.0075, 0], wood)
+      cylinder(0.09, 0.015, [0, 0.0075, 0], wood)
       const bottle = [[0, 0], [0.055, 0], [0.06, 0.09], [0.045, 0.12], [0.02, 0.13], [0.02, 0.16], [0, 0.16]] as [number, number][]
       lathe(bottle, [0, 0.015, 0], glass)
       cylinder(0.045, 0.07, [0, 0.05, 0], lightWood, 0.045)

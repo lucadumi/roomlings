@@ -5,6 +5,7 @@ import { OrthographicCamera, Vector3 } from 'three'
 import type { Session } from '../../shared/domain.ts'
 import { componentPositionSupported, createRoomComponent, getRoomComponents, roomSlots } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
+import { roomIds } from '../../shared/rooms.ts'
 import { baseCameraOffset, cameraFraming, cameraProjection } from '../../src/camera.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
@@ -174,7 +175,7 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
   expect(getRoomComponents((await accounts.store.get(populatedHousehold.household.id))!)).toEqual(originalComponents)
 })
 
-for (const roomId of ['kitchen', 'bathroom'] as const) {
+for (const roomId of roomIds) {
   test(`the complete designed ${roomId} configuration renders and keeps saved previews private`, { tag: '@room' }, async ({ page, accounts, emptyHousehold }, testInfo) => {
     const failures: string[] = []
     page.on('pageerror', (error) => failures.push(error.message))
@@ -208,7 +209,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-designed-components-narrow.png`), animations: 'disabled' })
     await page.goto('/#tour')
-    await expect(page.locator('.welcome-preview-choice img')).toHaveCount(2)
+    await expect(page.locator('.welcome-preview-choice img')).toHaveCount(roomIds.length)
     expect(await page.locator('.welcome-preview-choice img').evaluateAll((images) => images.every((image) =>
       image instanceof HTMLImageElement && !image.src.startsWith('data:') && /\/(?:assets|src)\//.test(image.src)))).toBe(true)
     await expect(page.locator('[data-preview-source="saved"]')).toHaveCount(0)
@@ -236,7 +237,7 @@ test('configured objects remain reachable without WebGL and saved previews never
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
-  await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(2)
+  await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(roomIds.length)
   expect(await picker.locator('img').evaluateAll((images) => images.every((image) => !image.getAttribute('src')))).toBe(true)
   await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).focus()
   await page.keyboard.press('Enter')
