@@ -171,6 +171,12 @@ The compact footer links to the home guide, room exploration and questions. Its 
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
 
+CI uses two household shards and two room shards, each with one browser worker.
+The pinned Playwright container supplies browsers and system libraries without
+installing OS packages during a run. Its version must match `package-lock.json`.
+Pull requests and main pushes run CI; manual dispatch supports branch checks
+without duplicating every pull-request run on its source-branch push.
+
 Room IDs and legacy chore areas are registered in `shared/rooms.ts`. The component catalog, fixed positions, supported variants, manual states and default supply/chore suggestions live in `shared/roomComponents.ts`; configuration and state rules live in `shared/componentChanges.ts`. `src/roomNavigation.ts` resolves routes. Every room needs a view in `src/roomViews.ts`, a model in `src/roomModels.ts`, and public preview artwork and tour chapters. The model registry also drives saved room previews and object thumbnails. Add implemented rooms and components instead of placeholder links or new authentication flows. All rooms share household data and version-checked API mutations; chores never change financial balances.
 
 New households persist their original component layout. Older JSON without `roomComponents` resolves to deterministic original fixtures without rewriting the stored household or replacing browser sessions. The first saved component change materializes that layout. Component IDs survive removal, and historical shopping/chore references remain valid independently of the currently configured supply list.
