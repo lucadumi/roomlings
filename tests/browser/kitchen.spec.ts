@@ -223,6 +223,7 @@ test('budgets, category filtering, month navigation, and complete ledger export'
 })
 
 test.describe('room controls', { tag: '@room' }, () => {
+  test.use({ reducedMotion: 'reduce' })
   test.beforeEach(async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/kitchen')
@@ -290,6 +291,7 @@ test('the ledger remains usable when WebGL is unavailable', async ({ page, popul
 })
 
 test('the grocery bag and receipt book meshes work without clickable labels', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/kitchen')
   await expect(page.locator('.hotspot-stock')).toBeVisible()
