@@ -38,7 +38,7 @@ async function objectPoint(page: Page, id: string) {
     const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
       : { x: 0, y: 0, width: layout.width, height: layout.height }
     const frame = roomEntryFraming(layout.width, layout.height, area)
-    const zoom = roomCameraZoom(1, true)
+    const zoom = roomCameraZoom(1, true, 'living-room')
     const projection = cameraProjection(layout.width, layout.height, area, frame.halfHeight, zoom)
     const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
     camera.zoom = zoom
@@ -71,7 +71,7 @@ async function objectPoint(page: Page, id: string) {
   } finally { preview.dispose() }
 }
 
-test('the living room opens at the shared room scale and preserves the household across navigation', { tag: '@room' }, async ({ page, accounts, populatedHousehold }, testInfo) => {
+test('the living room opens at its entry scale and preserves the household across navigation', { tag: '@room' }, async ({ page, accounts, populatedHousehold }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   const before = await accounts.store.get(populatedHousehold.household.id)
   await page.goto(roomPath('living-room'))

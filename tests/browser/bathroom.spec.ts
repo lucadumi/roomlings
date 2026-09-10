@@ -29,7 +29,7 @@ async function clickFixture(page: Page, point: [number, number, number]) {
   const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomEntryFraming(layout.width, layout.height, area)
-  const zoom = roomCameraZoom(1, true)
+  const zoom = roomCameraZoom(1, true, 'bathroom')
   const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
   camera.zoom = zoom
@@ -60,6 +60,10 @@ test('bathroom objects open room-specific chores and the shared supply list', { 
   await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', '')
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await frameRoom(page)
+  await page.getByRole('button', { name: 'Zoom out', exact: true }).click()
+  await page.getByRole('button', { name: 'Zoom out', exact: true }).click()
+  await expect(page.locator('.world-camera-controls')).toContainText('80%')
+  await expect(page.locator('.bathroom-world')).toHaveAttribute('data-camera-moving', 'false')
   await page.locator('[data-bathroom-target="supplies"]').click()
   await expect(page.getByRole('region', { name: 'Bathroom supplies.', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Restock Toilet paper', exact: true }).click()

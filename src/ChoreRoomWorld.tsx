@@ -11,8 +11,8 @@ import type { RoomStyle } from '../shared/domain.ts'
 import type { ComponentKind, RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds, placementPreviewZoom, preferredRoomRotation, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from './camera.ts'
-import type { SceneFocus } from './camera.ts'
+import { baseCameraOffset, cameraProjection, fitRoomBounds, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
@@ -23,7 +23,7 @@ import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import type { RoomWorldProps } from './roomViewTypes.ts'
 import { createRoomHologram } from './roomHologram.ts'
-import { createPlacementArrow } from './placementArrow.ts'
+import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from './placementArrow.ts'
 import './bathroom.css'
 
 type ChoreRoomFocus<Target extends string> = Target | 'room'
@@ -59,7 +59,7 @@ export type ChoreRoomConfig<Target extends string> = {
   getTargetArea: (target: Target) => ChoreArea | null
   buildModel: (room: Group, style: RoomStyle) => ChoreRoomModel<Target>
   framing: (width: number, height: number, bounds: Box3, rotation?: number, pitch?: number, options?: { closeRoom?: boolean }) => Framing
-  cameraZoom?: (zoom: number, closeRoom: boolean) => number
+  cameraZoom?: (zoom: number, closeRoom: boolean, roomId: RoomId) => number
   tourFraming: (width: number, height: number, progress: number, bounds: Box3, actorBounds: ReadonlyMap<Target, Box3>, stops: readonly ChoreRoomFocus<Target>[]) => Framing
   reducedTourFraming?: (width: number, height: number, bounds: Box3) => Framing
   minimumFocusHalfHeight?: number
@@ -137,7 +137,6 @@ export default function ChoreRoomWorld<Target extends string>({
   const [unavailable, setUnavailable] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [renderingPaused, setRenderingPaused] = useState(false)
-  const placementPreview = !preview && !tour && editMode && installed.some((component) => component.id === placementPreviewId)
   const placementLabelsHidden = !preview && !tour && editMode && !!placementPreviewId
   const labelsShown = showLabels && !placementLabelsHidden
   const objectLabels = installed.filter((component) => editMode || !config.targets.some((target) => componentMatchesTarget(config, target, component)))
@@ -240,6 +239,7 @@ export default function ChoreRoomWorld<Target extends string>({
     const pointers = new Map<number, Vector2>()
     const viewport = { width: 1, height: 1 }
     const area = { x: 0, y: 0, width: 1, height: 1 }
+    let measurements: FramingMeasurements | null = null
     let frame = 0
     let last = performance.now()
     let disposed = false
@@ -313,8 +313,9 @@ export default function ChoreRoomWorld<Target extends string>({
       needsResize ||= viewport.width !== canvasBounds.width || viewport.height !== canvasBounds.height
       viewport.width = canvasBounds.width
       viewport.height = canvasBounds.height
-      Object.assign(area, roomFramingArea(canvasBounds, stageBounds,
-        stageElement.parentElement?.querySelector('.world-camera-controls')?.getBoundingClientRect()))
+      measurements = { canvas: canvasBounds, stage: stageBounds,
+        controls: stageElement.parentElement?.querySelector('.world-camera-controls')?.getBoundingClientRect() }
+      Object.assign(area, roomFramingArea(measurements.canvas, measurements.stage, measurements.controls))
       return true
     }
     const resize = () => { measure(); wake() }
@@ -352,7 +353,6 @@ export default function ChoreRoomWorld<Target extends string>({
       const componentUpdate = componentScene.update(latest.components, latest.roomStyle,
         latest.editMode && !latest.overviewFocus && latest.selectedComponentId !== previewId ? latest.selectedComponentId : null)
       const placementCandidate = previewId ? componentScene.actors.get(previewId) ?? null : null
-      if (placementCandidate && placementCandidate !== hologram.candidate) { currentControls.zoom = placementPreviewZoom; setZoom(placementPreviewZoom) }
       shadowsDirty ||= componentUpdate.shadowsChanged
       tourBoundsDirty ||= componentUpdate.changed
       if (!lightingBounds.equals(componentScene.bounds)) {
@@ -367,7 +367,7 @@ export default function ChoreRoomWorld<Target extends string>({
         lastSelectedComponentKey = selectedKey
         if (selectedObject) {
           currentControls.roomView = false
-          currentControls.zoom = placementCandidate ? placementPreviewZoom : 1
+          currentControls.zoom = 1
           targetRotation = preferredRoomRotation(selectedObject.slotId)
           setRoomViewReset(false)
           setZoom(currentControls.zoom)
@@ -408,9 +408,15 @@ export default function ChoreRoomWorld<Target extends string>({
         focus: atEntryFocus ? 'room' : framedFocus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
         panelOpen: latest.panelOpen, overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, publicPreview: preview,
       })
-      const frameArea = closeRoom && !latest.panelOpen ? { x: 0, y: 0, width: viewport.width, height: viewport.height } : area
-      const tourBounds = latest.tour?.overviewBounds ?? componentScene.bounds
+      const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom, config.roomId) : displayedZoom
       const placementBounds = placementCandidate ? visibleRoomBounds(room, placementCandidate) : null
+      const clearArea = placementBounds && measurements && !latest.overviewFocus
+        ? roomFramingArea(measurements.canvas, measurements.stage, measurements.controls,
+          placementPreviewSize(placementBounds, viewport.width, viewport.height, desiredZoom, room.rotation.y, pitch))
+        : area
+      const frameArea = closeRoom && !latest.panelOpen ? { x: 0, y: 0, width: viewport.width, height: viewport.height } : clearArea
+      const tourBounds = latest.tour?.overviewBounds ?? componentScene.bounds
       if (latest.tour && tourBoundsDirty) {
         for (const target of config.targets) {
           if (!config.targetSlots[target]) continue
@@ -438,15 +444,13 @@ export default function ChoreRoomWorld<Target extends string>({
         container.dataset.cameraScale = framing.halfHeight.toFixed(6)
       }
       desiredCenter.set(...framing.center)
-      if (placementBounds && !currentControls.roomView) {
-        desiredCenter.lerp(placementBounds.getCenter(offset).applyMatrix4(room.matrixWorld), 0.35)
+      if (placementBounds && !latest.overviewFocus) {
+        placementPreviewCenter(placementBounds, desiredCenter).applyMatrix4(room.matrixWorld)
       }
       if (snap) cameraCenter.copy(desiredCenter)
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
       halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
-      const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom) : displayedZoom
       camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
       camera.position.copy(cameraCenter).add(offset.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
       camera.lookAt(cameraCenter)
@@ -554,7 +558,7 @@ export default function ChoreRoomWorld<Target extends string>({
       return null
     }
     const updateZoom = (value: number) => {
-      currentControls.zoom = MathUtils.clamp(value, 0.65, 1.9)
+      currentControls.zoom = MathUtils.clamp(value, roomZoomLimits.min, roomZoomLimits.max)
       setZoom(currentControls.zoom)
       wake()
     }
@@ -705,10 +709,10 @@ export default function ChoreRoomWorld<Target extends string>({
 
   useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, selectedComponentId, placementPreviewId, overviewFocus])
 
-  const changeZoom = (direction: number) => {
+  const changeZoom = (direction: -1 | 1) => {
     const current = controls.current
     if (!current) return
-    current.zoom = MathUtils.clamp(Math.round((current.zoom + direction * 0.2) * 100) / 100, 0.65, 1.9)
+    current.zoom = stepRoomZoom(current.zoom, direction)
     setZoom(current.zoom)
     current.wake()
   }
@@ -729,7 +733,7 @@ export default function ChoreRoomWorld<Target extends string>({
 
   return (
     <div className={`kitchen-world chore-room-world ${config.roomId}-world`} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused}
-      data-framing={placementPreview || overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}
+      data-framing={overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}
       data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined}>
       <div className={`chore-room-scene-area ${config.roomId}-scene-area`} ref={stage} aria-hidden="true" />
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable}
@@ -760,9 +764,9 @@ export default function ChoreRoomWorld<Target extends string>({
         </div>}
         <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? config.copy.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? config.copy.room : config.labels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
-          <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= 1.9} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
+          <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
           <span>{Math.round(zoom * 100)}%</span>
-          <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= 0.65} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
+          <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
           <i />
           <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size={18} /></button>
           <button type="button" className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={placementLabelsHidden}

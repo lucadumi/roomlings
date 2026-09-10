@@ -6,7 +6,7 @@ import type { Intersection, Object3D } from 'three'
 import {
   componentCatalog, componentKinds, createRoomComponent, defaultRoomComponents, roomComponentLimit, roomComponentSchema, roomSlots, validateRoomComponents,
 } from '../shared/roomComponents.ts'
-import type { RoomComponent } from '../shared/roomComponents.ts'
+import type { RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import type { RoomId } from '../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { baseCameraOffset, cameraProjection, fitRoomBounds } from '../src/camera.ts'
@@ -297,7 +297,8 @@ test('bathroom laundry faces into the room from the left-wall corner and leaves 
   assert.ok(dryer.min.y - washer.max.y > 0.1)
   assert.ok(washer.min.x > roomFootprints.bathroom.leftX + 0.07
     && washer.min.x < roomFootprints.bathroom.leftX + 0.17, 'Laundry must sit against the inner left wall')
-  assert.ok(washer.max.z > 3 && washer.max.z < 3.15, 'Laundry must be tucked into the front-left corner')
+  const front = roomFootprints.bathroom.centerZ + roomFootprints.bathroom.depth / 2
+  assert.ok(washer.max.z > front - 0.25 && washer.max.z < front - 0.08, 'Laundry must be tucked into the front-left corner')
   for (const slotId of ['bathroom-laundry', 'bathroom-dryer'] as const) {
     assert.equal(componentPlacements[slotId]!.rotation, Math.PI / 2)
   }
@@ -306,17 +307,17 @@ test('bathroom laundry faces into the room from the left-wall corner and leaves 
   assert.equal(frame.position.x, componentPlacements['bathroom-laundry']!.position[0])
   assert.equal(frame.position.z, componentPlacements['bathroom-laundry']!.position[2])
   assert.ok(boundsFor('ironing-board').min.x - boundsFor('drying-rack').max.x > 0.45)
-  const aisle = new Box3(new Vector3(-0.4, 0.15, -0.2), new Vector3(2.8, 1.3, 1.85))
+  const aisle = new Box3(new Vector3(-0.4, 0.15, -0.2), new Vector3(2.8, 1.3, 1.35))
   for (const component of components) {
     assert.equal(visibleRoomBounds(room, componentScene.actors.get(component.id)!).intersectsBox(aisle), false, component.slotId)
   }
   const approaches = [
     new Box3(new Vector3(washer.max.x + 0.03, 0.01, washer.min.z), new Vector3(washer.max.x + 1, 1.3, washer.max.z)),
-    new Box3(new Vector3(-2.32, 0.15, -1.55), new Vector3(-0.83, 1.3, -0.45)),
-    new Box3(new Vector3(-0.6, 0.15, -1.56), new Vector3(1.7, 1.3, -0.4)),
-    new Box3(new Vector3(1.95, 0.15, -1), new Vector3(3.35, 1.3, 0.2)),
-    new Box3(new Vector3(-3.8, 0.15, 0.35), new Vector3(-2.5, 1.3, 1.25)),
-    new Box3(new Vector3(2.9, 0.15, 0.2), new Vector3(3.9, 1.3, 3.59)),
+    new Box3(new Vector3(-1.92, 0.15, -1.55), new Vector3(-0.43, 1.3, -0.45)),
+    new Box3(new Vector3(-0.9, 0.15, -1.56), new Vector3(1.4, 1.3, -0.4)),
+    new Box3(new Vector3(1.57, 0.15, -1), new Vector3(2.97, 1.3, 0.2)),
+    new Box3(new Vector3(-3.4, 0.15, 0.25), new Vector3(-2.1, 1.3, 1.15)),
+    new Box3(new Vector3(2.55, 0.15, 0.2), new Vector3(3.55, 1.3, front)),
   ]
   for (const component of components) for (const approach of approaches) {
     assert.equal(visibleRoomBounds(room, componentScene.actors.get(component.id)!).intersectsBox(approach), false,
@@ -324,7 +325,66 @@ test('bathroom laundry faces into the room from the left-wall corner and leaves 
   }
 })
 
-test('bathroom bins and brushes clear the real toilet and shelf parts rather than their combined silhouettes', (t) => {
+test('bathroom additions are sized against the vanity rather than a miniature generic corner', (t) => {
+  const { room, componentScene } = configured(t, 'bathroom')
+  const size = (slotId: RoomSlotId) => {
+    const component = componentScene.componentAtSlot(slotId)!
+    return visibleRoomBounds(room, componentScene.actors.get(component.id)!).getSize(new Vector3())
+  }
+  const vanityWidth = size('bathroom-sink').x
+  const vanityTop = componentPlacements['bathroom-vanity-accessory']!.position[1]
+  assert.ok(size('bathroom-vanity-accessory').y >= vanityTop * 0.22, 'Toothbrushes must not be shrunk to the countertop plant scale')
+  assert.ok(size('bathroom-first-aid').x >= vanityWidth * 0.18, 'The first-aid kit must read as a household kit')
+  assert.ok(size('bathroom-tissue-box').x >= vanityWidth * 0.16, 'The tissue box must be proportional to the vanity')
+  assert.ok(size('bathroom-storage-jars').x >= vanityWidth * 0.19, 'The storage jars must not be miniature')
+  assert.ok(size('bathroom-hair-dryer').z >= vanityWidth * 0.25, 'The hair dryer must keep a usable handheld size')
+  assert.ok(size('bathroom-toilet-accessory').y >= vanityTop * 0.43, 'The toilet brush must reach a normal size beside the fixtures')
+  assert.ok(size('bathroom-stool').y >= vanityTop * 0.3, 'The step stool must not look like a miniature')
+  assert.ok(size('bathroom-air-purifier').y >= vanityTop * 0.6)
+  assert.ok(size('bathroom-ironing-board').x > size('bathroom-bath').x)
+})
+
+test('bathroom accessories keep their full model size in shared and dedicated positions', (t) => {
+  const { room, componentScene: scene } = configured(t, 'bathroom', defaultRoomComponents())
+  for (const [kind, dedicated] of [
+    ['soap-dispenser', 'bathroom-soap-dispenser'],
+    ['hair-dryer', 'bathroom-hair-dryer'],
+    ['storage-jars', 'bathroom-storage-jars'],
+    ['tissue-box', 'bathroom-tissue-box'],
+    ['first-aid-kit', 'bathroom-first-aid'],
+    ['reed-diffuser', 'bathroom-diffuser'],
+  ] as const) {
+    const corner = createRoomComponent(kind, 'bathroom-vanity-accessory', 'corner-copy')
+    const full = createRoomComponent(kind, dedicated, 'dedicated-copy')
+    scene.update([...defaultRoomComponents(), corner, full], 'original')
+    const cornerSize = visibleRoomBounds(room, scene.actors.get(corner.id)!).getSize(new Vector3())
+    const dedicatedSize = visibleRoomBounds(room, scene.actors.get(full.id)!).getSize(new Vector3())
+    assert.ok(cornerSize.distanceTo(dedicatedSize) < 0.000001, `${kind} must not shrink when placed in the vanity corner`)
+  }
+})
+
+test('laundry furniture has working-height surfaces rather than tiny legs beneath oversized details', (t) => {
+  const vanityTop = componentPlacements['bathroom-vanity-accessory']!.position[1]
+  for (const [kind, slotId, surfaceName] of [
+    ['ironing-board', 'bathroom-ironing-board', 'Ironing board cover'],
+    ['drying-rack', 'bathroom-drying-rack', 'Drying rack top rail'],
+  ] as const) {
+    const model = buildRoomComponentModel(createRoomComponent(kind, slotId, 'height-check'), 'original')
+    t.after(() => {
+      model.root.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
+      model.materials.forEach((material) => material.dispose())
+    })
+    const surface = model.root.getObjectByName(surfaceName)
+    assert.ok(surface)
+    model.root.updateMatrixWorld(true)
+    const bounds = new Box3().setFromObject(surface)
+    assert.ok(bounds.min.y >= vanityTop * 0.85, `${kind}'s actual working surface must be proportional to the vanity`)
+    assert.ok(bounds.max.y <= vanityTop * 1.05)
+    assert.ok(bounds.getSize(new Vector3()).y < 0.08, 'The working surface must stay thin and level')
+  }
+})
+
+test('optional bathroom floor objects clear the full-size fixtures and shelf parts', (t) => {
   const room = new Group()
   const model = buildBathroomModel(room)
   const scene = createRoomComponentScene(room, 'bathroom', {
@@ -336,17 +396,19 @@ test('bathroom bins and brushes clear the real toilet and shelf parts rather tha
     model.materials.forEach((material) => material.dispose())
   })
   const complete = completeRoomLayout()
-  for (const slotId of ['bathroom-bins', 'bathroom-toilet-accessory'] as const) for (const kind of roomSlots.find((slot) => slot.id === slotId)!.kinds) {
+  const slots = roomSlots.filter((slot) => slot.roomId === 'bathroom' && !slot.defaultKind
+    && ['floor', 'fitted'].includes(componentPlacements[slot.id]?.surface ?? ''))
+  for (const { id: slotId, kinds } of slots) for (const kind of kinds) {
     for (const variant of componentCatalog[kind].variants) {
       scene.update(complete.map((component) => component.slotId === slotId
         ? { ...createRoomComponent(kind, slotId, component.id), variant: variant.id } : component), 'original')
       const component = scene.componentAtSlot(slotId)!
       const bounds = visibleRoomBounds(room, scene.actors.get(component.id)!)
-      for (const target of ['toilet', 'supplies'] as const) model.actors.get(target)!.traverseVisible((object) => {
+      for (const target of ['bath', 'sink', 'mirror', 'toilet', 'supplies', 'chores'] as const) model.actors.get(target)!.traverseVisible((object) => {
         if (!(object instanceof Mesh)) return
         const overlap = new Box3().setFromObject(object).intersect(bounds)
         assert.ok(overlap.isEmpty() || overlap.getSize(new Vector3()).toArray().some((size) => size < 0.005),
-          `${slotId} must not intersect a physical ${target} part`)
+          `${slotId} (${kind}, ${variant.id}) must not intersect a physical ${target} part`)
       })
     }
   }

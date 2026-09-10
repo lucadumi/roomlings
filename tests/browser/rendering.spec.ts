@@ -24,7 +24,7 @@ async function frameKitchenBag(page: Page) {
   const framing = cameraFraming(layout.width, layout.height, 'room', false)
   const halfWidth = framing.halfHeight * layout.width / layout.height
   const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)
-  camera.zoom = roomCameraZoom(1, true)
+  camera.zoom = roomCameraZoom(1, true, 'kitchen')
   camera.updateProjectionMatrix()
   const center = new Vector3(...framing.center)
   camera.position.copy(center).add(new Vector3(...baseCameraOffset))
@@ -74,7 +74,7 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   expect(await drawing()).toEqual(idle)
 
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-  await expect(page.locator('.world-camera-controls')).toContainText('120%')
+  await expect(page.locator('.world-camera-controls')).toContainText('110%')
   await expect.poll(async () => (await drawing()).draws).toBeGreaterThan(idle.draws)
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   const zoomed = await drawing()

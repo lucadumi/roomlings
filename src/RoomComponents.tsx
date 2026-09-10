@@ -23,7 +23,7 @@ import { SupplyShortcuts } from './Restock.tsx'
 import { dateTitle } from './format.ts'
 import { roomPresets } from './roomStyles.ts'
 import { ComponentPreview } from './ComponentPreview.tsx'
-import { componentAvailability, groupedRoomComponents } from './componentAvailability.ts'
+import { componentAvailability, groupedRoomComponents, preferredComponentSlot } from './componentAvailability.ts'
 import type { ComponentAvailability } from './componentAvailability.ts'
 import { errorMessage } from './api.ts'
 import { Feedback, FeedbackAction } from './Feedback.tsx'
@@ -586,7 +586,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
           <div className="room-catalog-grid">{catalog.map((kind) => {
             const definition = componentCatalog[kind]
             const available = availableComponentSlots(preview, roomId, kind)
-            const position = available[0]
+            const position = roomId === 'bathroom' ? preferredComponentSlot(kind, available, preview) : available[0]
             const archived = position ? preview.find((component) => component.kind === kind && component.slotId === position.id && !component.installed) : undefined
             const occupants = preview.filter((component) => component.installed && component.roomId === roomId
               && roomSlots.some((slot) => slot.id === component.slotId && slot.kinds.includes(kind)))

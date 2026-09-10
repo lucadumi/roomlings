@@ -120,6 +120,7 @@ test('the object browser is a large left-side grid with real previews and hover/
   await editor.getByRole('navigation', { name: 'Filter object availability', exact: true }).getByRole('button', { name: /^Available/ }).click()
   for (const name of ['Dishwasher', 'Oven', 'Coffee machine']) {
     const card = editor.getByRole('article', { name, exact: true })
+    await card.scrollIntoViewIfNeeded()
     await expect(card.locator('.component-preview')).toHaveAttribute('data-preview-renderer', 'webgl')
     await expect.poll(() => card.locator('img').evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth >= 320)).toBe(true)
   }

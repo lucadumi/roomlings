@@ -1,12 +1,51 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Box3, Group, Mesh, MeshStandardMaterial, Raycaster, Vector3, BoxGeometry } from 'three'
-import { createPlacementArrow } from '../src/placementArrow.ts'
+import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from '../src/placementArrow.ts'
 import { createRoomHologram } from '../src/roomHologram.ts'
 import { visibleRoomBounds } from '../src/roomComponentScene.ts'
 import { roomAccents } from '../src/roomStyles.ts'
 
 const bounds = () => new Box3(new Vector3(-0.5, 0, -0.6), new Vector3(0.5, 2, 0.6))
+
+test('placement space follows the real projected size rather than normalizing each object', () => {
+  const target = bounds()
+  const before = target.clone()
+  for (const rotation of [-0.75, 0, 0.75]) for (const pitch of [-1.7, 0, 3]) {
+    const normal = placementPreviewSize(target, 390, 844, 1, rotation, pitch)
+    const zoomed = placementPreviewSize(target, 390, 844, 1.5, rotation, pitch)
+    assert.ok(normal.width > 0 && normal.height > 0)
+    assert.ok(Math.abs((zoomed.width - 4) / (normal.width - 4) - 1.5) < 0.000001)
+    assert.ok(Math.abs((zoomed.height - 4) / (normal.height - 4) - 1.5) < 0.000001)
+  }
+  assert.deepEqual(target, before)
+  for (const zoom of [0, -1, NaN, Infinity]) {
+    assert.throws(() => placementPreviewSize(target, 390, 844, zoom), /positive finite zoom/)
+  }
+})
+
+test('placement framing centers the real object and the full triangle motion without changing their size', (t) => {
+  const room = new Group()
+  const arrow = createPlacementArrow(room)
+  room.add(arrow.object)
+  t.after(() => arrow.dispose())
+  for (const candidate of [bounds(), bounds().translate(new Vector3(4, 1.7, -2))]) {
+    const before = candidate.clone()
+    const center = new Vector3()
+    assert.equal(placementPreviewCenter(candidate, center), center)
+    arrow.update(candidate, 400, true)
+    const top = new Box3().setFromObject(arrow.object).max.y
+    assert.ok(Math.abs(top - center.y - (center.y - candidate.min.y)) < 0.000001)
+    assert.equal(center.x, candidate.getCenter(new Vector3()).x)
+    assert.equal(center.z, candidate.getCenter(new Vector3()).z)
+    for (const time of [0, 400, 1200, 1600]) {
+      arrow.update(candidate, time, true)
+      assert.deepEqual(placementPreviewCenter(candidate, new Vector3()), center)
+    }
+    assert.deepEqual(candidate, before)
+  }
+  assert.throws(() => placementPreviewCenter(new Box3(), new Vector3()), /finite object bounds/)
+})
 
 test('the low-poly marker is a downward triangle without a shaft, shadow or picking target', (t) => {
   const scene = new Group()

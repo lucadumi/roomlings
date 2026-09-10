@@ -109,15 +109,16 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
 
   room.name = 'Open-corner bathroom'
   const footprint = roomFootprints.bathroom
-  box(room, [footprint.width, 0.24, footprint.depth], [0, -0.145, footprint.centerZ], styleMaterials.lightWood, 0.1)
+  const floorBase = box(room, [footprint.width, 0.24, footprint.depth], [0, -0.145, footprint.centerZ], styleMaterials.lightWood, 0.1)
+  floorBase.name = 'Bathroom floor base'
   box(room, [footprint.width, footprint.wallHeight, 0.14], [0, 2.15, footprint.backZ], styleMaterials.wall, 0.045)
-  box(room, [0.14, footprint.wallHeight, 6.35], [footprint.leftX, 2.15, -0.025], styleMaterials.wall, 0.045)
+  box(room, [0.14, footprint.wallHeight, footprint.depth - 0.1], [footprint.leftX, 2.15, footprint.centerZ - 0.05], styleMaterials.wall, 0.045)
   box(room, [footprint.width - 0.2, 1.35, 0.028], [0, 0.83, -3.07], styleMaterials.floor)
   box(room, [footprint.width - 0.18, 0.08, 0.07], [0, 1.54, -3.06], styleMaterials.trim)
   box(room, [footprint.width - 0.18, 0.13, 0.07], [0, 0.13, -3.06], styleMaterials.trim)
-  box(room, [0.065, 0.13, 6.27], [footprint.leftX + 0.1, 0.13, -0.025], styleMaterials.trim)
+  box(room, [0.065, 0.13, footprint.depth - 0.18], [footprint.leftX + 0.1, 0.13, footprint.centerZ - 0.05], styleMaterials.trim)
   for (let x = 0; x < 13; x++) {
-    box(room, [0.018, 1.28, 0.012], [-4.56 + x * 0.76, 0.84, -3.048], styleMaterials.trim)
+    box(room, [0.018, 1.28, 0.012], [(x - 6) * (footprint.width - 1.08) / 12, 0.84, -3.048], styleMaterials.trim)
   }
   box(room, [footprint.width - 0.22, 0.018, 0.012], [0, 0.83, -3.048], styleMaterials.trim)
   const floor = actor('floor', [0, 0, 0], [bathroomMat.position[0], 0.16, bathroomMat.position[2]])
@@ -279,7 +280,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     const group = new Group()
     group.name = 'Vanity care ledge'
     group.visible = false
-    box(group, [1.05, 0.06, 0.42], [2, height - 0.03, -2.96], styleMaterials.lightWood, 0.012)
+    box(group, [1.3, 0.06, 0.42], [1.8, height - 0.03, -2.96], styleMaterials.lightWood, 0.012)
     room.add(group)
     return group
   })

@@ -249,7 +249,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
     await expect(room).toHaveAttribute('data-rendering', 'paused')
     await expect(room).toHaveAttribute('data-framing', 'close')
     await expect(room).toHaveAttribute('data-evening', 'true')
-    await expect(page.locator('.world-camera-controls')).toContainText('120%')
+    await expect(page.locator('.world-camera-controls')).toContainText('110%')
     await expect(page.getByRole('button', { name: 'Peek inside', exact: true })).toBeVisible()
     expect(await canvas!.evaluate((element) => element.isConnected)).toBe(true)
     const image = await screenshot()

@@ -21,8 +21,9 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
   const root = new Group()
   root.name = `${component.kind} ${component.variant} model`
   root.position.set(...placement.position)
-  if (typeof placement.scale === 'number') root.scale.setScalar(placement.scale)
-  else if (placement.scale) root.scale.set(...placement.scale)
+  const scale = placement.scaleByKind?.[component.kind] ?? placement.scale
+  if (typeof scale === 'number') root.scale.setScalar(scale)
+  else if (scale) root.scale.set(...scale)
   root.rotation.y = placement.rotation ?? 0
   const materials: MeshStandardMaterial[] = []
   const styleSurfaces = new Map<MeshStandardMaterial, keyof RoomStyleMaterials>()
@@ -362,15 +363,16 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       break
     }
     case 'drying-rack': {
+      const rackHeight = 1.42
       for (const x of [-0.74, 0.74]) {
-        rod([x, 0.05, -0.52], [x, 1.15, 0.52], 0.023, paint)
-        rod([x, 0.05, 0.52], [x, 1.15, -0.52], 0.023, paint)
+        rod([x, 0.05, -0.52], [x, rackHeight, 0.52], 0.023, paint)
+        rod([x, 0.05, 0.52], [x, rackHeight, -0.52], 0.023, paint)
       }
-      for (const z of [-0.54, 0.54]) rod([-0.95, 1.15, z], [0.95, 1.15, z], 0.024, paint)
-      for (let i = 0; i < 7; i++) rod([-0.85 + i * 0.28, 1.15, -0.54], [-0.85 + i * 0.28, 1.15, 0.54])
+      for (const z of [-0.54, 0.54]) rod([-0.95, rackHeight, z], [0.95, rackHeight, z], 0.024, paint).name = 'Drying rack top rail'
+      for (let i = 0; i < 7; i++) rod([-0.85 + i * 0.28, rackHeight, -0.54], [-0.85 + i * 0.28, rackHeight, 0.54])
       const clothes = clothGroup(['drying', 'ready-to-fold'])
-      box([0.47, 0.58, 0.025], [-0.43, 0.85, 0.06], cream, 0, clothes)
-      box([0.4, 0.44, 0.025], [0.27, 0.92, 0.09], tomato, 0, clothes)
+      box([0.47, 0.58, 0.025], [-0.43, rackHeight - 0.3, 0.06], cream, 0, clothes)
+      box([0.4, 0.44, 0.025], [0.27, rackHeight - 0.23, 0.09], tomato, 0, clothes)
       contactSize = [1.95, 1.38]
       break
     }

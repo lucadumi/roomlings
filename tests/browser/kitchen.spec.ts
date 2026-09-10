@@ -32,7 +32,7 @@ async function clickRoomPoint(page: Page, position: [number, number, number]) {
   const area = layout.panelOpen ? roomFramingArea(layout, layout.area, layout.controls)
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomEntryFraming(layout.width, layout.height, area)
-  const zoom = roomCameraZoom(1, true)
+  const zoom = roomCameraZoom(1, true, 'kitchen')
   const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
   camera.zoom = zoom
@@ -238,7 +238,7 @@ test.describe('room controls', { tag: '@room' }, () => {
 
   test('zoom can return to a whole-room view', async ({ page }) => {
     await page.getByRole('button', { name: 'Zoom in', exact: true }).click()
-    await expect(page.locator('.world-camera-controls')).toContainText('120%')
+    await expect(page.locator('.world-camera-controls')).toContainText('110%')
     await frameRoom(page)
     await expect(page.locator('.world-camera-controls')).toContainText('100%')
   })

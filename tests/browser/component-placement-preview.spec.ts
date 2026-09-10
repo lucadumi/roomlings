@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, rememberBrowserHousehold, test } from './account-fixtures.ts'
-import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
+import { componentCatalog, createRoomComponent, getRoomComponents, roomSlots } from '../../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing } from './fixtures.ts'
@@ -36,7 +36,7 @@ for (const roomId of roomIds) {
     await expect(world.getByRole('button', { name: 'Zoom in', exact: true })).toBeEnabled()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
     await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'true')
-    await expect(world.locator('.world-camera-controls')).toContainText('120%')
+    await expect(world.locator('.world-camera-controls')).toContainText('100%')
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-hologram-placement.png`), animations: 'disabled' })
     expect(await accounts.store.get(owner.household.id)).toEqual(before)
     await confirmation.getByRole('button', { name: 'Discard preview', exact: true }).click()
@@ -92,6 +92,63 @@ test('the floating bathroom triangle animates without repainting shadows and sto
     .getByRole('button', { name: 'Discard preview', exact: true }).click()
   await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'false')
   await expect(world).toHaveAttribute('data-rendering', 'paused')
+})
+
+for (const [kind, slotId] of [
+  ['first-aid-kit', 'bathroom-first-aid'],
+  ['tissue-box', 'bathroom-tissue-box'],
+  ['hair-dryer', 'bathroom-hair-dryer'],
+  ['bathroom-stool', 'bathroom-stool'],
+  ['toothbrush-holder', 'bathroom-vanity-accessory'],
+  ['ironing-board', 'bathroom-ironing-board'],
+  ['drying-rack', 'bathroom-drying-rack'],
+] as const) {
+  test(`${kind} starts in its correctly sized bathroom position and keeps it after placement`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    await page.goto(roomPath('bathroom'))
+    const editor = await openRoomEditor(page)
+    await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
+    const name = componentCatalog[kind].name
+    const picture = editor.getByRole('button', { name: `Preview ${name} in the room`, exact: true })
+    const positionName = roomSlots.find((slot) => slot.id === slotId)!.name
+    await expect(picture).toHaveAttribute('aria-description', `Position: ${positionName}. Preview this placement before deciding whether to keep it.`)
+    await picture.click()
+    const id = await editor.getAttribute('data-placement-preview')
+    if (!id) throw new Error('The bathroom preview has no object identifier.')
+    const confirmation = page.getByRole('dialog', { name: `Try ${name}`, exact: true })
+    await expect(page.locator('.bathroom-world canvas')).toHaveAttribute('data-placement-arrow', 'true')
+    await expect(page.locator('.bathroom-world')).toHaveAttribute('data-rendering', 'paused')
+    await page.screenshot({ path: testInfo.outputPath(`${kind}-true-size-bathroom-preview.png`), animations: 'disabled' })
+    expect((await accounts.store.get(owner.household.id))?.roomComponents).toEqual(owner.household.roomComponents)
+    await confirmation.getByRole('button', { name: 'Place object', exact: true }).click()
+    await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+    await expect(editor).toHaveCount(0)
+    const saved = await accounts.store.get(owner.household.id)
+    expect(saved?.roomComponents?.find((component) => component.id === id)).toMatchObject({ kind, slotId, installed: true })
+    await page.reload()
+    const objects = await openRoomObjects(page)
+    await objects.getByRole('button', { name: `Open ${name} details`, exact: true }).click()
+    await expect(page.locator('.bathroom-world')).toHaveAttribute('data-selected-component', id)
+  })
+}
+
+test('restoring a bathroom accessory preserves its original generic position and saved identity', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+  const archived = { ...createRoomComponent('first-aid-kit', 'bathroom-vanity-accessory', randomUUID()), installed: false, finish: 'berry' as const }
+  const household = await accounts.store.get(owner.household.id)
+  if (!household) throw new Error('The isolated household is missing.')
+  household.roomComponents = [...getRoomComponents(household), archived]
+  await accounts.store.save(household)
+  await page.goto(roomPath('bathroom'))
+  const editor = await openRoomEditor(page)
+  await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
+  await editor.getByRole('button', { name: 'Preview restoring First-aid kit', exact: true }).click()
+  await expect(editor).toHaveAttribute('data-placement-preview', archived.id)
+  await page.getByRole('dialog', { name: 'Try First-aid kit', exact: true }).getByRole('button', { name: 'Place object', exact: true }).click()
+  await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+  await expect(editor).toHaveCount(0)
+  const saved = (await accounts.store.get(owner.household.id))?.roomComponents?.filter((component) => component.kind === archived.kind)
+  expect(saved).toHaveLength(1)
+  expect(saved?.[0]).toMatchObject({ id: archived.id, slotId: archived.slotId, finish: 'berry', installed: true })
 })
 
 test.describe('placement draft safety without WebGL', () => {

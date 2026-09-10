@@ -2,7 +2,7 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. All three rooms start at the same camera scale, so their objects remain proportional. **Reset room view** restores that entry magnification at 100%. Its selected state clears whenever you zoom away from 100%. The toolbar remains available in every room, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. The kitchen and bathroom start with a slightly wider 100% view than the living room. Each room's placement previews use its normal camera scale without resizing objects. The **Zoom in** and **Zoom out** buttons change zoom by 10 percentage points, from 50% to 150%. Scrolling and pinching use the same limits. **Reset room view** restores that room's entry magnification at 100%. Its selected state clears whenever you zoom away from 100%. The toolbar remains available in every room, including when 3D cannot load.
 
 Saved room images are prepared after the main scene loads and reused when the
 selector opens. Their illustration areas are transparent, and edits to saved
@@ -48,9 +48,10 @@ Olive, Butter yellow, Berry or Rose finishes alongside the existing finishes.
 The compact kitchen has a continuous L-shaped worktop along the sink run and
 the open right-hand wall, with a runner in front of the sink. The stove sits on
 the right-hand return, the kettle rests on a burner, and the optional oven fits
-underneath. Turn the room to see the inward-facing fitted appliances. The bathroom has a larger
-vanity-front mat, a shelf for the cleaning caddy and a left-corner laundry
-position facing into the room. Optional shelves, appliances and storage have
+underneath. Turn the room to see the inward-facing fitted appliances. The bathroom's
+narrower, shallower floor plan has about 15% less floor area without shrinking
+its fixtures. It keeps the larger vanity-front mat, a shelf for the cleaning
+caddy and a left-corner laundry position facing into the room. Optional shelves, appliances and storage have
 dedicated places without adding anything to an existing household.
 
 Open the icon-only **Room objects** button, then choose **Edit room** inside its menu. The existing room-style, help and house-rule controls remain available. The object browser is a large preview grid on the left, with the room beside it. Hover over a preview or focus its controls for details. Repeated objects share one card: Plant opens its placed positions instead of appearing twice in the menu.
@@ -59,8 +60,10 @@ Select an object in the room or its card. Position buttons choose which existing
 
 In **Add objects**, click an object's picture or **Preview** to try its placement.
 The existing room becomes a translucent mint hologram with fine outlines, while
-the candidate keeps its real finish. The view moves slightly toward it and starts
-20% closer, without changing the object's physical size. In-room plus markers
+the candidate keeps its real finish. The camera centers the object and its triangle
+at the normal room's 100% scale. It does not enlarge the candidate or shrink the
+room to fit the preview. Reset keeps the candidate centered at that same scale.
+In-room plus markers
 are hidden during the trial; zoom controls remain available. Your previous
 marker visibility setting returns afterward. A small warm-red triangle points down
 at the object and gently bobs above it; reduced motion keeps the triangle still.
@@ -73,8 +76,12 @@ Restoring a saved object follows the same preview step and keeps its identity
 and settings.
 
 Catalog cards remain close-ups for readability, not a physical size comparison.
-The hologram view shows the whole room so you can judge the candidate's actual
-size beside the other objects. New washing machines and dryers belong in the
+The hologram view retains the normal room scale so you can judge the candidate's
+actual size beside the other objects. Bathroom additions prefer their dedicated
+positions rather than the first shared corner. Accessories use sizes matched to
+the vanity and bath, not the miniature scale reserved for a countertop plant.
+Restoring an archived object keeps its original position and identity.
+New washing machines and dryers belong in the
 bathroom. Existing kitchen laundry objects remain accessible and can be edited
 or removed, but cannot be newly placed or restored there.
 

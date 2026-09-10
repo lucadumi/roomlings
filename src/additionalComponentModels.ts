@@ -485,24 +485,29 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     }
     case 'ironing-board': {
       repaint(paint, linen)
-      box([1.4, 0.035, 0.6], [-0.2, 0.8, 0], wood, 0.02)
-      box([1.35, 0.02, 0.62], [-0.2, 0.821, 0], linen, 0.02)
-      const nose = cone(0.3, 0.4, [0.7, 0.8, 0], wood)
+      const boardHeight = 1.2
+      box([1.4, 0.035, 0.6], [-0.2, boardHeight, 0], wood, 0.02)
+      box([1.35, 0.02, 0.62], [-0.2, boardHeight + 0.021, 0], linen, 0.02).name = 'Ironing board cover'
+      const nose = cone(0.3, 0.4, [0.7, boardHeight, 0], wood)
       nose.rotation.z = -Math.PI / 2
+      nose.scale.x = 0.035 / 0.6
+      const noseCover = cone(0.3, 0.4, [0.7, boardHeight + 0.021, 0], linen)
+      noseCover.rotation.z = -Math.PI / 2
+      noseCover.scale.x = 0.02 / 0.6
       const footA: Position = [-0.75, 0, -0.25]
       const footB: Position = [-0.75, 0, 0.25]
-      const attachA: Position = [0.1, 0.78, 0.25]
-      const attachB: Position = [0.1, 0.78, -0.25]
+      const attachA: Position = [0.1, boardHeight - 0.02, 0.25]
+      const attachB: Position = [0.1, boardHeight - 0.02, -0.25]
       rod(footA, attachB, 0.022, silver)
       rod(footB, attachA, 0.022, silver)
-      rod([-0.75, 0.35, -0.25], [-0.75, 0.35, 0.25], 0.018, silver)
+      rod([-0.75, boardHeight * 0.4375, -0.25], [-0.75, boardHeight * 0.4375, 0.25], 0.018, silver)
       cylinder(0.03, 0.015, footA, dark)
       cylinder(0.03, 0.015, footB, dark)
-      box([0.22, 0.11, 0.11], [0, 0.885, 0.15], paint, 0.03)
-      const ironNose = cone(0.05, 0.16, [0.13, 0.885, 0.15], paint)
+      box([0.22, 0.11, 0.11], [0, boardHeight + 0.085, 0.15], paint, 0.03)
+      const ironNose = cone(0.05, 0.16, [0.13, boardHeight + 0.085, 0.15], paint)
       ironNose.rotation.z = -Math.PI / 2
-      box([0.22, 0.02, 0.11], [0, 0.83, 0.15], silver, 0.02)
-      const ironHandle = ring(0.06, 0.012, [0, 0.95, 0.15], dark)
+      box([0.22, 0.02, 0.11], [0, boardHeight + 0.03, 0.15], silver, 0.02)
+      const ironHandle = ring(0.06, 0.012, [0, boardHeight + 0.15, 0.15], dark)
       ironHandle.scale.set(1, 0.6, 1.3)
       ironHandle.rotation.x = Math.PI / 2
       contactSize = [1.8, 0.6]

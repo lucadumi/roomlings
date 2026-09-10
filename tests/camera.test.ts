@@ -1,7 +1,8 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseCameraOffset, cameraFraming, cameraProjection, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, usesRoomEntryFraming } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
+import { roomIds } from '../shared/rooms.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
 import { bathroomFraming } from '../src/bathroomModel.ts'
@@ -32,13 +33,46 @@ describe('room-first camera framing', () => {
     assert.deepEqual(roomFramingArea(canvas, stage, { ...controls, width: 0 }), stage)
     assert.deepEqual(roomFramingArea({ ...canvas, x: 5, y: 20 }, stage, controls), { x: 7, y: 220, width: 298, height: 420 })
   })
-  it('uses the former 120 percent scale as the default 100 percent room view', () => {
-    assert.equal(roomCameraZoom(1, true), 1.2)
-    for (const zoom of [0.65, 1, 1.2, 1.9]) {
-      assert.ok(Math.abs(roomCameraZoom(zoom, true) / zoom - 1.2) < 1e-12)
-      assert.equal(roomCameraZoom(zoom, false), zoom)
+  it('uses the full scene width above a horizontal toolbar instead of reserving an empty side column', () => {
+    const canvas = { x: 0, y: 0, width: 390, height: 844 }
+    const stage = { x: 12, y: 200, width: 366, height: 380 }
+    const controls = { x: 228, y: 520, width: 150, height: 54 }
+    assert.deepEqual(roomFramingArea(canvas, stage, controls), { x: 12, y: 200, width: 366, height: 308 })
+    assert.deepEqual(roomFramingArea(canvas, stage, controls, { width: 180, height: 330 }), { x: 12, y: 200, width: 204, height: 380 })
+    assert.deepEqual(roomFramingArea(canvas, stage, controls, { width: 250, height: 280 }), { x: 12, y: 200, width: 366, height: 308 })
+    const frame = roomEntryFraming(canvas.width, canvas.height, roomFramingArea(canvas, stage, controls))
+    const projection = cameraProjection(canvas.width, canvas.height, roomFramingArea(canvas, stage, controls), frame.halfHeight, 1)
+    assert.ok(Math.abs(projection.top - projection.bottom - cameraFraming(canvas.width, canvas.height, 'room', false).halfHeight * 2) < 0.000001)
+  })
+  it('widens the kitchen and bathroom entry views without changing the living room baseline or focused views', () => {
+    for (const roomId of roomIds) {
+      const baseline = roomId === 'living-room' ? 1.2 : 1
+      assert.equal(roomCameraZoom(1, true, roomId), baseline)
+      for (const zoom of [0.5, 0.9, 1, 1.1, 1.5]) {
+        assert.ok(Math.abs(roomCameraZoom(zoom, true, roomId) / zoom - baseline) < 1e-12)
+        assert.equal(roomCameraZoom(zoom, false, roomId), zoom)
+      }
+      for (const zoom of [0, -1, NaN, Infinity]) assert.throws(() => roomCameraZoom(zoom, true, roomId), /positive finite/)
     }
-    for (const zoom of [0, -1, NaN, Infinity]) assert.throws(() => roomCameraZoom(zoom, true), /positive finite/)
+  })
+  it('steps zoom by exactly ten percentage points and stops at fifty and one hundred fifty percent', () => {
+    assert.deepEqual(roomZoomLimits, { min: 0.5, max: 1.5, step: 0.1 })
+    let zoom = 0.5
+    for (let percent = 60; percent <= 150; percent += 10) {
+      zoom = stepRoomZoom(zoom, 1)
+      assert.equal(zoom, percent / 100)
+    }
+    assert.equal(stepRoomZoom(zoom, 1), 1.5)
+    for (let percent = 140; percent >= 50; percent -= 10) {
+      zoom = stepRoomZoom(zoom, -1)
+      assert.equal(zoom, percent / 100)
+    }
+    assert.equal(stepRoomZoom(zoom, -1), 0.5)
+    assert.equal(stepRoomZoom(1.13, 1), 1.23)
+    assert.equal(stepRoomZoom(1.13, -1), 1.03)
+    assert.equal(stepRoomZoom(1.49, 1), 1.5)
+    assert.equal(stepRoomZoom(0.51, -1), 0.5)
+    for (const invalid of [NaN, Infinity, -Infinity]) assert.throws(() => stepRoomZoom(invalid, 1), /finite value/)
   })
   it('keeps the immersive phone close-up separate from the measured whole-room overview', () => {
     const close = cameraFraming(390, 636, 'room', false)
@@ -72,11 +106,19 @@ describe('room-first camera framing', () => {
       }
     }
   })
-  it('keeps reset framing measured for placement previews, editor overviews and public tours', () => {
-    for (const context of [{ placementPreview: true }, { overviewFocus: true }, { publicPreview: true }]) {
+  it('uses the entry scale for placement previews even with a selected object and compact panel', () => {
+    for (const resetView of [false, true]) {
+      assert.equal(usesRoomEntryFraming({
+        focus: 'room', selectedComponentId: 'candidate', panelOpen: true, placementPreview: true, resetView,
+      }), true)
+    }
+  })
+  it('keeps reset framing measured for editor overviews and public tours', () => {
+    for (const context of [{ overviewFocus: true }, { publicPreview: true }]) {
       assert.equal(usesRoomEntryFraming({ focus: 'room', ...context }), false)
       assert.equal(usesRoomEntryFraming({ focus: 'room', resetView: true, ...context }), false)
       assert.equal(usesRoomEntryFraming({ focus: 'sink', selectedComponentId: 'object', resetView: true, ...context }), false)
+      assert.equal(usesRoomEntryFraming({ focus: 'room', placementPreview: true, ...context }), false)
     }
   })
   it('retains the inward-facing fitted-appliance angle when selecting or resetting a placement preview', () => {
@@ -151,7 +193,7 @@ describe('room-first camera framing', () => {
       { width: 390, height: 844, area: { x: 0, y: 80, width: 390, height: 255 } },
     ]
     for (const layout of layouts) {
-      for (const zoom of [0.65, 1, 1.9]) {
+      for (const zoom of [0.5, 1, 1.5]) {
         const projection = cameraProjection(layout.width, layout.height, layout.area, 3, zoom)
         const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
         camera.position.z = 10

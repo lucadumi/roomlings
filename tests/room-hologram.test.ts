@@ -325,8 +325,10 @@ for (const roomId of roomIds) {
     const layout = [...defaults, component]
     scene.update(layout, 'original')
     batchStaticMeshes(room, 'scenery' in model ? model.scenery.preserved : 'preserved' in model ? model.preserved : new Set())
+    room.updateMatrixWorld(true)
     const originals = meshes(room).map((mesh) => ({
       mesh, geometry: mesh.geometry, material: mesh.material, castShadow: mesh.castShadow, receiveShadow: mesh.receiveShadow,
+      transform: mesh.matrixWorld.clone(),
     }))
     const bounds = visibleRoomBounds(room)
     const actor = scene.actors.get(component.id)!
@@ -337,6 +339,7 @@ for (const roomId of roomIds) {
     assert.ok(paint instanceof MeshStandardMaterial)
     hologram.update(actor, scene.actors.values())
     for (const saved of originals) {
+      assert.ok(saved.mesh.matrixWorld.equals(saved.transform), `${roomId}: preview objects must keep their real proportions`)
       if (saved.mesh.userData.componentContact) {
         assert.equal(saved.mesh.visible, false)
       } else if (candidateMeshes.has(saved.mesh)) {
@@ -366,8 +369,12 @@ for (const roomId of roomIds) {
       && material.color.getHexString() === componentFinishes.walnut.color!.slice(1)))
     assert.equal(ground.visible, true)
     assert.equal(outlines(room).length, 0)
+    scene.update(edited, 'coastal', component.id)
+    assert.equal(scene.actors.get(component.id), actor)
+    assert.deepEqual(visibleRoomBounds(room), bounds)
     for (const saved of originals) {
       assert.equal(saved.mesh.geometry, saved.geometry)
+      assert.ok(saved.mesh.matrixWorld.equals(saved.transform), `${roomId}: accepting a placement must not resize objects`)
       assert.equal(saved.mesh.material, saved.material)
       assert.equal(saved.mesh.castShadow, saved.castShadow)
       assert.equal(saved.mesh.receiveShadow, saved.receiveShadow)
@@ -462,17 +469,20 @@ test('both world integrations use the actual pending actor, suppress its edit ti
   assert.match(kitchen, /now - lastShadowFrame >= 250/)
 })
 
-test('placement cameras use measured room bounds instead of candidate closeups without locking manual zoom', () => {
+test('placement cameras share the entry scale instead of candidate closeups without locking manual zoom', () => {
   for (const file of ['KitchenWorld.tsx', 'ChoreRoomWorld.tsx']) {
     const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8')
     assert.match(source, /const closeRoom = usesRoomEntryFraming\(/)
     assert.match(source, /placementPreview: !!placementCandidate/)
     assert.match(source, /const selectedBounds = !placementCandidate &&/)
-    assert.match(source, /roomCameraZoom\(latest\.overviewFocus \? 1 : currentControls\.zoom, closeRoom\)|config\.cameraZoom\(displayedZoom, closeRoom\)/)
-    assert.match(source, /placementCandidate !== hologram\.candidate\)[\s\S]*?currentControls\.zoom = placementPreviewZoom; setZoom\(placementPreviewZoom\)/)
+    assert.match(source, /roomCameraZoom\(latest\.overviewFocus \? 1 : currentControls\.zoom, closeRoom, 'kitchen'\)|config\.cameraZoom\(displayedZoom, closeRoom, config\.roomId\)/)
+    assert.match(source, /lastSelectedComponentKey !== selectedKey[\s\S]*?currentControls\.zoom = 1/)
+    assert.doesNotMatch(source, /placementPreviewZoom/)
     assert.match(source, /const placementBounds = placementCandidate \? visibleRoomBounds\(room, placementCandidate\) : null/)
-    assert.match(source, /desiredCenter\.lerp\(placementBounds\.getCenter/)
-    assert.match(source, /data-framing=\{placementPreview \|\| overviewFocus \? 'whole' : 'close'\}/)
+    assert.match(source, /if \(placementBounds && !latest\.overviewFocus\)/)
+    assert.match(source, /placementPreviewCenter\(placementBounds, desiredCenter\)\.applyMatrix4\(room\.matrixWorld\)/)
+    assert.doesNotMatch(source, /placementBounds && !currentControls\.roomView/)
+    assert.match(source, /data-framing=\{overviewFocus \? 'whole' : 'close'\}/)
     assert.match(source, /onClick=\{\(\) => changeZoom\(1\)\}/)
     assert.match(source, /onClick=\{\(\) => controls\.current\?\.reset\(\)\}/)
   }
@@ -495,7 +505,7 @@ test('both reset controls use the entry camera path and are unpressed whenever z
     assert.match(source, /currentControls\.roomView = true/)
     assert.match(source, /resetView: currentControls\.roomView/)
     assert.match(source, /const selectedBounds = !placementCandidate &&[^\n]*!currentControls\.roomView/)
-    assert.match(source, /roomCameraZoom\(latest\.overviewFocus \? 1 : currentControls\.zoom, closeRoom\)|config\.cameraZoom\(displayedZoom, closeRoom\)/)
+    assert.match(source, /roomCameraZoom\(latest\.overviewFocus \? 1 : currentControls\.zoom, closeRoom, 'kitchen'\)|config\.cameraZoom\(displayedZoom, closeRoom, config\.roomId\)/)
     assert.doesNotMatch(source, /lastOverviewFocus/)
     assert.match(source, /setZoom\(currentControls\.zoom\)|setZoom\(next\)/)
     assert.match(source, /pinchZoom \* a\.distanceTo\(b\) \/ pinchDistance/)

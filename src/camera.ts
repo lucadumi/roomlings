@@ -1,14 +1,23 @@
-import { Vector3 } from 'three'
+import { MathUtils, Vector3 } from 'three'
 import type { Box3 } from 'three'
 import type { RoomSlotId } from '../shared/roomComponents.ts'
+import type { RoomId } from '../shared/rooms.ts'
 import type { KitchenAction, KitchenUtility } from './room.ts'
 import { componentPlacements, kitchenLayout, roomFootprints, roomShellBounds } from './roomLayout.ts'
 
 export type SceneFocus = KitchenAction | KitchenUtility | 'room' | 'fridge' | 'brew'
 export type FocusRequest = { target: SceneFocus; id: number }
 export const baseCameraOffset: [number, number, number] = [9, 7.85, 13]
-export const placementPreviewZoom = 1.2
+export const roomZoomLimits = { min: 0.5, max: 1.5, step: 0.1 } as const
 export type FramingArea = { x: number; y: number; width: number; height: number }
+export type FramingMeasurements = { canvas: FramingArea; stage: FramingArea; controls?: FramingArea }
+
+const roomEntryZoom: Record<RoomId, number> = { kitchen: 1, bathroom: 1, 'living-room': 1.2 }
+
+export function stepRoomZoom(zoom: number, direction: -1 | 1): number {
+  if (!Number.isFinite(zoom)) throw new Error('Room zoom needs a finite value.')
+  return MathUtils.clamp(Math.round((zoom + direction * roomZoomLimits.step) * 100) / 100, roomZoomLimits.min, roomZoomLimits.max)
+}
 
 export function preferredRoomRotation(slotId?: RoomSlotId): number {
   const placement = slotId ? componentPlacements[slotId] : undefined
@@ -24,16 +33,25 @@ export function usesRoomEntryFraming(view: {
   placementPreview?: boolean
   publicPreview?: boolean
 }): boolean {
-  return !view.overviewFocus && !view.placementPreview && !view.publicPreview
-    && (!!view.resetView || (!view.panelOpen && view.focus === 'room' && !view.selectedComponentId))
+  return !view.overviewFocus && !view.publicPreview
+    && (!!view.placementPreview || !!view.resetView || (!view.panelOpen && view.focus === 'room' && !view.selectedComponentId))
 }
 
-export function roomFramingArea(canvas: FramingArea, stage: FramingArea, controls?: FramingArea): FramingArea {
+export function roomFramingArea(canvas: FramingArea, stage: FramingArea, controls?: FramingArea, minimum = { width: 0, height: 0 }): FramingArea {
   const overlaps = controls && controls.width > 0 && controls.height > 0
     && controls.y < stage.y + stage.height && controls.y + controls.height > stage.y
     && controls.x > stage.x && controls.x < stage.x + stage.width
-  const right = overlaps ? controls.x - 12 : stage.x + stage.width
-  return { x: stage.x - canvas.x, y: stage.y - canvas.y, width: Math.max(1, right - stage.x), height: stage.height }
+  let width = stage.width
+  let height = stage.height
+  if (overlaps) {
+    const beside = Math.max(1, controls.x - 12 - stage.x)
+    const above = Math.max(1, controls.y - 12 - stage.y)
+    const fitsBeside = beside >= minimum.width && stage.height >= minimum.height
+    const fitsAbove = stage.width >= minimum.width && above >= minimum.height
+    if (fitsAbove !== fitsBeside ? fitsAbove : stage.width * above > beside * stage.height) height = above
+    else width = beside
+  }
+  return { x: stage.x - canvas.x, y: stage.y - canvas.y, width: Math.max(1, width), height }
 }
 
 export const focusLabels: Record<SceneFocus, string> = {
@@ -116,12 +134,11 @@ export function roomEntryFraming(width: number, height: number, area: FramingAre
   return { center: center.toArray(), halfHeight: frame.halfHeight * area.height / height }
 }
 
-export function fitRoomBounds(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0): {
-  center: [number, number, number]; halfHeight: number
+export function projectRoomBounds(bounds: Box3, rotation = 0, pitch = 0): {
+  center: [number, number, number]; horizontal: number; vertical: number
 } {
-  if (![width, height].every((value) => Number.isFinite(value) && value > 0)
-    || ![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
-    throw new Error('Room framing needs positive scene dimensions and finite bounds.')
+  if (![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
+    throw new Error('Room projection needs finite bounds and camera angles.')
   }
   const center = bounds.getCenter(new Vector3())
   const axis = new Vector3(0, 1, 0)
@@ -136,13 +153,24 @@ export function fitRoomBounds(width: number, height: number, bounds: Box3, rotat
     vertical = Math.max(vertical, Math.abs(corner.dot(up)))
   }
   center.applyAxisAngle(axis, rotation)
+  return { center: center.toArray(), horizontal, vertical }
+}
+
+export function fitRoomBounds(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0): {
+  center: [number, number, number]; halfHeight: number
+} {
+  if (![width, height].every((value) => Number.isFinite(value) && value > 0)
+    || ![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
+    throw new Error('Room framing needs positive scene dimensions and finite bounds.')
+  }
+  const { center, horizontal, vertical } = projectRoomBounds(bounds, rotation, pitch)
   return {
-    center: [center.x, center.y, center.z],
+    center,
     halfHeight: Math.max(1.25, vertical + 0.18, (horizontal + 0.18) * height / width) * 1.08,
   }
 }
 
-export function roomCameraZoom(zoom: number, closeRoom: boolean): number {
+export function roomCameraZoom(zoom: number, closeRoom: boolean, roomId: RoomId): number {
   if (!Number.isFinite(zoom) || zoom <= 0) throw new Error('Room camera zoom needs a positive finite value.')
-  return closeRoom ? zoom * 1.2 : zoom
+  return closeRoom ? zoom * roomEntryZoom[roomId] : zoom
 }

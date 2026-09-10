@@ -8,6 +8,7 @@ import { componentPositionSupported, getRoomComponents } from '../../shared/room
 import type { RoomComponent } from '../../shared/roomComponents.ts'
 import { baseCameraOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomIds } from '../../shared/rooms.ts'
+import type { RoomId } from '../../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { componentPlacements, kitchenLayout } from '../../src/roomLayout.ts'
@@ -63,7 +64,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     const world = page.locator('.kitchen-world')
     await expect(world).toHaveAttribute('data-selected-component', id)
     await world.getByRole('button', { name: 'Zoom in', exact: true }).click()
-    await expect(world.locator('.world-camera-controls')).toContainText('120%')
+    await expect(world.locator('.world-camera-controls')).toContainText('110%')
     await expect(world).toHaveAttribute('data-camera-moving', 'false')
     const before = await world.boundingBox()
     await page.locator('.house-tools').getByRole('button', { name: 'Room style', exact: true }).click()
@@ -78,7 +79,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await expect(editor.getByLabel('Object name', { exact: true })).toHaveValue('Keep this draft')
     await expect(world).toHaveAttribute('data-selected-component', id)
     await expect(world).toHaveAttribute('data-framing', 'close')
-    await expect(world.locator('.world-camera-controls')).toContainText('120%')
+    await expect(world.locator('.world-camera-controls')).toContainText('110%')
     expect((await accounts.store.get(owner.household.id))?.roomComponents).toEqual(owner.household.roomComponents)
   })
 }
@@ -106,7 +107,7 @@ async function configureDesignedSlots(accounts: AccountHarness, session: Session
   return household.roomComponents
 }
 
-async function roomPoint(page: Page, position: [number, number, number], rotation = 0, roomBounds?: Box3, viewZoom = 1) {
+async function roomPoint(page: Page, roomId: RoomId, position: [number, number, number], rotation = 0, roomBounds?: Box3, viewZoom = 1) {
   const layout = await page.locator('.kitchen-world').evaluate((world) => {
     const canvas = world.querySelector('.world-canvas')!.getBoundingClientRect()
     const area = (world.querySelector('.bathroom-scene-area') ?? world).getBoundingClientRect()
@@ -122,7 +123,7 @@ async function roomPoint(page: Page, position: [number, number, number], rotatio
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomBounds ? fitRoomBounds(area.width, area.height, roomBounds, rotation)
     : roomEntryFraming(layout.width, layout.height, area, rotation)
-  const zoom = roomCameraZoom(viewZoom, !roomBounds)
+  const zoom = roomCameraZoom(viewZoom, !roomBounds, roomId)
   const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
   camera.zoom = zoom
@@ -162,7 +163,7 @@ test('the inward-facing dishwasher stays reachable after turning the connected r
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
   await expect(world).toHaveAttribute('data-rendering', 'paused')
   await expect(page.locator('.room-panel')).toHaveCount(0)
-  const screen = await roomPoint(page, point, 0.75)
+  const screen = await roomPoint(page, 'kitchen', point, 0.75)
   await page.mouse.click(screen.x, screen.y)
   await expect(world).toHaveAttribute('data-selected-component', dishwasher.id)
   await expect(page.getByRole('region', { name: `${dishwasher.name} manual state`, exact: true })).toBeVisible()
@@ -178,7 +179,7 @@ test('the kettle on the relocated stove keeps its physical tea-break action', { 
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await expect(world).toHaveAttribute('data-rendering', 'paused')
   const point: [number, number, number] = [kitchenLayout.kettle[0], kitchenLayout.kettle[1] + 0.2, kitchenLayout.kettle[2]]
-  const screen = await roomPoint(page, point)
+  const screen = await roomPoint(page, 'kitchen', point)
   await page.mouse.click(screen.x, screen.y)
   await expect(world).toHaveAttribute('data-focus', 'brew')
   await expect(world.locator('.world-kettle-toggle')).toHaveAttribute('aria-pressed', 'true')
@@ -196,13 +197,13 @@ test('the live kitchen connects the sink counter to the right return and leaves 
   model.dispose()
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
-  const join = await roomPoint(page, [4.5, 1.735, -1.905], 0, bounds)
+  const join = await roomPoint(page, 'kitchen', [4.5, 1.735, -1.905], 0, bounds)
   await page.mouse.click(join.x, join.y)
   await expect(world).toHaveAttribute('data-selected-component', 'default-kitchen-counters')
   await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
   await expect(world).not.toHaveAttribute('data-selected-component', /.+/)
-  const openFloor = await roomPoint(page, [-1.6, 0.005, 1.175], 0, bounds)
+  const openFloor = await roomPoint(page, 'kitchen', [-1.6, 0.005, 1.175], 0, bounds)
   await page.mouse.click(openFloor.x, openFloor.y)
   await expect(world).not.toHaveAttribute('data-selected-component', /.+/)
 })
@@ -250,7 +251,7 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
   await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await expect(world).toHaveAttribute('data-camera-moving', 'false')
-  const bag = await roomPoint(page, [kitchenLayout.stock[0], kitchenLayout.stock[1] + 0.36, kitchenLayout.stock[2] + 0.2])
+  const bag = await roomPoint(page, 'kitchen', [kitchenLayout.stock[0], kitchenLayout.stock[1] + 0.36, kitchenLayout.stock[2] + 0.2])
   await page.mouse.click(bag.x, bag.y)
   await expect(world).toHaveAttribute('data-selected-component', 'default-kitchen-shopping-bag')
   await expect(editor).toBeVisible()
@@ -336,9 +337,13 @@ for (const roomId of roomIds) {
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
-    if (roomId === 'kitchen') await world.getByRole('button', { name: 'Zoom out', exact: true }).click()
+    if (roomId === 'kitchen') {
+      await world.getByRole('button', { name: 'Zoom out', exact: true }).click()
+      await world.getByRole('button', { name: 'Zoom out', exact: true }).click()
+      await expect(world.locator('.world-camera-controls')).toContainText('80%')
+    }
     await expect(world).toHaveAttribute('data-rendering', 'paused')
-    const screen = await roomPoint(page, point, 0, undefined, roomId === 'kitchen' ? 0.8 : 1)
+    const screen = await roomPoint(page, roomId, point, 0, undefined, roomId === 'kitchen' ? 0.8 : 1)
     expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y) instanceof HTMLCanvasElement, screen)).toBe(true)
     await page.mouse.click(screen.x, screen.y)
     await expect(world).toHaveAttribute('data-selected-component', component.id)

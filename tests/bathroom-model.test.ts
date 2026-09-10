@@ -56,16 +56,20 @@ test('bathroom fixtures have distinct, pickable actor groups and attached label 
   assert.equal(model.contacts.length, 5)
 })
 
-test('bathroom geometry fills the expanded floor while retaining its original wall height', (t) => {
+test('the bathroom uses a narrower and shallower floor while retaining its original wall height', (t) => {
   const { room, model } = bathroom(t)
+  const floorSize = new Box3().setFromObject(room.getObjectByName('Bathroom floor base')!).getSize(new Vector3())
+  assert.ok(Math.abs(floorSize.x - 9.4) < 0.0001)
+  assert.ok(Math.abs(floorSize.z - 5.95) < 0.0001)
+  assert.ok(floorSize.x * floorSize.z < 10.2 * 6.45 * 0.86, 'Reduce the floor area itself, not the camera magnification')
   const bounds = new Box3().setFromObject(room)
   const size = bounds.getSize(new Vector3())
-  assert.ok(size.x > 10.1 && size.x < 10.3)
+  assert.ok(size.x > 9.3 && size.x < 9.5)
   assert.ok(size.y > 4 && size.y < 5)
-  assert.ok(size.z > 6.4 && size.z < 6.6)
-  assert.ok(bounds.min.x >= -5.11 && bounds.max.x <= 5.11)
+  assert.ok(size.z > 5.9 && size.z < 6)
+  assert.ok(bounds.min.x >= -4.71 && bounds.max.x <= 4.71)
   assert.ok(bounds.min.y >= -0.3 && bounds.max.y <= 4.6)
-  assert.ok(bounds.min.z >= -3.4 && bounds.max.z <= 3.61)
+  assert.ok(bounds.min.z >= -3.24 && bounds.max.z <= 2.76)
   assert.deepEqual(bounds, model.bounds)
   assert.ok(meshes(room).filter((mesh) => mesh.geometry.type === 'LatheGeometry').length >= 4)
   for (const mesh of meshes(room)) {
@@ -74,6 +78,24 @@ test('bathroom geometry fills the expanded floor while retaining its original wa
     for (let i = 0; i < positions.count; i++) {
       assert.ok([positions.getX(i), positions.getY(i), positions.getZ(i)].every(Number.isFinite))
     }
+  }
+})
+
+test('compacting the bathroom preserves the physical size of every original fixture', (t) => {
+  const { model } = bathroom(t)
+  const originalSizes = {
+    bath: [2.05, 1.7125, 3.04],
+    sink: [2.45, 2.2825, 1.3825],
+    mirror: [1.68, 1.865, 0.23],
+    toilet: [1.625, 1.9275, 1.95],
+    supplies: [1.13, 3.075, 0.9145],
+    chores: [0.72, 1.1075, 1.105],
+  }
+  for (const target of ['bath', 'sink', 'mirror', 'toilet', 'supplies', 'chores'] as const) {
+    const actor = model.actors.get(target)!
+    assert.deepEqual(actor.scale.toArray(), [1, 1, 1])
+    const size = new Box3().setFromObject(actor, true).getSize(new Vector3()).toArray()
+    assert.ok(size.every((value, index) => Math.abs(value - originalSizes[target][index]) < 0.0001), `${target} must stay full-size`)
   }
 })
 
@@ -124,10 +146,12 @@ test('each bathroom object remains physically reachable from the open corner aft
   const { room, model } = bathroom(t)
   batchStaticMeshes(room, new Set())
   room.updateMatrixWorld(true)
+  const pointOn = (target: typeof bathroomTargets[number], point: [number, number, number]) =>
+    model.actors.get(target)!.localToWorld(new Vector3(...point)).toArray()
   const points = {
-    sink: [0.55, 1.9, -2.22], mirror: [0.55, 3.06, -2.98], toilet: [2.66, 1.1, -1.92],
-    bath: [-3.75, 1.16, -1.3], floor: [-2.85, 0.07, 1.05],
-    chores: model.actors.get('chores')!.localToWorld(new Vector3(0, 0.3, 0)).toArray(), supplies: [4.4, 2.78, -2.4],
+    sink: pointOn('sink', [0, 1.9, 0.06]), mirror: pointOn('mirror', [0, 0, 0.075]), toilet: pointOn('toilet', [0, 1.1, 0.2]),
+    bath: pointOn('bath', [0, 1.16, 0]), floor: [bathroomLayout.bath[0] + 0.7, 0.07, 0.95],
+    chores: pointOn('chores', [0, 0.3, 0]), supplies: pointOn('supplies', [0, 2.78, 0]),
   }
   for (const target of bathroomTargets) {
     const point = new Vector3().fromArray(points[target])

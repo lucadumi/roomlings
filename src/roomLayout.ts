@@ -1,19 +1,20 @@
 import { Box3, Vector3 } from 'three'
 import type { RoomId } from '../shared/rooms.ts'
-import type { RoomSlotId } from '../shared/roomComponents.ts'
+import type { ComponentKind, RoomSlotId } from '../shared/roomComponents.ts'
 import { livingRoomPlacements } from './livingRoomComponentModels.ts'
 
 export type RoomPosition = [number, number, number]
 export type ComponentPlacement = {
   position: RoomPosition
   scale?: number | RoomPosition
+  scaleByKind?: Partial<Record<ComponentKind, number | RoomPosition>>
   rotation?: number
   surface: 'floor' | 'counter' | 'table' | 'wall' | 'fitted' | 'bath'
 }
 
 export const roomFootprints = {
   kitchen: { width: 11.4, depth: 6.9, centerZ: 0.05, wallHeight: 4.65, backZ: -3.32, leftX: -5.61 },
-  bathroom: { width: 10.2, depth: 6.45, centerZ: 0.025, wallHeight: 4.45, backZ: -3.16, leftX: -5.03 },
+  bathroom: { width: 9.4, depth: 5.95, centerZ: -0.225, wallHeight: 4.45, backZ: -3.16, leftX: -4.63 },
   'living-room': { width: 10, depth: 6.6, centerZ: 0, wallHeight: 4.5, backZ: -3.23, leftX: -4.92 },
 } as const
 
@@ -72,16 +73,33 @@ export const kitchenShelves = [
 ] satisfies { name: string; position: RoomPosition; width: number; depth: number; top: number; slots: RoomSlotId[] }[]
 
 export const bathroomLayout = {
-  bath: [-3.75, 0, -1.3],
-  sink: [0.55, 0, -2.28],
-  mirror: [0.55, 3.06, -3.055],
-  toilet: [2.66, 0, -2.12],
-  supplies: [4.4, 0, -2.4],
-  chores: [4.56, 1.4, -0.6],
+  bath: [-3.35, 0, -1.3],
+  sink: [0.25, 0, -2.28],
+  mirror: [0.25, 3.06, -3.055],
+  toilet: [2.28, 0, -2.12],
+  supplies: [4, 0, -2.4],
+  chores: [4.16, 1.4, -0.6],
 } satisfies Record<string, RoomPosition>
 
-export const bathroomMat = { position: [0.55, 0.04, -0.6] as RoomPosition, width: 2.9, depth: 1.65 }
-export const bathroomCaddyShelf = { position: [4.52, 1.42, -0.6] as RoomPosition, width: 0.9, depth: 1.4, top: 1.46 }
+export const bathroomMat = { position: [bathroomLayout.sink[0], 0.04, -0.6] as RoomPosition, width: 2.9, depth: 1.65 }
+export const bathroomCaddyShelf = { position: [4.12, 1.42, -0.6] as RoomPosition, width: 0.9, depth: 1.4, top: 1.46 }
+
+const bathroomObjectScales = {
+  'soap-dispenser': 1,
+  'toothbrush-holder': 1.3,
+  'hair-dryer': 1.35,
+  'storage-jars': 1,
+  'tissue-box': 1.8,
+  'first-aid-kit': 1.8,
+  'reed-diffuser': 1.6,
+  'toilet-brush': 1,
+  'bathroom-stool': 1.5,
+  'bathroom-scales': 1,
+  'air-purifier': 1.15,
+  'vacuum': 1,
+  'laundry-basket': 1.1,
+  'storage-cabinet': 1,
+} satisfies Partial<Record<ComponentKind, number>>
 
 export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>> = {
   ...Object.fromEntries(Object.entries(livingRoomPlacements).map(([slotId, placement]) => [slotId, {
@@ -138,34 +156,34 @@ export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>
   'kitchen-air-purifier': { position: [5, 0.02, 2.3], surface: 'floor' },
   'kitchen-watering-can': { position: [-4.5, 0.02, 2.08], surface: 'floor' },
   'bathroom-bath': { position: bathroomLayout.bath, surface: 'floor' },
-  'bathroom-laundry': { position: [-4.3, 0.02, 2.4], rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-laundry-basket': { position: [-4.48, 0.02, 1.15], rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-drying-rack': { position: [-0.6, 0.02, 2.54], surface: 'floor' },
-  'bathroom-towel-rack': { position: [-4.955, 2.65, -1.25], rotation: Math.PI / 2, surface: 'wall' },
-  'bathroom-plant': { position: [4.48, 0.02, 0.65], scale: 0.86, surface: 'floor' },
-  'bathroom-wall-art': { position: [3.12, 3.25, -3.088], surface: 'wall' },
-  'bathroom-soap-dispenser': { position: [-0.3, 1.66, -2.19], surface: 'counter' },
-  'bathroom-shower-shelf': { position: [-3.65, 2.45, -3.088], surface: 'wall' },
-  'bathroom-bins': { position: [3.56, 0.02, -2.12], scale: 0.7, surface: 'floor' },
-  'bathroom-vanity-accessory': { position: [1.5, 1.66, -2.16], scale: 0.48, surface: 'counter' },
-  'bathroom-floor-storage': { position: [-2.08, 0.025, 1.92], scale: 0.85, rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-bath-tray': { position: [-3.75, 1.2, -0.8], surface: 'bath' },
-  'bathroom-toilet-accessory': { position: [3.61, 0.025, -1.31], scale: 0.65, surface: 'floor' },
-  'bathroom-dryer': { position: [-4.3, 1.61, 2.4], rotation: Math.PI / 2, surface: 'fitted' },
+  'bathroom-laundry': { position: [-3.94, 0.02, 1.98], rotation: Math.PI / 2, surface: 'floor' },
+  'bathroom-laundry-basket': { position: [-4.04, 0.02, 0.72], scaleByKind: bathroomObjectScales, rotation: Math.PI / 2, surface: 'floor' },
+  'bathroom-drying-rack': { position: [-1.13, 0.02, 2.06], scale: 1.1, surface: 'floor' },
+  'bathroom-towel-rack': { position: [-4.555, 2.65, -1.25], rotation: Math.PI / 2, surface: 'wall' },
+  'bathroom-plant': { position: [4.08, 0.02, 0.55], scale: 0.86, scaleByKind: bathroomObjectScales, surface: 'floor' },
+  'bathroom-wall-art': { position: [2.95, 3.25, -3.088], surface: 'wall' },
+  'bathroom-soap-dispenser': { position: [bathroomLayout.sink[0] - 0.85, 1.66, -2.19], surface: 'counter' },
+  'bathroom-shower-shelf': { position: [-3.25, 2.45, -3.088], surface: 'wall' },
+  'bathroom-bins': { position: [3.14, 0.02, -2.12], scale: 0.7, surface: 'floor' },
+  'bathroom-vanity-accessory': { position: [bathroomLayout.sink[0] + 0.95, 1.66, -2.16], scale: 0.48, scaleByKind: bathroomObjectScales, surface: 'counter' },
+  'bathroom-floor-storage': { position: [-1.51, 0.025, 0.64], scale: 0.85, scaleByKind: bathroomObjectScales, rotation: Math.PI / 2, surface: 'floor' },
+  'bathroom-bath-tray': { position: [bathroomLayout.bath[0], 1.2, -0.8], surface: 'bath' },
+  'bathroom-toilet-accessory': { position: [3.23, 0.025, -1.31], scale: 0.65, scaleByKind: bathroomObjectScales, surface: 'floor' },
+  'bathroom-dryer': { position: [-3.94, 1.61, 1.98], rotation: Math.PI / 2, surface: 'fitted' },
   'bathroom-storage-cabinet': { position: [-1.65, 0.02, -2.7], surface: 'floor' },
-  'bathroom-stool': { position: [-2.17, 0.02, 0.8], surface: 'floor' },
-  'bathroom-air-purifier': { position: [4.47, 0.02, 1.75], surface: 'floor' },
-  'bathroom-ironing-board': { position: [1.78, 0.02, 2.72], surface: 'floor' },
-  'bathroom-wall-calendar': { position: [-4.955, 3.15, 1.1], rotation: Math.PI / 2, surface: 'wall' },
-  'bathroom-key-hooks': { position: [-4.955, 3.42, 2.4], rotation: Math.PI / 2, surface: 'wall' },
+  'bathroom-stool': { position: [-2.07, 0.02, -0.1], scale: bathroomObjectScales['bathroom-stool'], surface: 'floor' },
+  'bathroom-air-purifier': { position: [4.07, 0.02, 1.45], scale: bathroomObjectScales['air-purifier'], surface: 'floor' },
+  'bathroom-ironing-board': { position: [1.45, 0.02, 2.22], scale: 1.2, surface: 'floor' },
+  'bathroom-wall-calendar': { position: [-4.555, 3.15, 0.67], rotation: Math.PI / 2, surface: 'wall' },
+  'bathroom-key-hooks': { position: [-4.555, 3.42, 1.98], rotation: Math.PI / 2, surface: 'wall' },
   'bathroom-wall-shelf': { position: [-1.65, 2.35, -3.088], surface: 'wall' },
-  'bathroom-shower-squeegee': { position: [-4.7, 2.6, -3.088], surface: 'wall' },
-  'bathroom-hair-dryer': { position: [-0.52, 1.66, -2.6], scale: 0.9, surface: 'counter' },
-  'bathroom-storage-jars': { position: [1.76, 2.44, -2.92], scale: 0.75, surface: 'counter' },
-  'bathroom-tissue-box': { position: [2.33, 2.44, -2.92], surface: 'counter' },
-  'bathroom-first-aid': { position: [1.76, 3.02, -2.92], surface: 'counter' },
-  'bathroom-diffuser': { position: [2.33, 3.02, -2.92], surface: 'counter' },
-  'bathroom-vacuum': { position: [4.28, 0.02, 2.88], surface: 'floor' },
+  'bathroom-shower-squeegee': { position: [-4.3, 2.6, -3.088], surface: 'wall' },
+  'bathroom-hair-dryer': { position: [bathroomLayout.sink[0] - 1.07, 1.66, -2.6], scale: bathroomObjectScales['hair-dryer'], surface: 'counter' },
+  'bathroom-storage-jars': { position: [1.52, 2.44, -2.92], scale: bathroomObjectScales['storage-jars'], surface: 'counter' },
+  'bathroom-tissue-box': { position: [2.12, 2.44, -2.92], scale: bathroomObjectScales['tissue-box'], surface: 'counter' },
+  'bathroom-first-aid': { position: [1.52, 3.02, -2.92], scale: bathroomObjectScales['first-aid-kit'], surface: 'counter' },
+  'bathroom-diffuser': { position: [2.12, 3.02, -2.92], scale: bathroomObjectScales['reed-diffuser'], surface: 'counter' },
+  'bathroom-vacuum': { position: [4, 0.02, 2.38], surface: 'floor' },
 }
 
 export function roomShellBounds(roomId: RoomId): Box3 {
