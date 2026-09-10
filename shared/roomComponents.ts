@@ -65,290 +65,290 @@ const floorCleaner = supply('floor-cleaner', 'Floor cleaner')
 const dustingCloths = supply('dusting-cloths', 'Dusting cloths', '1 pack')
 
 export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
-  fridge: define('Fridge', 'Keep the familiar fridge, with its own care and grocery shortcuts.', 'appliances', {
+  fridge: define('Fridge', 'Groceries, fridge doors and shared care.', 'appliances', {
     area: 'fridge', chores: [chore('Clean the fridge shelves', 14), chore('Check use-by dates', 7), chore('Defrost the freezer', 180)],
     supplies: [surfaceCleaner], states: states('Clear', 'Needs cleaning'),
   }),
-  sink: define('Sink', 'A place for dishes, soap and a shared cleaning routine.', 'fixtures', {
+  sink: define('Sink', 'Dishes, soap and shared cleaning.', 'fixtures', {
     area: 'sink', supplies: [dishSoap, sponges], chores: [chore('Clear the sink', 1), chore('Clean the sink', 7)],
     states: states('Clear', 'Needs cleaning'),
   }),
-  counters: define('Kitchen cabinets', 'The fitted cabinets and worktop that hold the kitchen together.', 'fixtures', {
+  counters: define('Kitchen cabinets', 'Fitted cabinets and a shared worktop.', 'fixtures', {
     area: 'counters', supplies: [surfaceCleaner], chores: [chore('Wipe the counters', 1), chore('Organize the cupboards', 30)],
   }),
-  hob: define('Hob', 'Keep the cooking surface ready for the next meal.', 'appliances', {
+  hob: define('Hob', 'Cooking surface and cleanup tasks.', 'appliances', {
     area: 'counters', supplies: [supply('hob-cleaner', 'Hob cleaner')], chores: [chore('Clean the hob', 7)],
     states: states('Clean', 'Needs cleaning'),
   }),
-  kettle: define('Kettle', 'Keep the tea break, and remember the occasional descale.', 'appliances', {
+  kettle: define('Kettle', 'Tea breaks and occasional descaling.', 'appliances', {
     supplies: [descaler], chores: [chore('Descale the kettle', 30)],
   }),
-  table: define('Dining table', 'A shared table, with a choice of shape and wood finish.', 'furniture', {
+  table: define('Dining table', 'Shared dining, with two table shapes.', 'furniture', {
     variants: variants('Rectangular', 'Round'), chores: [chore('Wipe the table', 1)],
   }),
-  seating: define('Kitchen stools', 'A pair of seats with a finish of their own.', 'furniture', {
+  seating: define('Kitchen stools', 'Matching stools for the shared table.', 'furniture', {
     chores: [chore('Wipe the seats', 7)],
   }),
-  plant: define('Plant', 'A leafy friend, a cactus or a little herb garden.', 'decor', {
+  plant: define('Plant', 'Choose leaves, a cactus or herbs.', 'decor', {
     variants: variants('Leafy', 'Cactus', 'Herbs'), supplies: [supply('plant-food', 'Plant food'), supply('potting-soil', 'Potting soil', '1 bag')],
     chores: [chore('Water the plant', 7), chore('Tend the plant', 30)], states: states('Cared for', 'Needs watering'),
   }),
-  rug: define('Rug', 'A soft patch of color with its own cleaning schedule.', 'decor', {
+  rug: define('Rug', 'Soft color with shared care tasks.', 'decor', {
     chores: [chore('Vacuum the rug', 7), chore('Wash the rug', 30)],
   }),
-  clock: define('Wall clock', 'The working kitchen clock, in a finish you choose.', 'decor', {
+  clock: define('Wall clock', 'A working clock in your chosen finish.', 'decor', {
     supplies: [supply('batteries', 'Batteries', '1 pack')], chores: [chore('Dust the clock', 30)],
   }),
-  light: define('Room light', 'Keep the room lighting, with a different shade finish.', 'decor', {
+  light: define('Room light', 'Room lighting and a customizable shade.', 'decor', {
     supplies: [supply('light-bulbs', 'Light bulbs', '1 pack')], chores: [chore('Dust the light shade', 30)],
   }),
-  'supply-shelf': define('Supply shelf', 'Keep general room supplies together without tracking inventory.', 'household', {
+  'supply-shelf': define('Supply shelf', 'Shared supplies, without inventory tracking.', 'household', {
     chores: [chore('Organize the supply shelf', 30)],
   }),
-  'cleaning-caddy': define('Cleaning caddy', 'The familiar shortcut to room chores, with supplies close by.', 'household', {
+  'cleaning-caddy': define('Cleaning caddy', 'Cleaning supplies and room chore shortcuts.', 'household', {
     supplies: [surfaceCleaner], chores: [chore('Clean the cleaning caddy', 30)],
   }),
-  noticeboard: define('Noticeboard', 'Your roommates remain on the same shared noticeboard.', 'household'),
-  'receipt-book': define('Receipt book', 'The same grocery runs and bills, with a cover of your choice.', 'household'),
-  'house-pot': define('House pot', 'Your shared grocery budget, never a second balance or a game currency.', 'household'),
-  'shopping-bag': define('Shopping bag', 'The same household shopping list and your own basket.', 'household'),
-  'settlement-envelope': define('Repayment envelope', 'Keep the shortcut to recorded repayments and the shared ledger.', 'household'),
-  dishwasher: define('Dishwasher', 'An optional fitted helper for dishes and its own cleaning supplies.', 'appliances', {
+  noticeboard: define('Noticeboard', 'Roommates and shared household settings.', 'household'),
+  'receipt-book': define('Receipt book', 'Grocery runs and bills in one ledger.', 'household'),
+  'house-pot': define('House pot', 'Shared grocery budget, not a bank account.', 'household'),
+  'shopping-bag': define('Shopping bag', 'Shared shopping and your own basket.', 'household'),
+  'settlement-envelope': define('Repayment envelope', 'Record repayments in the shared ledger.', 'household'),
+  dishwasher: define('Dishwasher', 'Dish care and manually updated cycle states.', 'appliances', {
     supplies: [supply('dishwasher-tablets', 'Dishwasher tablets', '1 box'), supply('rinse-aid', 'Rinse aid'), supply('dishwasher-salt', 'Dishwasher salt', '1 bag')],
     chores: [chore('Empty the dishwasher', 1), chore('Clean the dishwasher filter', 30)],
     states: states('Dirty', 'Running', 'Ready to empty', 'Empty'),
   }),
-  'washing-machine': define('Washing machine', 'A shared laundry appliance with detergent and maintenance reminders.', 'appliances', {
+  'washing-machine': define('Washing machine', 'Laundry supplies and manually updated cycle states.', 'appliances', {
     placementRooms: ['bathroom'],
     supplies: [supply('laundry-detergent', 'Laundry detergent'), supply('fabric-softener', 'Fabric softener'), supply('washing-machine-cleaner', 'Washing machine cleaner')],
     chores: [chore('Run a laundry load', 7), chore('Clean the washing machine', 30)],
     states: states('Idle', 'Running', 'Ready to unload'),
   }),
-  dryer: define('Dryer', 'Keep track of a drying load and remember the lint filter.', 'appliances', {
+  dryer: define('Dryer', 'Manual load status and lint-filter care.', 'appliances', {
     placementRooms: ['bathroom'],
     supplies: [supply('dryer-sheets', 'Dryer sheets', '1 box')], chores: [chore('Clean the dryer lint filter', 7)],
     states: states('Idle', 'Running', 'Ready to unload'),
   }),
-  'coffee-machine': define('Coffee machine', 'An espresso, filter or capsule setup for the people who use it.', 'appliances', {
+  'coffee-machine': define('Coffee machine', 'Espresso, filter or capsule coffee setups.', 'appliances', {
     variants: variants('Espresso', 'Filter', 'Capsule'),
     supplies: [supply('coffee-beans', 'Coffee beans', '1 bag'), descaler],
     chores: [chore('Empty the coffee grounds', 1), chore('Clean the coffee machine', 7), chore('Descale the coffee machine', 60)],
     states: states('Ready', 'Needs cleaning'),
   }),
-  grinder: define('Coffee grinder', 'A compact grinder beside the coffee setup.', 'appliances', {
+  grinder: define('Coffee grinder', 'Coffee grinding and cleanup tasks.', 'appliances', {
     supplies: [supply('coffee-beans', 'Coffee beans', '1 bag')], chores: [chore('Clean the coffee grinder', 14)],
   }),
-  microwave: define('Microwave', 'A countertop microwave with a simple care routine.', 'appliances', {
+  microwave: define('Microwave', 'A microwave with shared cleaning tasks.', 'appliances', {
     supplies: [surfaceCleaner], chores: [chore('Clean the microwave', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  'air-fryer': define('Air fryer', 'Keep its basket clean and its optional liners on the shared list.', 'appliances', {
+  'air-fryer': define('Air fryer', 'A fryer basket and cleaning supplies.', 'appliances', {
     supplies: [supply('air-fryer-liners', 'Air fryer liners', '1 pack'), dishSoap],
     chores: [chore('Clean the air fryer basket', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  toaster: define('Toaster', 'A small countertop toaster with a crumb-tray chore.', 'appliances', {
+  toaster: define('Toaster', 'A toaster and crumb-tray care.', 'appliances', {
     chores: [chore('Empty the toaster crumb tray', 14)],
   }),
-  'water-filter': define('Water filter', 'A filter jug with replacement cartridges and a care schedule.', 'appliances', {
+  'water-filter': define('Water filter', 'A filter jug and replacement cartridges.', 'appliances', {
     supplies: [supply('water-filter-cartridges', 'Water filter cartridges', '1 pack')],
     chores: [chore('Replace the water filter', 30), chore('Clean the filter jug', 7)],
     states: states('Ready', 'Filter due'),
   }),
-  'dish-rack': define('Dish rack', 'A place to dry dishes, and remember to put them away.', 'fixtures', {
+  'dish-rack': define('Dish rack', 'Dry dishes and track when to clear them.', 'fixtures', {
     chores: [chore('Put away the clean dishes', 1), chore('Clean the dish rack', 14)],
     states: states('Clear', 'Dishes drying', 'Ready to put away'),
   }),
-  bins: define('Bin', 'Choose rubbish, recycling or compost for this room.', 'fixtures', {
+  bins: define('Bin', 'Choose rubbish, recycling or compost.', 'fixtures', {
     area: 'bins', variants: variants('Rubbish', 'Recycling', 'Compost'),
     supplies: [supply('rubbish-bags', 'Rubbish bags', '1 roll')],
     chores: [chore('Empty the bin', 3), chore('Wash the bin', 30)], states: states('Clear', 'Needs emptying'),
   }),
-  vacuum: define('Vacuum cleaner', 'A cleaning station with filter and dust-container care.', 'appliances', {
+  vacuum: define('Vacuum cleaner', 'A vacuum with filter and dust-container care.', 'appliances', {
     supplies: [supply('vacuum-bags', 'Vacuum bags', '1 pack'), supply('vacuum-filter', 'Vacuum filter', '1 filter')],
     chores: [chore('Empty the vacuum', 7), chore('Clean the vacuum filter', 30)], states: states('Ready', 'Needs emptying'),
   }),
-  bath: define('Bath or shower', 'Keep the bath, or fit a walk-in shower in the same designed space.', 'fixtures', {
+  bath: define('Bath or shower', 'Choose a bathtub or walk-in shower.', 'fixtures', {
     area: 'bath', variants: variants('Bath', 'Shower'), supplies: [bathroomCleaner],
     chores: [chore('Clean the bathing area', 7), chore('Clear the drain', 30)], states: states('Clean', 'Needs cleaning'),
   }),
-  toilet: define('Toilet', 'Toilet paper, cleaning supplies and the shared cleaning rotation.', 'fixtures', {
+  toilet: define('Toilet', 'Toilet supplies and shared cleaning tasks.', 'fixtures', {
     area: 'toilet', supplies: [supply('toilet-paper', 'Toilet paper', '1 pack'), supply('toilet-cleaner', 'Toilet cleaner')],
     chores: [chore('Clean the toilet', 7)],
   }),
-  mirror: define('Mirror', 'Keep the bathroom mirror and its wipe-down routine.', 'fixtures', {
+  mirror: define('Mirror', 'A bathroom mirror with shared cleaning.', 'fixtures', {
     area: 'mirror', supplies: [supply('glass-cleaner', 'Glass cleaner')], chores: [chore('Wipe the mirror', 7)],
   }),
-  'towel-rack': define('Towel rail', 'A dedicated place for towels and a regular fresh set.', 'fixtures', {
+  'towel-rack': define('Towel rail', 'Hang towels and plan fresh sets.', 'fixtures', {
     chores: [chore('Change the towels', 7), chore('Wash the towels', 7)],
   }),
-  'laundry-basket': define('Laundry basket', 'Make the next laundry turn visible to the household.', 'furniture', {
+  'laundry-basket': define('Laundry basket', 'Laundry waiting for a wash.', 'furniture', {
     chores: [chore('Wash the shared laundry', 7)], states: states('Empty', 'Filling up', 'Ready for washing'),
   }),
-  'drying-rack': define('Drying rack', 'Hang, dry, fold and put away without inventing a machine timer.', 'furniture', {
+  'drying-rack': define('Drying rack', 'Air-dry clothes and track folding.', 'furniture', {
     chores: [chore('Fold and put away laundry', 7)], states: states('Empty', 'Drying', 'Ready to fold'),
   }),
-  'wall-art': define('Wall art', 'A botanical print or a small geometric composition.', 'decor', {
+  'wall-art': define('Wall art', 'Botanical or geometric wall art.', 'decor', {
     variants: variants('Botanical', 'Geometric'), chores: [chore('Dust the picture frame', 30)],
   }),
-  curtains: define('Curtains', 'Dress the existing window without changing how the room is lit.', 'decor', {
+  curtains: define('Curtains', 'Fabric curtains for the room window.', 'decor', {
     chores: [chore('Wash the curtains', 90)],
   }),
-  'soap-dispenser': define('Soap dispenser', 'A small refillable dispenser with a direct restocking shortcut.', 'fixtures', {
+  'soap-dispenser': define('Soap dispenser', 'Refillable soap with a restocking shortcut.', 'fixtures', {
     supplies: [handSoap], chores: [chore('Refill the soap dispenser', 14)],
   }),
-  'shower-shelf': define('Shower shelf', 'A small shelf for the bathroom supplies your household shares.', 'fixtures', {
+  'shower-shelf': define('Shower shelf', 'Shared toiletries on a wall shelf.', 'fixtures', {
     supplies: [supply('shower-gel', 'Shower gel')], chores: [chore('Clean the shower shelf', 14)],
   }),
-  oven: define('Oven', 'A fitted oven with a glass door, baking racks and a shared cleaning routine.', 'appliances', {
+  oven: define('Oven', 'A fitted oven and shared cleaning.', 'appliances', {
     supplies: [supply('oven-cleaner', 'Oven cleaner'), supply('baking-paper', 'Baking paper', '1 roll')],
     chores: [chore('Clean the oven', 30), chore('Wash the oven trays', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  blender: define('Blender', 'A little countertop blender for smoothies, soups and quick breakfasts.', 'appliances', {
+  blender: define('Blender', 'Blend drinks and plan cleanup.', 'appliances', {
     supplies: [dishSoap], chores: [chore('Wash the blender jug', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  'rice-cooker': define('Rice cooker', 'A rounded cooker for easy shared meals, with a removable pot to clean.', 'appliances', {
+  'rice-cooker': define('Rice cooker', 'Shared rice cooking and pot cleaning.', 'appliances', {
     supplies: [supply('rice', 'Rice', '1 bag')], chores: [chore('Wash the rice cooker pot', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  'fruit-bowl': define('Fruit bowl', 'A colorful bowl for the fruit your household likes to keep around.', 'decor', {
+  'fruit-bowl': define('Fruit bowl', 'A colorful bowl for shared fruit.', 'decor', {
     supplies: [supply('apples', 'Apples', '6 apples'), supply('bananas', 'Bananas', '1 bunch')],
     chores: [chore('Check the fruit bowl', 3), chore('Wash the fruit bowl', 14)],
   }),
-  'spice-rack': define('Spice rack', 'Keep little jars of seasoning together on a rack or counter.', 'fixtures', {
+  'spice-rack': define('Spice rack', 'Keep seasonings together and plan refills.', 'fixtures', {
     supplies: [supply('salt', 'Salt', '1 pack'), supply('black-pepper', 'Black pepper', '1 jar'), supply('mixed-herbs', 'Mixed herbs', '1 jar')],
     chores: [chore('Refill and tidy the spices', 30)],
   }),
-  'bread-box': define('Bread box', 'A wooden bread box with a roll-top lid and space for daily staples.', 'furniture', {
+  'bread-box': define('Bread box', 'A wooden roll-top bread box.', 'furniture', {
     supplies: [supply('bread', 'Bread', '1 loaf')], chores: [chore('Clear crumbs from the bread box', 7)],
   }),
-  'knife-block': define('Knife block', 'A compact wooden block that keeps the cooking tools in one place.', 'fixtures', {
+  'knife-block': define('Knife block', 'A wooden block for cooking tools.', 'fixtures', {
     chores: [chore('Clean the knife block', 30)],
   }),
-  'cookbook-stand': define('Cookbook stand', 'Keep a favorite recipe open while the household cooks together.', 'decor', {
+  'cookbook-stand': define('Cookbook stand', 'Keep a recipe open while cooking.', 'decor', {
     chores: [chore('Wipe the cookbook stand', 14)],
   }),
-  'paper-towel-holder': define('Paper towel holder', 'A reusable stand with a shortcut for the next roll.', 'fixtures', {
+  'paper-towel-holder': define('Paper towel holder', 'A reusable holder and refill shortcut.', 'fixtures', {
     supplies: [supply('paper-towels', 'Paper towels', '2 rolls')], chores: [chore('Refill the paper towels', 7)],
   }),
-  'storage-jars': define('Storage jars', 'A little set of lidded jars for staples or everyday supplies.', 'furniture', {
+  'storage-jars': define('Storage jars', 'Lidded jars for staples and supplies.', 'furniture', {
     chores: [chore('Wash and refill the storage jars', 30)],
   }),
-  'kitchen-cart': define('Kitchen cart', 'A small wheeled cart with two shelves for the things that need a home.', 'furniture', {
+  'kitchen-cart': define('Kitchen cart', 'A two-shelf cart for household essentials.', 'furniture', {
     supplies: [surfaceCleaner], chores: [chore('Tidy the kitchen cart', 7), chore('Wipe the cart shelves', 14)],
   }),
-  'pet-bowls': define('Pet bowls', 'Two little bowls on a mat, with shared care tasks and supply shortcuts.', 'fixtures', {
+  'pet-bowls': define('Pet bowls', 'Pet bowls with shared care tasks.', 'fixtures', {
     supplies: [supply('pet-food', 'Pet food', '1 bag')], chores: [chore('Refresh the pet water bowl', 1), chore('Wash the pet bowls', 7)],
     states: states('Ready', 'Needs refilling'),
   }),
-  speaker: define('Speaker', 'A small speaker for a room that feels lived in.', 'decor', {
+  speaker: define('Speaker', 'A decorative speaker for the room.', 'decor', {
     chores: [chore('Dust the speaker', 14)],
   }),
-  'air-purifier': define('Air purifier', 'A compact air purifier with a reminder to look after its filter.', 'appliances', {
+  'air-purifier': define('Air purifier', 'An air purifier and filter-care tasks.', 'appliances', {
     supplies: [supply('air-purifier-filter', 'Air purifier filter', '1 filter')],
     chores: [chore('Clean the air purifier filter', 30)], states: states('Ready', 'Filter due'),
   }),
-  'watering-can': define('Watering can', 'A bright little watering can to keep near your plants.', 'decor', {
+  'watering-can': define('Watering can', 'A watering can for plant care.', 'decor', {
     chores: [chore('Rinse the watering can', 30)],
   }),
-  'tea-set': define('Tea set', 'A teapot and cups on a tray, ready for a shared tea break.', 'decor', {
+  'tea-set': define('Tea set', 'A teapot and cups on a tray.', 'decor', {
     supplies: [supply('tea-bags', 'Tea bags', '1 box')], chores: [chore('Wash the tea set', 7)],
   }),
-  'bathroom-scales': define('Bathroom scales', 'A simple bathroom scale without collecting personal measurements.', 'appliances', {
+  'bathroom-scales': define('Bathroom scales', 'Bathroom scales; no personal measurements stored.', 'appliances', {
     supplies: [supply('batteries', 'Batteries', '1 pack')], chores: [chore('Wipe the bathroom scales', 14)],
   }),
-  'hair-dryer': define('Hair dryer', 'Give the hair dryer a place to live and a filter-cleaning reminder.', 'appliances', {
+  'hair-dryer': define('Hair dryer', 'A hair dryer and filter-care tasks.', 'appliances', {
     chores: [chore('Clean the hair dryer filter', 30)],
   }),
-  'toothbrush-holder': define('Toothbrush holder', 'Keep the bathroom counter tidy with a little cup for brushes.', 'fixtures', {
+  'toothbrush-holder': define('Toothbrush holder', 'A cup for shared toothbrush storage.', 'fixtures', {
     supplies: [supply('toothpaste', 'Toothpaste', '1 tube')], chores: [chore('Wash the toothbrush holder', 7)],
   }),
-  'storage-cabinet': define('Storage cabinet', 'A freestanding cabinet for towels, supplies or the little things around home.', 'furniture', {
+  'storage-cabinet': define('Storage cabinet', 'Freestanding storage for towels and supplies.', 'furniture', {
     chores: [chore('Organize the storage cabinet', 30), chore('Wipe the cabinet shelves', 30)],
   }),
-  'wall-calendar': define('Wall calendar', 'A paper calendar corner with a weekly household-planning routine.', 'decor', {
+  'wall-calendar': define('Wall calendar', 'A paper calendar for household planning.', 'decor', {
     chores: [chore('Plan the household week', 7)],
   }),
-  'key-hooks': define('Key hooks', 'A small wall rail for keys and other things you grab on the way out.', 'fixtures', {
+  'key-hooks': define('Key hooks', 'Wall hooks for keys and small essentials.', 'fixtures', {
     chores: [chore('Tidy the key hooks', 30)],
   }),
-  'bath-tray': define('Bath tray', 'A wooden tray across the bathtub for a book and a folded cloth.', 'furniture', {
+  'bath-tray': define('Bath tray', 'A bathtub tray for a book and cloth.', 'furniture', {
     chores: [chore('Clean and dry the bath tray', 7)],
   }),
-  'bathroom-stool': define('Bathroom stool', 'A little wooden step stool with a finish of its own.', 'furniture', {
+  'bathroom-stool': define('Bathroom stool', 'A wooden step stool for the bathroom.', 'furniture', {
     chores: [chore('Wipe the bathroom stool', 7)],
   }),
-  'stand-mixer': define('Stand mixer', 'A little baking station with a mixing bowl and a shared cleanup routine.', 'appliances', {
+  'stand-mixer': define('Stand mixer', 'A baking mixer and cleanup tasks.', 'appliances', {
     supplies: [supply('flour', 'Flour', '1 bag'), supply('sugar', 'Sugar', '1 bag')],
     chores: [chore('Wash the mixing bowl and attachments', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  'waffle-maker': define('Waffle maker', 'A countertop waffle iron for a slow shared breakfast.', 'appliances', {
+  'waffle-maker': define('Waffle maker', 'A waffle maker for shared breakfasts.', 'appliances', {
     supplies: [supply('cooking-oil', 'Cooking oil')], chores: [chore('Clean the waffle plates', 7)], states: states('Clean', 'Needs cleaning'),
   }),
-  'kitchen-scale': define('Kitchen scale', 'A compact scale for cooking and baking, with no ingredient tracking.', 'appliances', {
+  'kitchen-scale': define('Kitchen scale', 'Kitchen scales; no ingredient tracking.', 'appliances', {
     supplies: [supply('batteries', 'Batteries', '1 pack')], chores: [chore('Wipe the kitchen scale', 7)],
   }),
-  'cutting-boards': define('Cutting boards', 'A pair of wooden boards with a tidy stand.', 'fixtures', {
+  'cutting-boards': define('Cutting boards', 'Wooden cutting boards with a stand.', 'fixtures', {
     supplies: [dishSoap, supply('board-oil', 'Cutting board oil')],
     chores: [chore('Clean the cutting boards', 7), chore('Care for the wooden boards', 30)],
   }),
-  'mug-tree': define('Mug tree', 'Keep the household mugs together on a little wooden tree.', 'fixtures', {
+  'mug-tree': define('Mug tree', 'A wooden stand for household mugs.', 'fixtures', {
     chores: [chore('Wash the shared mugs', 7), chore('Wipe the mug stand', 14)],
   }),
-  'cereal-dispenser': define('Cereal dispenser', 'A breakfast hopper with a simple refill shortcut.', 'fixtures', {
+  'cereal-dispenser': define('Cereal dispenser', 'A breakfast dispenser with refill shortcuts.', 'fixtures', {
     supplies: [supply('cereal', 'Breakfast cereal', '1 box')], chores: [chore('Clean the cereal dispenser', 30)],
   }),
-  'egg-basket': define('Egg basket', 'A small basket for a kitchen with a farmhouse feel.', 'decor', {
+  'egg-basket': define('Egg basket', 'A small basket for kitchen eggs.', 'decor', {
     supplies: [supply('eggs', 'Eggs', '1 carton')], chores: [chore('Check egg dates and clean the basket', 7)],
   }),
-  'wall-shelf': define('Wall shelf', 'A floating shelf for books and the little things that make a room yours.', 'furniture', {
+  'wall-shelf': define('Wall shelf', 'A floating shelf for books and keepsakes.', 'furniture', {
     chores: [chore('Dust the wall shelf', 14)],
   }),
-  'ironing-board': define('Ironing board', 'A folding board and iron with a dedicated place in the room.', 'furniture', {
+  'ironing-board': define('Ironing board', 'An ironing board, iron and care tasks.', 'furniture', {
     supplies: [supply('ironing-spray', 'Ironing spray')], chores: [chore('Put away the ironing', 7), chore('Clean the ironing-board cover', 60)],
   }),
-  'toilet-brush': define('Toilet brush', 'A brush and holder with a regular cleaning reminder.', 'fixtures', {
+  'toilet-brush': define('Toilet brush', 'A brush, holder and cleaning tasks.', 'fixtures', {
     supplies: [supply('toilet-cleaner', 'Toilet cleaner')], chores: [chore('Clean the toilet-brush holder', 7)],
   }),
-  'shower-squeegee': define('Shower squeegee', 'A wall-hung squeegee for keeping the bathing area clear.', 'fixtures', {
+  'shower-squeegee': define('Shower squeegee', 'Keep shower surfaces clear of water.', 'fixtures', {
     chores: [chore('Squeegee the bathing area', 1), chore('Clean the squeegee blade', 14)],
   }),
-  'tissue-box': define('Tissue box', 'A refillable tissue box for a counter or table.', 'fixtures', {
+  'tissue-box': define('Tissue box', 'A refillable tissue box.', 'fixtures', {
     supplies: [supply('tissues', 'Tissues', '1 box')], chores: [chore('Refill the tissue box', 14)],
   }),
-  'first-aid-kit': define('First-aid kit', 'Keep everyday first-aid supplies together and check their expiry dates.', 'household', {
+  'first-aid-kit': define('First-aid kit', 'First-aid supplies and expiry checks.', 'household', {
     supplies: [supply('plasters', 'Plasters', '1 box'), supply('sterile-dressings', 'Sterile dressings', '1 pack')],
     chores: [chore('Check the first-aid kit', 90)],
   }),
-  'reed-diffuser': define('Reed diffuser', 'A small bottle and reeds for a quiet decorative corner.', 'decor', {
+  'reed-diffuser': define('Reed diffuser', 'A decorative bottle with fragrance reeds.', 'decor', {
     supplies: [supply('diffuser-refill', 'Reed diffuser refill')], chores: [chore('Dust the diffuser bottle', 14)],
   }),
-  'board-game': define('Board game', 'A little board, dice and pieces for time around the shared table.', 'decor', {
+  'board-game': define('Board game', 'A board, dice and game pieces.', 'decor', {
     chores: [chore('Put away and count the game pieces', 7)], states: states('Ready', 'In use', 'Needs tidying'),
   }),
-  'record-player': define('Record player', 'A turntable corner with a vinyl record and a care routine.', 'decor', {
+  'record-player': define('Record player', 'A decorative turntable with record-care tasks.', 'decor', {
     supplies: [supply('record-cleaner', 'Record cleaner')], chores: [chore('Dust the record player', 14)],
   }),
-  sofa: define('Sofa', 'The shared spot for a quiet evening, with a corner or straight layout.', 'furniture', {
+  sofa: define('Sofa', 'Choose a corner or straight sofa.', 'furniture', {
     area: 'seating', variants: variants('Corner', 'Straight'),
     supplies: [supply('upholstery-cleaner', 'Upholstery cleaner')],
     chores: [chore('Vacuum the sofa', 7), chore('Wash the cushion covers', 30)],
     states: states('Tidy', 'Needs tidying'),
   }),
-  'coffee-table': define('Coffee table', 'A low table for games and tea, with its own wipe-down routine.', 'furniture', {
+  'coffee-table': define('Coffee table', 'A low table for games and tea.', 'furniture', {
     area: 'surfaces', variants: variants('Rectangular', 'Round'), supplies: [surfaceCleaner],
     chores: [chore('Wipe the coffee table', 7)], states: states('Clear', 'Needs clearing'),
   }),
-  tv: define('TV', 'A screen on the shared media unit, with reminders to keep it dust-free.', 'appliances', {
+  tv: define('TV', 'A room display, not a media player.', 'appliances', {
     area: 'surfaces', supplies: [dustingCloths, supply('batteries', 'Batteries', '1 pack')],
     chores: [chore('Dust the TV and remote', 14)],
   }),
-  'media-unit': define('Media unit', 'Low storage for the shared screen, records and speakers.', 'furniture', {
+  'media-unit': define('Media unit', 'Shared storage for screens, records and speakers.', 'furniture', {
     area: 'surfaces', supplies: [dustingCloths],
     chores: [chore('Dust the media unit', 14), chore('Tidy the media shelf', 30)],
   }),
-  bookshelf: define('Bookshelf', 'A home for shared books and games, with space for a small object.', 'furniture', {
+  bookshelf: define('Bookshelf', 'Storage for shared books and games.', 'furniture', {
     area: 'surfaces', supplies: [dustingCloths],
     chores: [chore('Dust the bookshelf', 14), chore('Tidy the books and games', 30)],
   }),
-  'floor-lamp': define('Floor lamp', 'A warm reading light beside the sofa.', 'decor', {
+  'floor-lamp': define('Floor lamp', 'A warm reading light.', 'decor', {
     area: 'surfaces', supplies: [supply('light-bulbs', 'Light bulbs', '1 pack')],
     chores: [chore('Dust the floor lamp', 30)],
   }),

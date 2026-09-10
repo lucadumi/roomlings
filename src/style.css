@@ -64,6 +64,7 @@
   --control-hover: var(--leaf-soft);
   --control-ink: var(--ink);
   --control-shadow: 0 2px 0 #3d405b1a;
+  --modal-shadow: 0 5px 0 #809b5947, 0 24px 65px #334b2733;
   --action-fill: var(--palette-red);
   --action-hover: #9f4533;
   --action-ink: #ffffff;

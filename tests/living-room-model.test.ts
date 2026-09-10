@@ -16,6 +16,7 @@ import type { LivingRoomFocus, LivingRoomTarget } from '../src/livingRoomModel.t
 import { buildRoomComponentModel } from '../src/roomComponentModels.ts'
 import { createRoomComponentScene, isSceneObjectVisible } from '../src/roomComponentScene.ts'
 import { applyRoomStyle, roomAccents, roomPresets } from '../src/roomStyles.ts'
+import { roomShellBounds } from '../src/roomLayout.ts'
 
 function meshes(root: Object3D): Mesh[] {
   const result: Mesh[] = []
@@ -115,7 +116,7 @@ test('all lounge geometry is finite, low-poly, opaque and covered by one materia
   assert.deepEqual(bounds, model.bounds)
   assert.ok(bounds.min.x >= -5.1 && bounds.max.x <= 5.1)
   assert.ok(bounds.min.y >= -0.3 && bounds.max.y <= 4.6)
-  assert.ok(bounds.min.z >= -3.5 && bounds.max.z <= 3.4)
+  assert.ok(bounds.min.z >= -3.5 && bounds.max.z <= roomShellBounds('living-room').max.z + 0.0001)
   assert.equal(new Set(model.materials).size, model.materials.length)
   assert.deepEqual(Object.keys(model.styleMaterials).sort(), Object.keys(roomPresets.original.colors).sort())
   for (const mesh of meshes(room)) {
@@ -231,7 +232,7 @@ test('every lounge chore target remains physically reachable from the open corne
   for (const target of livingRoomTargets) {
     const offset = new Vector3(...baseCameraOffset)
     const ray = new Raycaster(new Vector3(...points[target]).add(offset), offset.negate().normalize())
-    let object: Object3D | undefined = ray.intersectObject(room, true)[0]?.object
+    let object: Object3D | undefined = ray.intersectObject(room, true).find(({ object }) => isSceneObjectVisible(object, room))?.object
     while (object && object !== room && !object.userData.livingRoomTarget) object = object.parent ?? undefined
     assert.equal(object?.userData.livingRoomTarget, target, `${target} must not be hidden behind another fixture`)
   }

@@ -7,6 +7,9 @@ import type { RoomStyle } from '../shared/domain.ts'
 import { defaultRoomComponents } from '../shared/roomComponents.ts'
 import type { RoomSlotId } from '../shared/roomComponents.ts'
 import { fitRoomBounds } from './camera.ts'
+import { createRoomWallGroup } from './roomCutaway.ts'
+import { buildRoomWalls } from './roomShell.ts'
+import { roomShellLayout } from './roomLayout.ts'
 import type { SceneFocus } from './camera.ts'
 import type { ContactShadow } from './lighting.ts'
 import { livingRoomWindow } from './livingRoomComponentModels.ts'
@@ -107,7 +110,9 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
   }
 
   room.name = 'Open-corner living room'
-  box(room, [10, 0.24, 6.6], [0, -0.135, 0], styleMaterials.wood, 0.085)
+  const { outer } = roomShellLayout('living-room')
+  box(room, [outer.right - outer.left, 0.24, outer.front - outer.back],
+    [(outer.left + outer.right) / 2, -0.135, (outer.back + outer.front) / 2], styleMaterials.wood, 0.085)
   box(room, [9.92, 0.035, 6.5], [0, -0.012, 0], styleMaterials.floor, 0.025)
   const floor = new Group()
   floor.name = livingRoomLabels.floor
@@ -125,48 +130,44 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
     }
   }
 
-  const { left, right, bottom, top, wallZ } = livingRoomWindow
+  const { left, right, bottom, top } = livingRoomWindow
   const wall = new Group()
   wall.name = 'Walls around the open window'
   room.add(wall)
-  box(wall, [left + 5, 4.5, 0.14], [(left - 5) / 2, 2.25, wallZ], styleMaterials.wall)
-  box(wall, [5 - right, 4.5, 0.14], [(right + 5) / 2, 2.25, wallZ], styleMaterials.wall)
-  box(wall, [right - left, bottom, 0.14], [(right + left) / 2, bottom / 2, wallZ], styleMaterials.wall)
-  box(wall, [right - left, 4.5 - top, 0.14], [(right + left) / 2, (4.5 + top) / 2, wallZ], styleMaterials.wall)
-  box(wall, [0.14, 4.5, 4.0], [-4.93, 2.25, -1.23], styleMaterials.wall, 0.025)
-  box(wall, [10, 0.095, 0.19], [0, 4.49, wallZ + 0.01], styleMaterials.trim, 0.012)
-  box(wall, [0.19, 0.095, 4.01], [-4.92, 4.49, -1.23], styleMaterials.trim, 0.012)
-  box(wall, [9.84, 0.13, 0.065], [0.01, 0.115, -3.128], styleMaterials.trim, 0.008)
-  box(wall, [0.065, 0.13, 3.91], [-4.824, 0.115, -1.24], styleMaterials.trim, 0.008)
+  buildRoomWalls(wall, 'living-room', {
+    name: 'Living room', centerY: 2.25, wall: styleMaterials.wall, trim: styleMaterials.trim,
+    opening: { left, right, bottom, top },
+  })
 
   const window = new Group()
   window.name = 'Recessed lounge window'
   window.userData.roomLightSwitch = true
   room.add(window)
-  box(window, [right - left, top - bottom, 0.018],
+  const windowPane = createRoomWallGroup(window, 'back', 'Living room window cutaway')
+  box(windowPane, [right - left, top - bottom, 0.018],
     [(left + right) / 2, (bottom + top) / 2, -3.405], sky).receiveShadow = false
-  silhouette(window, [[left, bottom], [right, bottom], [right, 2.58], [0.82, 2.81],
+  silhouette(windowPane, [[left, bottom], [right, bottom], [right, 2.58], [0.82, 2.81],
     [0.1, 2.55], [-0.8, 2.83], [-1.64, 2.56], [left, 2.75]], -3.387, hills)
-  silhouette(window, [[left, bottom], [right, bottom], [right, 2.35], [0.77, 2.54],
+  silhouette(windowPane, [[left, bottom], [right, bottom], [right, 2.35], [0.77, 2.54],
     [0.1, 2.33], [-0.82, 2.52], [-1.74, 2.29], [left, 2.41]], -3.377, trees)
   const sun = new Mesh(new CylinderGeometry(0.22, 0.22, 0.012, 12), sunshine)
   sun.rotation.x = Math.PI / 2
   sun.position.set(-1.79, 3.6, -3.383)
-  window.add(sun)
+  windowPane.add(sun)
   for (const [x, y, width] of [[-0.33, 3.65, 0.62], [0.76, 3.29, 0.48]]) {
-    silhouette(window, [[x - width / 2, y - 0.04], [x + width / 2, y - 0.04], [x + width / 2, y + 0.04],
+    silhouette(windowPane, [[x - width / 2, y - 0.04], [x + width / 2, y - 0.04], [x + width / 2, y + 0.04],
       [x + width * 0.18, y + 0.04], [x, y + 0.16], [x - width * 0.2, y + 0.06],
       [x - width / 2, y + 0.05]], -3.38, cloud)
   }
   for (const x of [left, right]) {
-    box(window, [0.095, top - bottom + 0.14, 0.245], [x, (top + bottom) / 2, -3.23], styleMaterials.counter, 0.008)
-    box(window, [0.045, top - bottom + 0.06, 0.018], [x, (top + bottom) / 2, -3.095], styleMaterials.wood, 0.005)
+    box(windowPane, [0.095, top - bottom + 0.14, 0.245], [x, (top + bottom) / 2, -3.23], styleMaterials.counter, 0.008)
+    box(windowPane, [0.045, top - bottom + 0.06, 0.018], [x, (top + bottom) / 2, -3.095], styleMaterials.wood, 0.005)
   }
   for (const y of [bottom, top]) {
-    box(window, [right - left + 0.14, 0.095, 0.245], [(left + right) / 2, y, -3.23], styleMaterials.counter, 0.008)
+    box(windowPane, [right - left + 0.14, 0.095, 0.245], [(left + right) / 2, y, -3.23], styleMaterials.counter, 0.008)
   }
-  box(window, [0.065, top - bottom, 0.1], [(left + right) / 2, (top + bottom) / 2, -3.19], styleMaterials.counter, 0.006)
-  box(window, [right - left, 0.055, 0.1], [(left + right) / 2, 3.16, -3.19], styleMaterials.counter, 0.006)
+  box(windowPane, [0.065, top - bottom, 0.1], [(left + right) / 2, (top + bottom) / 2, -3.19], styleMaterials.counter, 0.006)
+  box(windowPane, [right - left, 0.055, 0.1], [(left + right) / 2, 3.16, -3.19], styleMaterials.counter, 0.006)
   box(window, [4.46, 0.14, 0.48], [-0.55, 2.07, -3.03], styleMaterials.lightWood, 0.018)
   box(window, [4.29, 0.095, 0.08], [-0.55, 1.958, -3.102], styleMaterials.trim, 0.01)
 

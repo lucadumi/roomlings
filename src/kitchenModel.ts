@@ -58,8 +58,8 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const styleMaterials = { ...scenery.styleMaterials, fridge: sage, fridgeDoor: lightSage, fridgeEdge: edge }
   box(kitchen, [0.14, 3.48, 1.7], [-1.02, 1.97, 0], sage, 0.035)
   box(kitchen, [0.14, 3.48, 1.7], [1.02, 1.97, 0], sage, 0.035)
-  box(kitchen, [2, 3.48, 0.14], [0, 1.97, -0.78], sage, 0.035)
-  box(kitchen, [2.15, 0.15, 1.7], [0, 3.68, 0], lightSage, 0.035)
+  box(kitchen, [2, 3.48, 0.14], [0, 1.97, -0.78], sage, 0.035).name = 'Fridge back panel'
+  box(kitchen, [2.15, 0.15, 1.68], [0, 3.68, 0], lightSage, 0.035).name = 'Fridge top cover'
   box(kitchen, [2.15, 0.2, 1.7], [0, 0.3, 0], sage, 0.035)
   box(kitchen, [1.88, 3.15, 0.08], [0, 1.94, -0.66], inside)
   box(kitchen, [1.9, 0.08, 1.4], [0, 2.64, 0.02], porcelain)

@@ -51,6 +51,7 @@ import type { ComponentChoreSuggestion, RoomComponent } from '../shared/roomComp
 import { roomAccessSchema } from '../shared/roomAccess.ts'
 import type { RoomAccess } from '../shared/roomAccess.ts'
 import { RoomEditor, RoomObjectsPanel } from './RoomComponents.tsx'
+import { hasComponentConfigurationChanges } from './componentConfiguration.ts'
 import { RoomAdminPanel } from './RoomAdminPanel.tsx'
 import { Feedback, FeedbackAction } from './Feedback.tsx'
 
@@ -666,12 +667,26 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     visit('room-edit')
   }
   const selectRoomComponent = (id: string) => {
-    if (busy) return
-    if (page === 'room-edit') setSelectedComponentId(id)
-    else openRoomObjects(id)
+    if (busy) {
+      if (page === 'room-edit') setFormError('Wait for the current save to finish.')
+      else setError('Wait for the current save to finish.')
+      return
+    }
+    const component = savedComponents.find((item) => item.id === id && item.roomId === currentRoom && item.installed)
+    if (!component) {
+      if (page === 'room-edit') setFormError('Apply this object before opening its chores.')
+      else setError('That object is no longer available.')
+      return
+    }
+    if (page === 'room-edit' && componentPreview && componentPreview.householdId === session?.household.id
+      && componentPreview.roomId === currentRoom && hasComponentConfigurationChanges(savedComponents, componentPreview.components)) {
+      setFormError('Apply or cancel your room changes before opening chores.')
+      return
+    }
+    openComponentChores(component)
   }
   const openComponentChores = (component: RoomComponent) => {
-    setChoreFilter({ room: component.roomId, area: null, componentId: component.id })
+    setChoreFilter({ room: component.roomId, area: componentChoreArea(component), componentId: component.id })
     setChoreView('active')
     setChoreMine(false)
     visit('chores', null)

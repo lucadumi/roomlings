@@ -10,7 +10,8 @@ import type { ContactShadow } from './lighting.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
-import { bathroomCaddyShelf, bathroomLayout, bathroomMat, componentPlacements, roomFootprints } from './roomLayout.ts'
+import { bathroomCaddyShelf, bathroomLayout, bathroomMat, componentPlacements, roomFootprints, roomShellLayout } from './roomLayout.ts'
+import { buildRoomWalls } from './roomShell.ts'
 
 export const bathroomTargets = ['sink', 'mirror', 'toilet', 'bath', 'floor', 'chores', 'supplies'] as const
 export type BathroomTarget = typeof bathroomTargets[number]
@@ -109,18 +110,11 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
 
   room.name = 'Open-corner bathroom'
   const footprint = roomFootprints.bathroom
-  const floorBase = box(room, [footprint.width, 0.24, footprint.depth], [0, -0.145, footprint.centerZ], styleMaterials.lightWood, 0.1)
+  const { outer } = roomShellLayout('bathroom')
+  const floorBase = box(room, [outer.right - outer.left, 0.24, outer.front - outer.back],
+    [(outer.left + outer.right) / 2, -0.145, (outer.back + outer.front) / 2], styleMaterials.lightWood, 0.1)
   floorBase.name = 'Bathroom floor base'
-  box(room, [footprint.width, footprint.wallHeight, 0.14], [0, 2.15, footprint.backZ], styleMaterials.wall, 0.045)
-  box(room, [0.14, footprint.wallHeight, footprint.depth - 0.1], [footprint.leftX, 2.15, footprint.centerZ - 0.05], styleMaterials.wall, 0.045)
-  box(room, [footprint.width - 0.2, 1.35, 0.028], [0, 0.83, -3.07], styleMaterials.floor)
-  box(room, [footprint.width - 0.18, 0.08, 0.07], [0, 1.54, -3.06], styleMaterials.trim)
-  box(room, [footprint.width - 0.18, 0.13, 0.07], [0, 0.13, -3.06], styleMaterials.trim)
-  box(room, [0.065, 0.13, footprint.depth - 0.18], [footprint.leftX + 0.1, 0.13, footprint.centerZ - 0.05], styleMaterials.trim)
-  for (let x = 0; x < 13; x++) {
-    box(room, [0.018, 1.28, 0.012], [(x - 6) * (footprint.width - 1.08) / 12, 0.84, -3.048], styleMaterials.trim)
-  }
-  box(room, [footprint.width - 0.22, 0.018, 0.012], [0, 0.83, -3.048], styleMaterials.trim)
+  buildRoomWalls(room, 'bathroom', { name: 'Bathroom', centerY: 2.15, wall: styleMaterials.wall, trim: styleMaterials.trim, lowerPanel: styleMaterials.floor })
   const floor = actor('floor', [0, 0, 0], [bathroomMat.position[0], 0.16, bathroomMat.position[2]])
   const tileWidth = (footprint.width - 0.26) / 10
   const tileDepth = (footprint.depth - 0.25) / 6

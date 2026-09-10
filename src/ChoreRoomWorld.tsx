@@ -11,19 +11,20 @@ import type { RoomStyle } from '../shared/domain.ts'
 import type { ComponentKind, RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import { baseCameraOffset, cameraProjection, fitRoomBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
 import {
-  componentAccessibleName, componentLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible, visibleRoomBounds,
+  componentAccessibleName, componentChoresLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible, visibleRoomBounds,
 } from './roomComponentScene.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import type { RoomWorldProps } from './roomViewTypes.ts'
 import { createRoomHologram } from './roomHologram.ts'
 import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from './placementArrow.ts'
+import { createRoomCutaway } from './roomCutaway.ts'
 import './bathroom.css'
 
 type ChoreRoomFocus<Target extends string> = Target | 'room'
@@ -139,7 +140,6 @@ export default function ChoreRoomWorld<Target extends string>({
   const [renderingPaused, setRenderingPaused] = useState(false)
   const placementLabelsHidden = !preview && !tour && editMode && !!placementPreviewId
   const labelsShown = showLabels && !placementLabelsHidden
-  const objectLabels = installed.filter((component) => editMode || !config.targets.some((target) => componentMatchesTarget(config, target, component)))
   const selectedComponent = installed.find((component) => component.id === selectedComponentId)
   const hoveredComponent = hovered && typeof hovered !== 'string' && 'componentId' in hovered
     ? installed.find((component) => component.id === hovered.componentId) : undefined
@@ -229,6 +229,7 @@ export default function ChoreRoomWorld<Target extends string>({
     const hologram = createRoomHologram(room, shadow)
     const placementArrow = createPlacementArrow(room)
     scene.add(placementArrow.object)
+    const cutaway = createRoomCutaway(room)
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     const raycaster = new Raycaster()
     const pointer = new Vector2()
@@ -296,7 +297,7 @@ export default function ChoreRoomWorld<Target extends string>({
         currentControls.roomView = true
         const pendingId = state.current.editMode ? state.current.placementPreviewId : null
         const pendingActor = pendingId ? componentScene.actors.get(pendingId) : undefined
-        targetRotation = preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined)
+        targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined))
         targetPitch = 0
         setFocused(focus)
         setRoomViewReset(true)
@@ -368,7 +369,7 @@ export default function ChoreRoomWorld<Target extends string>({
         if (selectedObject) {
           currentControls.roomView = false
           currentControls.zoom = 1
-          targetRotation = preferredRoomRotation(selectedObject.slotId)
+          targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(selectedObject.slotId))
           setRoomViewReset(false)
           setZoom(currentControls.zoom)
         }
@@ -476,6 +477,11 @@ export default function ChoreRoomWorld<Target extends string>({
         model.windowMaterials.disc.emissive.copy(nightDisc)
         model.windowMaterials.disc.emissiveIntensity = lightMix * 0.2
       }
+      const cutawayUpdate = cutaway.update(camera)
+      shadowsDirty ||= cutawayUpdate.shadowsChanged
+      const rotationValue = normalizeRoomRotation(room.rotation.y).toFixed(5)
+      if (canvas.dataset.roomRotation !== rotationValue) canvas.dataset.roomRotation = rotationValue
+      if (canvas.dataset.hiddenWalls !== cutawayUpdate.hiddenSides) canvas.dataset.hiddenWalls = cutawayUpdate.hiddenSides
       const hologramUpdate = hologram.update(placementCandidate, componentScene.actors.values())
       shadowsDirty ||= hologramUpdate.shadowsChanged
       const arrowAnimating = placementArrow.update(placementBounds, now, !reduced && !latest.paused)
@@ -593,8 +599,9 @@ export default function ChoreRoomWorld<Target extends string>({
           return
         }
         moved ||= Math.hypot(event.clientX - startX, event.clientY - startY) > 4
-        targetRotation = MathUtils.clamp(targetRotation + (event.clientX - previousX) * 0.004, -0.75, 0.75)
+        targetRotation += (event.clientX - previousX) * 0.004
         targetPitch = MathUtils.clamp(targetPitch + (event.clientY - previousY) * 0.015, -1.7, 3)
+        setRoomViewReset(false)
         previousX = event.clientX
         previousY = event.clientY
         wake()
@@ -740,23 +747,22 @@ export default function ChoreRoomWorld<Target extends string>({
         aria-label={editMode ? config.copy.editing : config.copy.interactive} />
       {unavailable ? <div className={`chore-room-unavailable ${config.roomId}-unavailable`} role="status"><RoomIcon size={34} /><strong>{config.copy.unavailable}</strong><p>You can still manage chores and restock supplies with the room controls.</p></div> : <>
         {!placementLabelsHidden && <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label={config.copy.objects}>
-          {!editMode && config.targets.filter((target) => availableFocus(config, target, installed) === target).map((target) => {
-            const component = targetComponent(config, target, installed)
+          {!editMode && config.targets.filter((target) => !config.targetSlots[target]).map((target) => {
             const area = config.getTargetArea(target)
             const due = area ? dueChores[area] : undefined
-            const base = config.getTargetLabel?.(target, component) ?? config.labels[target]
-            const label = `${componentLabel(component, base)}${due && due > 0 ? ` (${due} due)` : ''}`
+            const label = `${config.labels[target]}${due && due > 0 ? ` (${due} due)` : ''}`
             return <button key={target} type="button" ref={(button) => { if (button) labels.current.set(target, button); else labels.current.delete(target) }}
-              className={`world-hotspot hotspot-${target}`} {...{ [`data-${config.roomId}-target`]: target }} data-component-id={component?.id} data-selected={focused === target}
+              className={`world-hotspot hotspot-${target}`} {...{ [`data-${config.roomId}-target`]: target }} data-selected={focused === target}
               aria-label={label} onClick={() => activate(target)} onMouseEnter={() => setHovered(target)} onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(target)} onBlur={() => setHovered(null)}>
               <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span>
             </button>
           })}
-          {onComponentSelect && objectLabels.map((component) => <button type="button" key={component.id}
+          {onComponentSelect && installed.map((component) => <button type="button" key={component.id}
             ref={(button) => { if (button) componentLabels.current.set(component.id, button); else componentLabels.current.delete(component.id) }}
             className="world-hotspot hotspot-component" data-component-id={component.id} data-component-kind={component.kind}
-            data-selected={!overviewFocus && selectedComponentId === component.id} aria-label={`${editMode ? 'Edit' : 'Open'} ${componentAccessibleName(component, installed)}`}
+            {...{ [`data-${config.roomId}-target`]: config.targets.find((target) => componentMatchesTarget(config, target, component)) }}
+            data-selected={!overviewFocus && selectedComponentId === component.id} aria-label={componentChoresLabel(component, installed)}
             onClick={() => activate({ componentId: component.id })} onMouseEnter={() => setHovered({ componentId: component.id })}
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
             <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
@@ -776,9 +782,9 @@ export default function ChoreRoomWorld<Target extends string>({
         </div>
         <div className="world-interaction-hint"><Move size={13} />{hovered && typeof hovered !== 'string'
           ? 'lighting' in hovered ? (evening ? 'Switch to daylight' : 'Switch to evening lighting')
-            : `${editMode ? 'Edit' : 'Open'} ${hoveredComponent ? componentAccessibleName(hoveredComponent, installed) : 'room object'}`
+            : hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores'
           : hoveredTarget === config.suppliesTarget ? config.copy.restockHint : hoveredTarget ? hoveredTarget === config.choresTarget ? 'Open room chores' : config.labels[hoveredTarget]
-            : editMode ? 'Select an object to edit. Positions stay fixed.' : 'Drag to turn. Select an object for chores or supplies.'}</div>
+            : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
       </>}
       {!editMode && <button type="button" className="world-fridge-toggle" onClick={() => activate(config.choresTarget)}><ClipboardList size={15} />Room chores</button>}
       {!editMode && <button type="button" className="world-kettle-toggle" onClick={() => activate(config.suppliesTarget)}><PackagePlus size={16} /><span>Restock supplies</span></button>}

@@ -15,7 +15,7 @@ import { buildBathroomModel } from '../src/bathroomModel.ts'
 import { buildRoomComponentModel } from '../src/roomComponentModels.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 import { createRoomComponentScene, isSceneObjectVisible, visibleRoomBounds } from '../src/roomComponentScene.ts'
-import { componentPlacements, kitchenApplianceBays, kitchenLayout, kitchenShelves, kitchenWorktops, roomFootprints } from '../src/roomLayout.ts'
+import { componentPlacements, kitchenApplianceBays, kitchenLayout, kitchenShelves, kitchenWorktops, roomFootprints, roomShellBounds } from '../src/roomLayout.ts'
 import { completeRoomLayout } from './room-layout-fixture.ts'
 
 function configured(t: TestContext, roomId: RoomId, components = completeRoomLayout()) {
@@ -150,7 +150,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     const bounds = componentScene.bounds
     const footprint = roomFootprints[roomId]
     assert.ok(Math.abs(bounds.getSize(new Vector3()).x - footprint.width) < 0.001)
-    assert.ok(bounds.max.z <= footprint.centerZ + footprint.depth / 2 + 0.001)
+    assert.ok(bounds.max.z <= roomShellBounds(roomId).max.z + 0.001)
     const rotations = [-0.75, 0, 0.75]
     const axis = new Vector3(0, 1, 0)
     const layouts = [

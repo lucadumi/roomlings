@@ -465,7 +465,7 @@ test('both world integrations use the actual pending actor, suppress its edit ti
   const bathroom = readFileSync(new URL('../src/ChoreRoomWorld.tsx', import.meta.url), 'utf8')
   assert.match(bathroom, /latest\.editMode && !preview && !latest\.tour \? latest\.placementPreviewId : null/)
   const kitchen = readFileSync(new URL('../src/KitchenWorld.tsx', import.meta.url), 'utf8')
-  assert.match(kitchen, /targetRotation = preferredRoomRotation\(selectedObject\.slotId\)/)
+  assert.match(kitchen, /targetRotation = nearestRoomRotation\(room\.rotation\.y, preferredRoomRotation\(selectedObject\.slotId\)\)/)
   assert.match(kitchen, /now - lastShadowFrame >= 250/)
 })
 
@@ -512,7 +512,7 @@ test('both reset controls use the entry camera path and are unpressed whenever z
     assert.match(source, /Math\.exp\(-event\.deltaY \* units \* 0\.0015\)/)
   }
   const kitchen = readFileSync(new URL('../src/KitchenWorld.tsx', import.meta.url), 'utf8')
-  assert.match(kitchen, /targetRotation = preferredRoomRotation\(pendingActor \? componentScene\.componentForObject\(pendingActor\)\?\.slotId : undefined\)/)
+  assert.match(kitchen, /targetRotation = nearestRoomRotation\(room\.rotation\.y, preferredRoomRotation\(pendingActor \? componentScene\.componentForObject\(pendingActor\)\?\.slotId : undefined\)\)/)
 })
 
 test('kettle steam has no idle baseline, fades out after the actual cycle, and respects reduced motion', () => {

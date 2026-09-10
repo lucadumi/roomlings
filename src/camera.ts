@@ -8,11 +8,22 @@ import { componentPlacements, kitchenLayout, roomFootprints, roomShellBounds } f
 export type SceneFocus = KitchenAction | KitchenUtility | 'room' | 'fridge' | 'brew'
 export type FocusRequest = { target: SceneFocus; id: number }
 export const baseCameraOffset: [number, number, number] = [9, 7.85, 13]
+export const roomRotationPeriod = Math.PI * 2
 export const roomZoomLimits = { min: 0.5, max: 1.5, step: 0.1 } as const
 export type FramingArea = { x: number; y: number; width: number; height: number }
 export type FramingMeasurements = { canvas: FramingArea; stage: FramingArea; controls?: FramingArea }
 
 const roomEntryZoom: Record<RoomId, number> = { kitchen: 1, bathroom: 1, 'living-room': 1.2 }
+
+export function normalizeRoomRotation(angle: number): number {
+  if (!Number.isFinite(angle)) throw new Error('Room rotation needs a finite angle.')
+  const normalized = MathUtils.euclideanModulo(angle + Math.PI, roomRotationPeriod) - Math.PI
+  return Math.abs(normalized) < 1e-10 ? 0 : normalized
+}
+
+export function nearestRoomRotation(current: number, requested: number): number {
+  return current + normalizeRoomRotation(requested - current)
+}
 
 export function stepRoomZoom(zoom: number, direction: -1 | 1): number {
   if (!Number.isFinite(zoom)) throw new Error('Room zoom needs a finite value.')

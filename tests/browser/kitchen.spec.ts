@@ -258,14 +258,16 @@ test.describe('room controls', { tag: '@room' }, () => {
     { action: 'settle', role: 'region', title: 'Keep it even.' },
   ] as const
 
-  for (const { action, role, title } of hotspots) {
-    test(`${action} opens its tool and returns to the room`, async ({ page }) => {
+  for (const { action } of hotspots) {
+    test(`${action} marker opens object chores and returns to the room`, async ({ page }) => {
       await frameRoom(page)
-      await page.locator(`.hotspot-${action}`).click()
-      await expect(page.getByRole(role, { name: title, exact: true })).toBeVisible()
-      await expect(page.locator('.kitchen-world')).toHaveAttribute('data-focus', action)
+      const marker = page.locator(`.hotspot-${action}`)
+      const id = await marker.getAttribute('data-component-id')
+      await marker.click()
+      await expect(page.locator('.chores-panel')).toBeVisible()
+      await expect(page.getByRole('combobox', { name: 'Chore object', exact: true })).toHaveAttribute('data-value', id!)
       await page.keyboard.press('Escape')
-      await expect(page.getByRole(role, { name: title, exact: true })).toHaveCount(0)
+      await expect(page.locator('.chores-panel')).toHaveCount(0)
       await frameRoom(page)
     })
   }

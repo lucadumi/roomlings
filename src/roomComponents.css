@@ -20,7 +20,7 @@
 .room-components .receipt-tabs > button { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .room-object-list, .room-catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 1fr)); gap: 14px; align-items: stretch; }
 .room-object-list { list-style: none; padding: 0; margin: 14px 0; }
-.room-object-list > li { display: flex; min-width: 0; }
+.room-object-list > li { position: relative; display: flex; min-width: 0; }
 .room-object-choice { display: flex; flex-direction: column; align-items: stretch; width: 100%; min-height: 0; padding: 0; text-align: left; overflow: hidden; border: 1px solid var(--control-border); border-radius: 12px; }
 .room-object-copy { display: grid; flex: 1; min-width: 0; gap: 5px; padding: 12px; }
 .room-object-title, .room-catalog-card-title { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
@@ -36,14 +36,14 @@
 .component-preview img { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; filter: drop-shadow(0 2px 1px #67664d12); }
 .component-preview-loading, .component-preview-error { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; }
 .component-preview-error { color: var(--tomato-ink); font-size: .6875rem; text-align: center; }
-.room-object-hover-details { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 9px; padding: 13px; background: color-mix(in srgb, var(--control-surface) 96%, transparent); color: var(--leaf-ink); opacity: 0; visibility: hidden; transform: translateY(4px); pointer-events: none; transition: opacity 140ms, transform 140ms; }
-.room-object-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: .6875rem; line-height: 1.55; }
-.room-object-supply-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--muted); font-size: .625rem; line-height: 1.55; }
-.room-object-model-summary { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: .625rem; line-height: 1.4; color: var(--tomato-ink); }
-.room-object-choice:hover .room-object-hover-details,
-.room-object-choice:focus .room-object-hover-details,
-.room-catalog-card:hover .room-object-hover-details,
-.room-catalog-card:focus-within .room-object-hover-details { opacity: 1; visibility: visible; transform: none; }
+.component-info-trigger { position: absolute; top: 7px; right: 7px; z-index: 2; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 4px; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--leaf-ink); }
+.component-info-panel { position: fixed; z-index: 180; width: min(280px, calc(100vw - 24px)); max-width: calc(100vw - 24px); padding: 14px; overflow: auto; border: 1px solid var(--control-border); border-radius: 10px; background: var(--control-surface); color: var(--leaf-ink); box-shadow: var(--modal-shadow); font-size: .75rem; line-height: 1.55; overflow-wrap: anywhere; }
+.component-info-panel > strong { display: block; margin-bottom: 7px; font-size: .8125rem; }
+.component-info-panel > p { margin: 0 0 10px; }
+.component-info-panel dl { display: grid; gap: 6px; margin: 0; }
+.component-info-panel dl > div { display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: 8px; }
+.component-info-panel dt { color: var(--muted); }
+.component-info-panel dd { margin: 0; }
 .room-object-choice:hover, .room-catalog-card:hover, .room-catalog-card:focus-within { border-color: var(--sage); }
 .room-availability { display: inline-flex; align-items: center; gap: 5px; justify-self: start; align-self: flex-start; max-width: 100%; padding: 4px 7px; border: 1px solid var(--control-border); border-radius: 6px; font-size: .625rem; line-height: 1.35; font-weight: 550; color: var(--muted); background: var(--surface-muted); }
 .room-availability > svg { flex-shrink: 0; }
@@ -82,7 +82,7 @@
 .room-removal-confirmation ul { padding-left: 20px; }
 .room-removed-list { margin-top: 22px; }
 .room-catalog-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
-.room-catalog-card { min-width: 0; display: flex; flex-direction: column; padding: 0; border: 1px solid var(--control-border); border-radius: 12px; overflow: hidden; background: var(--control-surface); }
+.room-catalog-card { position: relative; min-width: 0; display: flex; flex-direction: column; padding: 0; border: 1px solid var(--control-border); border-radius: 12px; overflow: hidden; background: var(--control-surface); }
 .room-catalog-preview { display: block; width: 100%; padding: 0; text-align: left; background: transparent; }
 .room-catalog-preview:focus-visible { outline-offset: -3px; }
 .room-placement-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
@@ -119,12 +119,4 @@
 @container room-panel (max-width: 390px) {
   .room-object-list, .room-catalog-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 128px), 1fr)); gap: 10px; }
   .room-object-copy, .room-catalog-card-content { padding: 10px; }
-  .room-object-hover-details { padding: 9px; gap: 5px; }
-  .room-object-description { font-size: .625rem; }
-}
-@media (hover: none) {
-  .room-object-hover-details { position: static; opacity: 1; visibility: visible; transform: none; background: var(--control-surface); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .room-object-hover-details { transition: none; transform: none; }
 }

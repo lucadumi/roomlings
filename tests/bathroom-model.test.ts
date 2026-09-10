@@ -6,7 +6,8 @@ import type { BufferGeometry, Object3D } from 'three'
 import { bathroomFocusForRequest, bathroomFraming, bathroomTargets, buildBathroomModel } from '../src/bathroomModel.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
 import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds } from '../src/camera.ts'
-import { bathroomCaddyShelf, bathroomLayout, bathroomMat, roomFootprints } from '../src/roomLayout.ts'
+import { bathroomCaddyShelf, bathroomLayout, bathroomMat, roomFootprints, roomShellBounds, roomShellLayout } from '../src/roomLayout.ts'
+import { isSceneObjectVisible } from '../src/roomComponentScene.ts'
 import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
 
 function bathroom(t: TestContext) {
@@ -60,16 +61,18 @@ test('the bathroom uses a narrower and shallower floor while retaining its origi
   const { room, model } = bathroom(t)
   const floorSize = new Box3().setFromObject(room.getObjectByName('Bathroom floor base')!).getSize(new Vector3())
   assert.ok(Math.abs(floorSize.x - 9.4) < 0.0001)
-  assert.ok(Math.abs(floorSize.z - 5.95) < 0.0001)
-  assert.ok(floorSize.x * floorSize.z < 10.2 * 6.45 * 0.86, 'Reduce the floor area itself, not the camera magnification')
+  const { outer } = roomShellLayout('bathroom')
+  assert.ok(Math.abs(floorSize.z - (outer.front - outer.back)) < 0.0001)
+  const tiles = new Box3().setFromObject(model.actors.get('floor')!).getSize(new Vector3())
+  assert.ok(tiles.x * tiles.z < (10.2 - 0.268) * (6.45 - 0.258) * 0.86, 'Keep the usable tiled floor compact, not just the camera magnification')
   const bounds = new Box3().setFromObject(room)
   const size = bounds.getSize(new Vector3())
   assert.ok(size.x > 9.3 && size.x < 9.5)
   assert.ok(size.y > 4 && size.y < 5)
-  assert.ok(size.z > 5.9 && size.z < 6)
+  assert.ok(Math.abs(size.z - (outer.front - outer.back)) < 0.0001)
   assert.ok(bounds.min.x >= -4.71 && bounds.max.x <= 4.71)
   assert.ok(bounds.min.y >= -0.3 && bounds.max.y <= 4.6)
-  assert.ok(bounds.min.z >= -3.24 && bounds.max.z <= 2.76)
+  assert.ok(bounds.min.z >= -3.24 && bounds.max.z <= roomShellBounds('bathroom').max.z + 0.0001)
   assert.deepEqual(bounds, model.bounds)
   assert.ok(meshes(room).filter((mesh) => mesh.geometry.type === 'LatheGeometry').length >= 4)
   for (const mesh of meshes(room)) {
@@ -157,7 +160,7 @@ test('each bathroom object remains physically reachable from the open corner aft
     const point = new Vector3().fromArray(points[target])
     const offset = new Vector3(...baseCameraOffset)
     const ray = new Raycaster(point.clone().add(offset), offset.negate().normalize())
-    let object: Object3D | undefined = ray.intersectObject(room, true)[0]?.object
+    let object: Object3D | undefined = ray.intersectObject(room, true).find(({ object }) => isSceneObjectVisible(object, room))?.object
     while (object && object !== room && !object.userData.bathroomTarget) object = object.parent ?? undefined
     assert.equal(object?.userData.bathroomTarget, target, `${target} must not be hidden behind another fixture`)
   }

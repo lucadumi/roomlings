@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { expect, rememberBrowserHousehold, test } from './account-fixtures.ts'
-import { componentCatalog, createRoomComponent, getRoomComponents, roomSlots } from '../../shared/roomComponents.ts'
+import { componentCatalog, createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing } from './fixtures.ts'
@@ -110,8 +110,7 @@ for (const [kind, slotId] of [
     await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
     const name = componentCatalog[kind].name
     const picture = editor.getByRole('button', { name: `Preview ${name} in the room`, exact: true })
-    const positionName = roomSlots.find((slot) => slot.id === slotId)!.name
-    await expect(picture).toHaveAttribute('aria-description', `Position: ${positionName}. Preview this placement before deciding whether to keep it.`)
+    await expect(picture).toHaveAttribute('aria-description', 'Place or discard next.')
     await picture.click()
     const id = await editor.getAttribute('data-placement-preview')
     if (!id) throw new Error('The bathroom preview has no object identifier.')

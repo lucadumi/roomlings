@@ -11,7 +11,7 @@ import {
 } from '../shared/roomComponents.ts'
 import type {
   ComponentCategory, ComponentChoreSuggestion, ComponentKind, RoomComponent,
-  RoomComponentChange, RoomComponentsPatch, RoomSlotId,
+  RoomComponentsPatch, RoomSlotId,
 } from '../shared/roomComponents.ts'
 import { roomCatalog } from '../shared/rooms.ts'
 import type { RoomId } from '../shared/rooms.ts'
@@ -23,13 +23,16 @@ import { SupplyShortcuts } from './Restock.tsx'
 import { dateTitle } from './format.ts'
 import { roomPresets } from './roomStyles.ts'
 import { ComponentPreview } from './ComponentPreview.tsx'
+import { ComponentInfo } from './ComponentInfo.tsx'
 import { componentAvailability, groupedRoomComponents, preferredComponentSlot } from './componentAvailability.ts'
 import type { ComponentAvailability } from './componentAvailability.ts'
+import { componentConfiguration as configuration, sameComponentConfiguration as sameConfiguration } from './componentConfiguration.ts'
+import type { ComponentConfiguration } from './componentConfiguration.ts'
+import { componentDisplayName } from './componentNames.ts'
 import { errorMessage } from './api.ts'
 import { Feedback, FeedbackAction } from './Feedback.tsx'
 import './roomComponents.css'
 
-type ComponentConfiguration = Omit<RoomComponentChange, 'componentVersion' | 'linkedChores'>
 type ComponentDraft = { base: RoomComponent | null; value: RoomComponent; linkedChores?: 'keep' | 'archive' }
 type ComponentDrafts = Record<string, ComponentDraft>
 type AvailabilityFilter = 'all' | 'available' | 'placed' | 'preview'
@@ -45,15 +48,6 @@ type PlacementPreview = {
 function AvailabilityBadge({ status, label }: Pick<ComponentAvailability, 'status' | 'label'>) {
   const Icon = status === 'available' ? Plus : status === 'placed' ? Check : status === 'preview' ? Pencil : TriangleAlert
   return <span className={`room-availability ${status}`} data-availability={status}><Icon size={12} aria-hidden="true" />{label}</span>
-}
-
-function configuration(component: RoomComponent): ComponentConfiguration {
-  const { id, kind, roomId, slotId, name, variant, finish, supplies, installed } = component
-  return { id, kind, roomId, slotId, name, variant, finish, supplies, installed }
-}
-
-function sameConfiguration(left: RoomComponent, right: RoomComponent): boolean {
-  return JSON.stringify(configuration(left)) === JSON.stringify(configuration(right))
 }
 
 function withoutDraft(drafts: ComponentDrafts, id: string): ComponentDrafts {
@@ -102,28 +96,25 @@ function isComponentCategory(value: string): value is ComponentCategory {
 }
 
 function choiceName(component: RoomComponent, components: readonly RoomComponent[]): string {
-  const name = objectName(component)
-  return components.filter((other) => objectName(other) === name).length > 1 ? `${name} at ${positionName(component)}` : name
+  return componentDisplayName(component, components, objectName(component))
 }
 
 function previewDescription(component: RoomComponent): string {
-  const definition = componentCatalog[component.kind]
-  const supplies = component.supplies.map((supply) => supply.name).join(', ')
-  return `${definition.description} ${supplies ? `Supplies: ${supplies}.` : 'No supply shortcuts configured.'}`
+  return componentCatalog[component.kind].description
 }
 
-function ObjectCardPreview({ component, household, note }: { component: RoomComponent; household: Household; note?: string }) {
-  const definition = componentCatalog[component.kind]
+function ObjectCardPreview({ component, household }: { component: RoomComponent; household: Household }) {
   return <span className="room-object-picture">
     <ComponentPreview component={component} roomStyle={household.roomStyle} />
-    <span className="room-object-hover-details" aria-hidden="true">
-      <span className="room-object-description">{definition.description}</span>
-      <span className="room-object-supply-summary">{component.supplies.length
-        ? `Supplies: ${component.supplies.map((supply) => supply.name).join(', ')}`
-        : 'No supply shortcuts configured.'}</span>
-      <span className="room-object-model-summary">{note ?? `${modelName(component)}${definition.chores.length ? ` / ${definition.chores.length} care routines` : ''}`}</span>
-    </span>
   </span>
+}
+
+function ObjectCardInfo({ component, label = objectName(component) }: { component: RoomComponent; label?: string }) {
+  const definition = componentCatalog[component.kind]
+  const details: { label: string; value: string }[] = []
+  if (definition.variants.length > 1) details.push({ label: 'Model', value: modelName(component) })
+  if (component.supplies.length) details.push({ label: 'Supplies', value: component.supplies.map((supply) => supply.name).join(', ') })
+  return <ComponentInfo label={label} description={definition.description} details={details} />
 }
 
 function changedFields(draft: ComponentDraft, latest: RoomComponent): RoomComponent {
@@ -423,7 +414,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
           const latest = currentById.get(draft.value.id)
           return <div key={draft.value.id} className="room-object-conflict" aria-label={`Changed object: ${objectName(draft.value)}`}>
             {latest ? <DraftConflict onLatest={() => useLatest(draft.value.id)} onKeep={() => keepDraft(draft, latest)}>
-              {objectName(draft.value)} changed while you were editing. Latest: {latest.name}, {positionName(latest)}, {finishName(latest)}, {latest.installed ? 'in the room' : 'removed'}.
+              {objectName(draft.value)} changed while you were editing. Latest: {latest.name}, {finishName(latest)}, {latest.installed ? 'in the room' : 'removed'}.
               {' '}Supplies: {latest.supplies.length ? latest.supplies.map((supply) => `${supply.quantity} ${supply.name}`).join(', ') : 'none'}.
             </DraftConflict> : <Feedback className="shopping-conflict" actions={<FeedbackAction onClick={() => useLatest(draft.value.id)}>Use latest values</FeedbackAction>}>
               {objectName(draft.value)} is unavailable. Discard its draft and choose another object.
@@ -435,11 +426,11 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
           {selected ? <div className="room-object-settings" aria-label={`Settings for ${objectName(selected)}`}>
             <button type="button" className="text-button" disabled={locked} onClick={() => select(null)}><ArrowLeft size={14} />All room objects</button>
             <h3>{objectName(selected)}</h3>
-            {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${componentCatalog[selected.kind].name} positions`}>
+            {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${componentCatalog[selected.kind].name} objects`}>
               {selectedPositions.map((component) => <button type="button" key={component.id} className="control-surface" disabled={locked}
-                aria-pressed={component.id === selected.id} onClick={() => select(component.id)}>{positionName(component)}</button>)}
+                aria-pressed={component.id === selected.id} onClick={() => select(component.id)}>{choiceName(component, selectedPositions)}</button>)}
             </div>}
-            {selected.installed && positionChoices.length > 1 ? <label className="field">Position<Dropdown label="Position" value={selected.slotId} disabled={locked}
+            {selected.installed && positionChoices.length > 1 ? <label className="field">Move object<Dropdown label="Move object" value={selected.slotId} disabled={locked}
               onValueChange={(value) => {
                 const destination = positionChoices.find((slot) => slot.id === value)
                 if (!destination || !componentPositionSupported(destination.id, preview)
@@ -449,19 +440,21 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
                 }
                 update(selected, { slotId: destination.id })
               }}>
-              {positionChoices.map((slot) => {
+              {positionChoices.map((slot, index) => {
                 const occupied = preview.some((component) => component.installed && component.slotId === slot.id && component.id !== selected.id)
                 const supported = componentPositionSupported(slot.id, preview)
-                return <option key={slot.id} value={slot.id} disabled={occupied || !supported}>{slot.name}{occupied ? ' (occupied)' : !supported ? ' (unavailable)' : ''}</option>
+                return <option key={slot.id} value={slot.id} disabled={occupied || !supported}>
+                  {occupied ? `${slot.name} (occupied)` : !supported ? 'Unavailable' : slot.id === selected.slotId ? 'Current' : `Alternative ${index + 1}`}
+                </option>
               })}
-            </Dropdown></label> : <p className="field-hint">{positionName(selected)}</p>}
+            </Dropdown></label> : null}
             {!componentAllowedInRoom(selected.kind, roomId) && <p className="field-hint">This saved object can stay here. New placements belong in {componentCatalog[selected.kind].placementRooms?.map((id) => roomCatalog[id].name).join(' or ')}.</p>}
             {!placement && selected.installed && availableComponentSlots(preview, roomId, selected.kind).length > 0
               && <button type="button" className="text-button" disabled={locked} onClick={() => {
                 const destination = availableComponentSlots(preview, roomId, selected.kind)[0]
                 if (!destination) { setLocalError('There are no free positions for this object.'); return }
                 previewPlacement(selected.kind, destination.id)
-              }}><Plus size={14} />Add at another position</button>}
+              }}><Plus size={14} />Add another</button>}
             <label className="field">Object name<input ref={nameInput} required maxLength={50} value={selected.name} disabled={locked} onChange={(event) => update(selected, { name: event.target.value })} /></label>
             {componentCatalog[selected.kind].variants.length > 1
               ? <label className="field">Model<Dropdown label="Model" value={selected.variant} disabled={locked} onValueChange={(variant) => {
@@ -548,17 +541,18 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
               const component = group.items[0]
               const label = group.items.length > 1 ? componentCatalog[group.kind].name : objectName(component)
               const isPreview = group.items.some((item) => !currentById.get(item.id)?.installed)
-              return <li key={group.kind}>
+              return <li key={group.kind} className="room-object-card">
               <button type="button" className="room-object-choice room-object-tile control-surface" disabled={locked} aria-pressed={component.id === selectedComponentId}
                 aria-description={`${currentById.get(component.id)?.installed ? 'Placed' : 'In preview'}. ${previewDescription(component)}`}
                 aria-label={`Edit ${label}`} onClick={() => select(component.id)}>
-                <ObjectCardPreview component={component} household={household} note={group.items.map(positionName).join(', ')} />
+                <ObjectCardPreview component={component} household={household} />
                 <span className="room-object-copy"><span className="room-object-title"><strong>{label}</strong>
                   <AvailabilityBadge status={isPreview ? 'preview' : 'placed'} label={isPreview ? 'In preview' : 'Placed'} /></span>
-                  <small>{group.items.length > 1 ? `${group.items.length} positions` : positionName(component)}</small>
+                  {group.items.length > 1 && <small>{group.items.length} objects</small>}
                   {group.items.some((item) => drafts[item.id]) && <span className="room-object-tag">Edited</span>}
                 </span>
               </button>
+              <ObjectCardInfo component={component} label={label} />
             </li>})}
           </ul>}
           {!!pending.filter((draft) => !draft.value.installed).length && <div className="room-removed-list">
@@ -595,33 +589,33 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
             const previewObject = archived ?? occupants.find((component) => component.kind === kind)
               ?? createRoomComponent(kind, previewSlot.id, `preview-${roomId}-${kind}`)
             const status = componentAvailability(kind, roomId, preview, current)
-            const placementNote = position ? `Position: ${position.name}` : occupants.length ? occupants.map((component) =>
+            const placementNote = position ? definition.description : occupants.length ? occupants.map((component) =>
               `${positionName(component)} is occupied by ${objectName(component)}.${component.kind !== kind ? ' Remove it first to replace it.' : ''}`).join(' ')
             : previewSlot.requires?.message ?? 'No compatible position is available.'
             return <article className="room-catalog-card" key={kind} aria-label={definition.name} data-availability={status.status} data-free-positions={status.free}>
               {position ? <button type="button" className="room-catalog-preview" data-placement-kind={kind}
                 disabled={locked || (!archived && preview.length >= roomComponentLimit)}
                 aria-label={`Preview ${definition.name} in the room`}
-                aria-description={`${placementNote}. Preview this placement before deciding whether to keep it.`}
+                aria-description="Place or discard next."
                 onClick={() => previewPlacement(kind, position.id)}>
-                <ObjectCardPreview component={previewObject} household={household} note={placementNote} />
-              </button> : <ObjectCardPreview component={previewObject} household={household} note={placementNote} />}
+                <ObjectCardPreview component={previewObject} household={household} />
+              </button> : <ObjectCardPreview component={previewObject} household={household} />}
+              <ObjectCardInfo component={previewObject} label={definition.name} />
               <div className="room-catalog-card-content"><div className="room-catalog-card-title"><h3>{definition.name}</h3>
                 <AvailabilityBadge {...status} /></div>
-              {available.length > 0 && <span className="room-position-count">{available.length} {available.length === 1 ? 'position available' : 'positions available'}</span>}
               {groupedRoomComponents(occupants).map((group) => {
                 const component = group.items[0]
                 const label = group.items.length > 1 ? componentCatalog[group.kind].name : objectName(component)
                 return <div className="room-position-occupied" key={group.kind}>
                 <button type="button" className="text-button" disabled={locked} aria-label={`Review ${label}`}
-                  aria-description={`${status.label}. ${placementNote}. ${previewDescription(previewObject)}`}
+                  aria-description={`${status.label}. ${placementNote}`}
                   onClick={() => select(component.id)}>Review {label}</button>
               </div>})}
               {position ? <button type="button" className="button secondary small-button" disabled={locked || (!archived && preview.length >= roomComponentLimit)}
-                aria-description={`${status.label}. ${placementNote}. ${previewDescription(previewObject)}`}
+                aria-description={`${status.label}. ${placementNote}`}
                 aria-label={`${archived ? 'Preview restoring' : 'Preview'} ${definition.name}`} onClick={() => previewPlacement(kind, position.id)}>
                 {archived ? <RotateCcw size={14} /> : <Eye size={14} />}{archived ? 'Preview restore' : 'Preview'}
-              </button> : <p className="field-hint">No free designed position for this object.</p>}
+              </button> : <p className="field-hint">{placementNote}</p>}
               {position && !archived && preview.length >= roomComponentLimit && <p className="field-hint">The saved-object limit has been reached. Restore an existing object instead.</p>}
               </div>
             </article>
@@ -701,15 +695,14 @@ export function RoomObjectsPanel({
         {roomSlots.find((slot) => slot.id === selected.slotId)?.removable && <button type="button" className="text-button room-remove-object" disabled={busy}
           onClick={() => onRemove(selected.id)}><Trash2 size={14} />Remove object</button>}
       </div>}</header>
-      {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${description.name} positions`}>
+      {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${description.name} objects`}>
         {selectedPositions.map((component) => <button type="button" key={component.id} className="control-surface" disabled={busy}
-          aria-pressed={component.id === selected.id} onClick={() => onSelect(component.id)}>{positionName(component)}</button>)}
+          aria-pressed={component.id === selected.id} onClick={() => onSelect(component.id)}>{choiceName(component, selectedPositions)}</button>)}
       </div>}
-      <dl className="room-object-appearance">
-        <div><dt>Position</dt><dd>{positionName(selected)}</dd></div>
+      {(description.variants.length > 1 || selected.finish !== 'room') && <dl className="room-object-appearance">
         {description.variants.length > 1 && <div><dt>Model</dt><dd>{modelName(selected)}</dd></div>}
         {selected.finish !== 'room' && <div><dt>Color</dt><dd>{finishName(selected)}</dd></div>}
-      </dl>
+      </dl>}
       {shortcut && <button type="button" className="button secondary full" disabled={busy} onClick={() => onUse(selected)}>{shortcut}</button>}
       {!!description.states.length && <section className="room-object-section" aria-label={`${selected.name} manual state`}>
         <h4>Manual state</h4>
@@ -718,16 +711,16 @@ export function RoomObjectsPanel({
         }}>
           <option value="">Not set</option>{description.states.map((state) => <option key={state.id} value={state.id}>{state.name}</option>)}
         </Dropdown></label>
-        <p className="field-hint">Set by a roommate, not detected by an appliance. Changing this does not complete a chore or record a payment.</p>
+        <p className="field-hint">Manual status only. No appliance control, chore completion or payment.</p>
         {selected.stateChangedAt && <p className="field-hint">Last set by {household.members.find((member) => member.id === selected.stateChangedBy)?.name ?? 'a former roommate'} on {dateTitle(billingDate(household.billingTimeZone, new Date(selected.stateChangedAt)), today)}.</p>}
       </section>}
       <section className="room-object-section" aria-label={`Supplies for ${selected.name}`}>
         <h4>Supply shortcuts</h4>
         {selected.supplies.length ? <>
-          <p className="field-hint">Add only what you need. These shortcuts use the shared shopping list, without tracking stock.</p>
+          <p className="field-hint">Shared shopping shortcuts, not stock tracking.</p>
           <SupplyShortcuts household={household} components={[selected]} busy={busy} onAdd={onRestock} />
           {selected.kind !== 'shopping-bag' && <button type="button" className="text-button" disabled={busy} onClick={onShopping}><ShoppingBasket size={14} />Open shopping list</button>}
-        </> : <p className="field-hint">No supply shortcuts are configured for this object. {canEdit ? 'Add them in Edit this object when you need them.' : 'An admin can add them in Edit room.'}</p>}
+        </> : <p className="field-hint">No supplies set. {canEdit ? 'Add them in Edit this object.' : 'An admin can add them.'}</p>}
       </section>
       <section className="room-object-section" aria-label={`Chores for ${selected.name}`}>
         <h4>Chores</h4>
@@ -739,7 +732,7 @@ export function RoomObjectsPanel({
             <span className={`chore-status ${status}`}>{status === 'due' ? 'Due today' : status === 'overdue' ? 'Overdue' : status === 'completed' ? 'Completed' : 'Upcoming'}</span>
             <small>{chore.dueDate ? dateTitle(chore.dueDate, today) : 'One-off completed'}{assignee ? `; ${assignee.name}'s turn` : '; unassigned'}</small>
           </li>
-        })}</ul> : <p className="field-hint">No chores are linked yet. Add one below or use a suggested routine.</p>}
+        })}</ul> : <p className="field-hint">No chores yet. Add one or choose a routine.</p>}
         <div className="room-object-actions">
           {!!chores.length && <button type="button" className="button secondary small-button" disabled={busy} onClick={() => onOpenChores(selected)}><ListChecks size={14} />Open object chores</button>}
           <button type="button" className="button secondary small-button" disabled={busy || household.chores.items.length >= choreLimit} onClick={() => onCreateChore(selected)}><Plus size={14} />Add chore</button>
@@ -762,13 +755,14 @@ export function RoomObjectsPanel({
         const component = group.items[0]
         const label = group.items.length > 1 ? componentCatalog[group.kind].name : component.name
         const status = group.items.length === 1 ? statusLabel(component) : ''
-        return <li key={group.kind}>
+        return <li key={group.kind} className="room-object-card">
         <button type="button" className="room-object-choice room-object-tile control-surface" disabled={busy} aria-description={`Placed. ${previewDescription(component)}`}
           aria-label={`Open ${label} details`} onClick={() => onSelect(component.id)}>
-          <ObjectCardPreview component={component} household={household} note={group.items.map(positionName).join(', ')} />
+          <ObjectCardPreview component={component} household={household} />
           <span className="room-object-copy"><span className="room-object-title"><strong>{label}</strong><AvailabilityBadge status="placed" label="Placed" /></span>
-            <small>{group.items.length > 1 ? `${group.items.length} positions` : positionName(component)}</small>{status && <small>{status}</small>}</span>
+            {group.items.length > 1 && <small>{group.items.length} objects</small>}{status && <small>{status}</small>}</span>
         </button>
+        <ObjectCardInfo component={component} label={label} />
       </li>})}</ul>
     </>}
   </section>

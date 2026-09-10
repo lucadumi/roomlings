@@ -8,7 +8,9 @@ import { daylight, eveningLight } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
-import { componentPlacements, kitchenCabinetBays, kitchenLayout, kitchenReturnBays, kitchenShelves, kitchenWorktops, roomFootprints } from './roomLayout.ts'
+import { componentPlacements, kitchenCabinetBays, kitchenLayout, kitchenReturnBays, kitchenShelves, kitchenWorktops, roomFootprints, roomShellLayout } from './roomLayout.ts'
+import { createRoomWallGroup } from './roomCutaway.ts'
+import { buildRoomWalls } from './roomShell.ts'
 
 export type KitchenAction = 'stock' | 'ledger' | 'budget' | 'roommates' | 'settle'
 export type SceneAction = KitchenAction | 'fridge' | 'light' | 'brew'
@@ -85,7 +87,9 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   }
 
   const footprint = roomFootprints.kitchen
-  box(room, [footprint.width, 0.25, footprint.depth], [0, -0.15, footprint.centerZ], lightWood, 0.14)
+  const { outer } = roomShellLayout('kitchen')
+  box(room, [outer.right - outer.left, 0.25, outer.front - outer.back],
+    [(outer.left + outer.right) / 2, -0.15, (outer.back + outer.front) / 2], lightWood, 0.14)
   const floor = utility('floor', [0, 0, 0])
   const tileWidth = (footprint.width - 0.26) / 11
   const tileDepth = (footprint.depth - 0.27) / 6
@@ -96,18 +100,14 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
       square.castShadow = false
     }
   }
-  box(room, [footprint.width, footprint.wallHeight, 0.16], [0, 2.2, footprint.backZ], plaster, 0.055)
-  box(room, [0.16, footprint.wallHeight, 6.65], [footprint.leftX, 2.2, -0.075], plaster, 0.055)
-  box(room, [footprint.width - 0.13, 0.13, 0.055], [0, 0.15, -3.21], wallTrim)
-  box(room, [0.06, 0.13, 6.55], [footprint.leftX + 0.105, 0.15, -0.075], wallTrim)
-  for (let x = 0; x < 11; x++) box(room, [0.015, 1.18, 0.015], [-5.1 + x * 1.02, 0.8, -3.227], wallTrim)
-  box(room, [footprint.width - 0.2, 0.07, 0.055], [0, 1.43, -3.21], wallTrim)
+  buildRoomWalls(room, 'kitchen', { name: 'Kitchen', centerY: 2.2, wall: plaster, trim: wallTrim, lowerPanel: plaster })
 
   const window = actor('light', [0.85, 3.26, -3.2])
-  box(window, [2.3, 1.85, 0.1], [0, 0, 0], wood, 0.045)
-  box(window, [2.1, 1.63, 0.055], [0, 0, 0.065], sky)
-  box(window, [0.065, 1.63, 0.06], [0, 0, 0.115], paper)
-  box(window, [2.1, 0.065, 0.06], [0, 0, 0.115], paper)
+  const windowPane = createRoomWallGroup(window, 'back', 'Kitchen window cutaway')
+  box(windowPane, [2.3, 1.85, 0.1], [0, 0, 0], wood, 0.045)
+  box(windowPane, [2.1, 1.63, 0.055], [0, 0, 0.065], sky)
+  box(windowPane, [0.065, 1.63, 0.06], [0, 0, 0.115], paper)
+  box(windowPane, [2.1, 0.065, 0.06], [0, 0, 0.115], paper)
   box(window, [2.77, 0.12, 0.9], [0.085, -0.96, 0.39], lightWood, 0.015)
   const windowDisc = material(daylight.disc)
   windowDisc.emissive.set(eveningLight.disc)
@@ -115,7 +115,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   const sun = new Mesh(new CylinderGeometry(0.17, 0.17, 0.015, 12), windowDisc)
   sun.rotation.x = Math.PI / 2
   sun.position.set(0.55, 0.48, 0.105)
-  window.add(sun)
+  windowPane.add(sun)
   const curtains = new Group()
   window.add(curtains)
   for (const side of [-1, 1]) {

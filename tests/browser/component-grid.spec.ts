@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
-import { getRoomComponents } from '../../shared/roomComponents.ts'
+import { componentCatalog, getRoomComponents } from '../../shared/roomComponents.ts'
 import { openRoomEditor, placeRoomObject } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
@@ -79,7 +79,7 @@ test('the editor Back button stays beside the section tabs on desktop and narrow
   }
 })
 
-test('the object browser is a large left-side grid with real previews and hover/focus details', { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
+test('the object browser uses icon-only info panels instead of hover details', { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
   const failures: string[] = []
   page.on('pageerror', (error) => failures.push(error.message))
   await page.setViewportSize({ width: 1440, height: 960 })
@@ -105,14 +105,31 @@ test('the object browser is a large left-side grid with real previews and hover/
   await expect(fridge.locator('.component-preview')).toHaveAttribute('data-preview-ready', 'true')
   await expect.poll(() => fridge.locator('img').evaluate((image) => image instanceof HTMLImageElement
     && image.complete && image.naturalWidth >= 320 && image.src.startsWith('data:image/png'))).toBe(true)
-  await expect(fridge.locator('.room-object-hover-details')).toBeHidden()
+  await expect(editor.locator('.room-object-hover-details')).toHaveCount(0)
   await fridge.hover()
-  await expect(fridge.locator('.room-object-hover-details')).toBeVisible()
-  await expect(fridge.locator('.room-object-hover-details')).toContainText('Surface cleaner')
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
   await page.mouse.move(1400, 40)
   await fridge.focus()
-  await expect(fridge.locator('.room-object-hover-details')).toBeVisible()
-  await expect(fridge).toHaveAccessibleDescription(/Placed.*familiar fridge/)
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+  await expect(fridge).toHaveAccessibleDescription(`Placed. ${componentCatalog.fridge.description}`)
+  await page.locator('.house-tools').getByRole('button', { name: 'Room style', exact: true }).click()
+  const modal = page.getByRole('dialog')
+  const modalShadow = await modal.evaluate((element) => getComputedStyle(element).boxShadow)
+  await modal.getByRole('button', { name: 'Close dialog', exact: true }).click()
+  const info = editor.getByRole('button', { name: 'Info about Fridge', exact: true })
+  await expect(info).toHaveCSS('border-top-width', '0px')
+  await expect(info).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(info).toHaveCSS('box-shadow', 'none')
+  await info.click()
+  const information = page.getByRole('tooltip', { name: 'Fridge information', exact: true })
+  await expect(information).toBeVisible()
+  await expect(information).toContainText('Surface cleaner')
+  await expect(information).not.toContainText('Position')
+  await expect(information).toHaveCSS('box-shadow', modalShadow)
+  await page.keyboard.press('Escape')
+  await expect(information).toHaveCount(0)
+  await expect(editor).toBeVisible()
+  await expect(info).toBeFocused()
   await panel.focus()
   await expect(page.locator('.world-canvas canvas')).toHaveCount(1)
   await page.screenshot({ path: testInfo.outputPath('left-object-grid.png'), animations: 'disabled' })
@@ -199,13 +216,19 @@ test('model previews retain lighting and grounding with one shared capability pr
 test.describe('touch object grids', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })
 
-  test('touch users see card details without hovering and the grid stays inside the viewport', { tag: '@room' }, async ({ page, emptyHousehold: _owner }) => {
+  test('touch users open card info explicitly and the grid stays inside the viewport', { tag: '@room' }, async ({ page, emptyHousehold: _owner }) => {
     await withoutWebGL(page)
     await page.goto('/kitchen')
     const editor = await openEditor(page)
     const grid = editor.getByRole('list', { name: 'Objects in your room preview', exact: true })
     const fridge = grid.getByRole('button', { name: 'Edit Fridge', exact: true })
-    await expect(fridge.locator('.room-object-hover-details')).toBeVisible()
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
+    await editor.getByRole('button', { name: 'Info about Fridge', exact: true }).tap()
+    const information = page.getByRole('tooltip', { name: 'Fridge information', exact: true })
+    await expect(information).toBeInViewport({ ratio: 1 })
+    await expect(information).not.toContainText('Position')
+    await editor.getByRole('button', { name: 'Close info about Fridge', exact: true }).tap()
+    await expect(information).toHaveCount(0)
     await expect(fridge.locator('.component-preview')).toHaveAttribute('data-preview-ready', 'true')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     const bounds = await grid.boundingBox()

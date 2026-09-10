@@ -273,7 +273,7 @@
 .game-panel-content .empty-state { padding: 33px 12px; }
 .game-panel-content .empty-state p { font-size: 12px; color: var(--muted); }
 .game-app .modal-backdrop { background: #3f512a1f; backdrop-filter: blur(2px); justify-content: flex-end; padding: 85px 25px 105px; }
-.game-app .modal { --control-height: 44px; width: min(100%, 450px); max-height: calc(100dvh - 190px); background: var(--control-surface); border: 1px solid var(--control-border); box-shadow: 0 5px 0 #809b5947, 0 24px 65px #334b2733; border-radius: 15px; padding: 29px; }
+.game-app .modal { --control-height: 44px; width: min(100%, 450px); max-height: calc(100dvh - 190px); background: var(--control-surface); border: 1px solid var(--control-border); box-shadow: var(--modal-shadow); border-radius: 15px; padding: 29px; }
 .game-app .modal h2 { color: var(--section-ink); font-size: 1.75rem; }
 .game-app .modal-subtitle { font-size: 0.75rem; color: var(--muted); line-height: 1.8; }
 .game-app .field { color: var(--section-ink); font-size: 0.75rem; }

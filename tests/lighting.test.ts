@@ -4,6 +4,7 @@ import { Box3, Group, Mesh, Raycaster, Vector3 } from 'three'
 import { addContactShadows, createContactShadowTexture, createRoomLights, fitRoomShadowBounds } from '../src/lighting.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { completeRoomLayout } from './room-layout-fixture.ts'
+import { roomRotationPeriod } from '../src/camera.ts'
 
 describe('room lighting', () => {
   it('keeps the entire room inside its shadow volume throughout a drag', () => {
@@ -12,8 +13,8 @@ describe('room lighting', () => {
     sunlight.shadow.updateMatrices(sunlight)
     const camera = sunlight.shadow.camera
     const axis = new Vector3(0, 1, 0)
-    for (let step = 0; step <= 30; step++) {
-      const angle = -0.75 + step * 0.05
+    for (let step = 0; step <= 100; step++) {
+      const angle = -roomRotationPeriod / 2 + roomRotationPeriod * step / 100
       for (const x of [-5.3, 5.3]) for (const y of [-0.3, 5.1]) for (const z of [-3.5, 3.5]) {
         const point = new Vector3(x, y, z).applyAxisAngle(axis, angle).applyMatrix4(camera.matrixWorldInverse)
         assert.ok(point.x > camera.left && point.x < camera.right)
@@ -26,7 +27,7 @@ describe('room lighting', () => {
     sunlight.shadow.dispose()
   })
 
-  for (const roomId of ['kitchen', 'bathroom'] as const) {
+  for (const roomId of ['kitchen', 'bathroom', 'living-room'] as const) {
     it(`fits every corner of the fully equipped ${roomId} throughout its continuous drag range`, (context) => {
       const model = createConfiguredRoomPreview(roomId, 'original', completeRoomLayout())
       const lights = createRoomLights(model.componentScene.bounds)
@@ -36,9 +37,9 @@ describe('room lighting', () => {
       const camera = lights.sunlight.shadow.camera
       const bounds = model.componentScene.bounds
       const axis = new Vector3(0, 1, 0)
-      for (let step = 0; step <= 150; step++) {
+      for (let step = 0; step <= 200; step++) {
         for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
-          const point = new Vector3(x, y, z).applyAxisAngle(axis, -0.75 + step / 100).applyMatrix4(camera.matrixWorldInverse)
+          const point = new Vector3(x, y, z).applyAxisAngle(axis, -roomRotationPeriod / 2 + roomRotationPeriod * step / 200).applyMatrix4(camera.matrixWorldInverse)
           assert.ok(point.x > camera.left && point.x < camera.right)
           assert.ok(point.y > camera.bottom && point.y < camera.top)
           assert.ok(-point.z > camera.near && -point.z < camera.far)

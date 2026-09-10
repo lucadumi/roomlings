@@ -12,6 +12,8 @@ import { buildRoomComponentModel } from './roomComponentModels.ts'
 import type { ComponentBinding, ComponentBindings, ComponentFixtures, ComponentModel } from './roomComponentTypes.ts'
 import { applyRoomStyle, roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
+import { roomWallSide } from './roomCutaway.ts'
+import { componentDisplayName } from './componentNames.ts'
 
 const defaults = defaultRoomComponents()
 
@@ -56,8 +58,11 @@ export function componentLabel(component: RoomComponent | undefined, original: s
 }
 
 export function componentAccessibleName(component: RoomComponent, components: readonly RoomComponent[]): string {
-  if (!components.some((other) => other.id !== component.id && other.name === component.name)) return component.name
-  return `${component.name}, ${roomSlots.find((slot) => slot.id === component.slotId)!.name}`
+  return componentDisplayName(component, components)
+}
+
+export function componentChoresLabel(component: RoomComponent, components: readonly RoomComponent[]): string {
+  return `Chores for ${componentAccessibleName(component, components)}`
 }
 
 export function isSceneObjectVisible(object: Object3D, root?: Object3D): boolean {
@@ -74,13 +79,19 @@ export function visibleRoomBounds(room: Group, root: Object3D = room): Box3 {
   const transform = new Matrix4()
   const bounds = new Box3()
   const part = new Box3()
-  root.traverseVisible((object) => {
-    if (!(object instanceof Mesh) || object.userData.componentContact || object.userData.roomTransient) return
-    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
-    if (!object.geometry.boundingBox) return
-    transform.multiplyMatrices(inverse, object.matrixWorld)
-    bounds.union(part.copy(object.geometry.boundingBox).applyMatrix4(transform))
-  })
+  const visit = (object: Object3D) => {
+    // A cutaway changes visibility, not the room's physical size or camera fit.
+    if (!object.visible && !roomWallSide(object)) return
+    if (object instanceof Mesh && !object.userData.componentContact && !object.userData.roomTransient) {
+      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
+      if (object.geometry.boundingBox) {
+        transform.multiplyMatrices(inverse, object.matrixWorld)
+        bounds.union(part.copy(object.geometry.boundingBox).applyMatrix4(transform))
+      }
+    }
+    object.children.forEach(visit)
+  }
+  visit(root)
   return bounds
 }
 

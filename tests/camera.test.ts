@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseCameraOffset, cameraFraming, cameraProjection, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomRotationPeriod, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
 import { roomIds } from '../shared/rooms.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
@@ -8,6 +8,22 @@ import { buildKitchenModel } from '../src/kitchenModel.ts'
 import { bathroomFraming } from '../src/bathroomModel.ts'
 
 describe('room-first camera framing', () => {
+  it('supports complete rotations and takes the shortest path when resetting or selecting an object', () => {
+    assert.equal(roomRotationPeriod, Math.PI * 2)
+    for (const angle of [0, roomRotationPeriod, -roomRotationPeriod, roomRotationPeriod * 20]) {
+      assert.equal(normalizeRoomRotation(angle), 0)
+    }
+    for (let turns = -4; turns <= 4; turns++) for (const offset of [-3.1, -0.3, 0.3, 3.1]) {
+      const current = turns * roomRotationPeriod + offset
+      for (const requested of [0, 0.75]) {
+        const target = nearestRoomRotation(current, requested)
+        assert.ok(Math.abs(target - current) <= Math.PI)
+        assert.ok(Math.abs(normalizeRoomRotation(target) - requested) < 0.000001)
+      }
+    }
+    assert.throws(() => normalizeRoomRotation(NaN), /finite angle/)
+    assert.throws(() => nearestRoomRotation(0, Infinity), /finite angle/)
+  })
   it('preserves entry pixel scale while centering the room beside an editor panel', () => {
     for (const [width, height] of [[1440, 960], [390, 844], [844, 390]]) {
       const full = { x: 0, y: 0, width, height }
@@ -145,7 +161,7 @@ describe('room-first camera framing', () => {
     })
     const axis = new Vector3(0, 1, 0)
     for (const [width, height] of [[1440, 960], [390, 844], [844, 390]]) {
-      for (const rotation of [-0.75, 0, 0.75]) for (const pitch of [-1.7, 0, 3]) {
+      for (const rotation of [-Math.PI, -Math.PI / 2, -0.75, 0, 0.75, Math.PI / 2, Math.PI]) for (const pitch of [-1.7, 0, 3]) {
         const framing = cameraFraming(width, height, 'room', true, { bounds, rotation, pitch })
         const halfWidth = framing.halfHeight * width / height
         const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)

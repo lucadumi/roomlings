@@ -13,9 +13,9 @@ export type ComponentPlacement = {
 }
 
 export const roomFootprints = {
-  kitchen: { width: 11.4, depth: 6.9, centerZ: 0.05, wallHeight: 4.65, backZ: -3.32, leftX: -5.61 },
-  bathroom: { width: 9.4, depth: 5.95, centerZ: -0.225, wallHeight: 4.45, backZ: -3.16, leftX: -4.63 },
-  'living-room': { width: 10, depth: 6.6, centerZ: 0, wallHeight: 4.5, backZ: -3.23, leftX: -4.92 },
+  kitchen: { width: 11.4, depth: 6.9, centerZ: 0.05, wallHeight: 4.65, wallThickness: 0.16, backZ: -3.32, leftX: -5.61 },
+  bathroom: { width: 9.4, depth: 5.95, centerZ: -0.225, wallHeight: 4.45, wallThickness: 0.14, backZ: -3.16, leftX: -4.63 },
+  'living-room': { width: 10, depth: 6.6, centerZ: 0, wallHeight: 4.5, wallThickness: 0.14, backZ: -3.23, leftX: -4.92 },
 } as const
 
 const cookingSurface: RoomPosition = [4.875, 0, 0.3075]
@@ -186,10 +186,26 @@ export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>
   'bathroom-vacuum': { position: [4, 0.02, 2.38], surface: 'floor' },
 }
 
-export function roomShellBounds(roomId: RoomId): Box3 {
+export function roomShellLayout(roomId: RoomId) {
   const footprint = roomFootprints[roomId]
+  const thickness = footprint.wallThickness
+  const inner = {
+    left: -footprint.width / 2 + thickness,
+    right: footprint.width / 2 - thickness,
+    back: footprint.backZ + thickness / 2,
+    front: footprint.centerZ + footprint.depth / 2 - 0.01,
+  }
+  const outer = {
+    left: inner.left - thickness, right: inner.right + thickness,
+    back: inner.back - thickness, front: inner.front + thickness,
+  }
+  return { inner, outer, thickness }
+}
+
+export function roomShellBounds(roomId: RoomId): Box3 {
+  const { outer } = roomShellLayout(roomId)
   return new Box3(
-    new Vector3(-footprint.width / 2, -0.3, Math.min(footprint.backZ - 0.1, footprint.centerZ - footprint.depth / 2)),
-    new Vector3(footprint.width / 2, 5.1, footprint.centerZ + footprint.depth / 2),
+    new Vector3(outer.left, -0.3, outer.back),
+    new Vector3(outer.right, 5.1, outer.front),
   )
 }

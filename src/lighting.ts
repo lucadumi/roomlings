@@ -4,6 +4,7 @@ import {
 } from 'three'
 import { roomAccents } from './roomStyles.ts'
 import { roomShellBounds } from './roomLayout.ts'
+import { roomRotationPeriod } from './camera.ts'
 
 export const daylight = { sun: 2.45, sky: 1.3, fill: 0.65, lamp: 0, bulb: 0.12, window: roomAccents.sky, disc: roomAccents.gold }
 export const eveningLight = { sun: 0.45, sky: 0.65, fill: 0.3, lamp: 10, bulb: 1.7, window: '#697e98', disc: '#e6edf0' }
@@ -29,14 +30,15 @@ export function fitRoomShadowBounds(sunlight: DirectionalLight, bounds: Box3): v
   const axis = new Vector3(0, 1, 0)
   const point = new Vector3()
   for (const corner of corners) {
-    const angles = [-0.75, 0, 0.75]
+    const limit = roomRotationPeriod / 2
+    const angles = [-limit, 0, limit]
     // Include the exact extrema between drag endpoints in each light-space axis.
     for (let row = 0; row < 3; row++) {
       const a = inverse.elements[row] * corner.x + inverse.elements[row + 8] * corner.z
       const b = inverse.elements[row] * corner.z - inverse.elements[row + 8] * corner.x
       const extremum = Math.atan2(b, a)
       for (const angle of [extremum - Math.PI, extremum, extremum + Math.PI]) {
-        if (angle > -0.75 && angle < 0.75) angles.push(angle)
+        if (angle > -limit && angle < limit) angles.push(angle)
       }
     }
     for (const angle of angles) lightBounds.expandByPoint(point.copy(corner).applyAxisAngle(axis, angle).applyMatrix4(inverse))

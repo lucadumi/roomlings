@@ -10,22 +10,22 @@ import {
 import type { BufferGeometry } from 'three'
 import type { Category } from '../shared/domain.ts'
 import { categoryLabels } from '../shared/domain.ts'
-import { roomSlots } from '../shared/roomComponents.ts'
-import { kitchenUtilities, kitchenUtilityAnchors, sceneAnchors } from './room.ts'
-import type { KitchenAction, KitchenUtility, SceneAction } from './room.ts'
+import { kitchenUtilities } from './room.ts'
+import type { KitchenUtility, SceneAction } from './room.ts'
 import { buildKitchenModel } from './kitchenModel.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import { dampTo, frameSeconds } from './motion.ts'
 import {
-  componentAccessibleName, componentAtSlot, componentLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible,
+  componentAccessibleName, componentAtSlot, componentChoresLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible,
   kitchenActionSlots, kitchenUtilitySlots, visibleRoomBounds,
 } from './roomComponentScene.ts'
 import type { RoomWorldProps } from './roomViewTypes.ts'
 import { createRoomHologram } from './roomHologram.ts'
 import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from './placementArrow.ts'
+import { createRoomCutaway } from './roomCutaway.ts'
 
 type Target = { category: Category } | { action: SceneAction } | { utility: KitchenUtility } | { componentId: string }
 const targetLabels: Record<SceneAction, string> = {
@@ -38,6 +38,8 @@ const targetLabels: Record<SceneAction, string> = {
   light: 'Change the kitchen lighting',
   brew: 'Put the kettle on',
 }
+const hotspotClasses = new Map<string, string>(Object.entries({ ...kitchenActionSlots, ...kitchenUtilitySlots })
+  .map(([target, slot]) => [slot, `hotspot-${target}`]))
 
 type WorldControls = {
   open: boolean
@@ -53,12 +55,10 @@ type WorldControls = {
 
 export default function KitchenWorld({
   roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
-  onSelect, onAction, onOpenChores, onRestock, dueChores, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
+  onSelect, onAction, onOpenChores, onRestock, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: RoomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
-  const labels = useRef(new Map<KitchenAction | 'brew', HTMLButtonElement>())
-  const utilityLabels = useRef(new Map<KitchenUtility, HTMLButtonElement>())
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<WorldControls | null>(null)
   const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
@@ -79,7 +79,6 @@ export default function KitchenWorld({
   const installed = installedRoomComponents(components, 'kitchen')
   const placementLabelsHidden = editMode && !!placementPreviewId
   const labelsShown = showLabels && !placementLabelsHidden
-  const objectLabels = installed.filter((component) => editMode || !roomSlots.find((slot) => slot.id === component.slotId)?.defaultKind)
   const selectedComponent = installed.find((component) => component.id === selectedComponentId)
   const hoveredComponent = hovered && 'componentId' in hovered ? installed.find((component) => component.id === hovered.componentId) : undefined
 
@@ -155,6 +154,7 @@ export default function KitchenWorld({
     const hologram = createRoomHologram(room, shadow)
     const placementArrow = createPlacementArrow(room)
     scene.add(placementArrow.object)
+    const cutaway = createRoomCutaway(room)
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let targetRotation = 0
     let moved = false
@@ -227,7 +227,7 @@ export default function KitchenWorld({
       reset: () => {
         const pendingId = state.current.editMode ? state.current.placementPreviewId : null
         const pendingActor = pendingId ? componentScene.actors.get(pendingId) : undefined
-        targetRotation = preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined)
+        targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined))
         targetPitch = 0
         focusOn('room')
         currentControls.roomView = true
@@ -331,8 +331,9 @@ export default function KitchenWorld({
         const dx = event.clientX - previousX
         const dy = event.clientY - previousY
         moved ||= Math.hypot(event.clientX - startX, event.clientY - startY) > 4
-        targetRotation = MathUtils.clamp(targetRotation + dx * 0.004, -0.75, 0.75)
+        targetRotation += dx * 0.004
         targetPitch = MathUtils.clamp(targetPitch + dy * 0.015, -1.7, 3)
+        setRoomViewReset(false)
         previousX = event.clientX
         previousY = event.clientY
         wake()
@@ -437,7 +438,7 @@ export default function KitchenWorld({
         if (selectedObject) {
           currentControls.roomView = false
           currentControls.zoom = 1
-          targetRotation = preferredRoomRotation(selectedObject.slotId)
+          targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(selectedObject.slotId))
           setRoomViewReset(false)
           setZoom(currentControls.zoom)
         }
@@ -637,6 +638,11 @@ export default function KitchenWorld({
       const fridgeLight = currentControls.open ? 0.6 : 0
       interiorLight.intensity = reducedMotion.matches ? fridgeLight : dampTo(interiorLight.intensity, fridgeLight, 8, delta)
       transitioning ||= interiorLight.intensity !== fridgeLight
+      const cutawayUpdate = cutaway.update(camera)
+      shadowsDirty ||= cutawayUpdate.shadowsChanged
+      const rotationValue = normalizeRoomRotation(room.rotation.y).toFixed(5)
+      if (renderer.domElement.dataset.roomRotation !== rotationValue) renderer.domElement.dataset.roomRotation = rotationValue
+      if (renderer.domElement.dataset.hiddenWalls !== cutawayUpdate.hiddenSides) renderer.domElement.dataset.hiddenWalls = cutawayUpdate.hiddenSides
       const hologramUpdate = hologram.update(placementCandidate, componentScene.actors.values())
       shadowsDirty ||= hologramUpdate.shadowsChanged
       const arrowAnimating = placementArrow.update(placementBounds, now, !reducedMotion.matches && !latest.paused)
@@ -648,38 +654,6 @@ export default function KitchenWorld({
       if (sunlight.shadow.needsUpdate) { lastShadowFrame = now; shadowsDirty = false }
       renderer.render(scene, camera)
       initialized = true
-      for (const anchor of sceneAnchors) {
-        const label = labels.current.get(anchor.action)
-        if (!label) continue
-        const component = componentScene.componentAtSlot(kitchenActionSlots[anchor.action])
-        const objectAnchor = component ? componentScene.anchors.get(component.id) : undefined
-        if (!objectAnchor || !isSceneObjectVisible(objectAnchor, room)) { label.style.visibility = 'hidden'; continue }
-        objectAnchor.getWorldPosition(projected).project(camera)
-        const x = (projected.x * 0.5 + 0.5) * viewport.width
-        const y = (-projected.y * 0.5 + 0.5) * viewport.height
-        const insetX = Math.max(18, label.offsetWidth / 2)
-        const insetY = Math.max(18, label.offsetHeight / 2)
-        label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
-        label.style.visibility = projected.z > -1 && projected.z < 1
-          && x > area.x + insetX && x < area.x + area.width - insetX
-          && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
-      }
-      for (const anchor of kitchenUtilityAnchors) {
-        const label = utilityLabels.current.get(anchor.utility)
-        if (!label) continue
-        const component = anchor.utility === 'floor' ? undefined : componentScene.componentAtSlot(kitchenUtilitySlots[anchor.utility])
-        const objectAnchor = component ? componentScene.anchors.get(component.id) : undefined
-        if (!objectAnchor || !isSceneObjectVisible(objectAnchor, room)) { label.style.visibility = 'hidden'; continue }
-        objectAnchor.getWorldPosition(projected).project(camera)
-        const x = (projected.x * 0.5 + 0.5) * viewport.width
-        const y = (-projected.y * 0.5 + 0.5) * viewport.height
-        const insetX = Math.max(24, label.offsetWidth / 2)
-        const insetY = Math.max(24, label.offsetHeight / 2)
-        label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
-        label.style.visibility = projected.z > -1 && projected.z < 1
-          && x > area.x + insetX && x < area.x + area.width - insetX
-          && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
-      }
       for (const [id, label] of componentLabels.current) {
         const anchor = componentScene.anchors.get(id)
         if (!anchor || !isSceneObjectVisible(anchor, room)) { label.style.visibility = 'hidden'; continue }
@@ -752,41 +726,18 @@ export default function KitchenWorld({
     setEvening(next)
     controls.current?.wake()
   }
-  const openUtility = (utility: KitchenUtility) => {
-    if (editMode) {
-      const component = utility === 'floor' ? undefined : componentAtSlot(components, kitchenUtilitySlots[utility])
-      if (component) onComponentSelect?.(component.id)
-      return
-    }
-    controls.current?.focusOn(utility)
-    if (utility === 'supplies') onRestock()
-    else onOpenChores(utility === 'chores' ? null : utility)
-  }
-
   return (
     <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused} data-framing={overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined}>
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable} aria-label={editMode
-        ? 'Kitchen editing preview. Select an object to edit its settings in its fixed position, or use the room objects list. Drag to turn the room, scroll or pinch to zoom.'
-        : 'Interactive low-poly shared kitchen. Select objects to move closer. The shopping bag opens the shared shopping list, the receipt book opens grocery runs, the house pot shows the grocery budget, and the noticeboard holds your roommates. The cleaning caddy opens room chores and the shelf opens kitchen supplies. Drag to turn the room, scroll or pinch to zoom.'} />
+        ? 'Kitchen editing preview. Use the Components menu to edit objects. Drag to turn 360 degrees, scroll or pinch to zoom.'
+        : 'Interactive shared kitchen. Object plus markers open chores. Select the shopping bag, receipt book, house pot or noticeboard for household tools. Drag to turn 360 degrees, scroll or pinch to zoom.'} />
       {unavailable && <div className="fridge-unavailable" role="status"><Snowflake size={42} /><strong>Your kitchen, minus the 3D.</strong><p>This browser could not display the kitchen. All household tools still work.</p></div>}
       {!unavailable && <>
         {!placementLabelsHidden && <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label="Objects in your kitchen">
-          {!editMode && sceneAnchors.filter((anchor) => componentAtSlot(components, kitchenActionSlots[anchor.action])).map((anchor) => {
-            const component = componentAtSlot(components, kitchenActionSlots[anchor.action])
-            const label = componentLabel(component, anchor.label)
-            return <button key={anchor.action} ref={(element) => { if (element) labels.current.set(anchor.action, element); else labels.current.delete(anchor.action) }} className={`world-hotspot hotspot-${anchor.action}`} aria-label={label} data-component-id={component?.id} data-selected={focused === anchor.action} onClick={() => { if (anchor.action === 'brew') controls.current?.brew(); else onAction(anchor.action) }} onMouseEnter={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onMouseLeave={() => { setHovered(null); controls.current?.wake() }} onFocus={() => { setHovered({ action: anchor.action }); controls.current?.wake() }} onBlur={() => { setHovered(null); controls.current?.wake() }}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span></button>
-          })}
-          {!editMode && kitchenUtilityAnchors.filter((anchor) => anchor.utility === 'floor' || componentAtSlot(components, kitchenUtilitySlots[anchor.utility])).map((anchor) => {
-            const component = anchor.utility === 'floor' ? undefined : componentAtSlot(components, kitchenUtilitySlots[anchor.utility])
-            const label = `${componentLabel(component, anchor.label)}${anchor.utility === 'sink' && dueChores.sink ? ` (${dueChores.sink} due)` : ''}`
-            return <button key={anchor.utility} ref={(element) => { if (element) utilityLabels.current.set(anchor.utility, element); else utilityLabels.current.delete(anchor.utility) }}
-              className={`world-hotspot hotspot-${anchor.utility}`} aria-label={label} data-component-id={component?.id} data-selected={focused === anchor.utility}
-              onClick={() => openUtility(anchor.utility)}><span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span></button>
-          })}
-          {onComponentSelect && objectLabels.map((component) => <button type="button" key={component.id}
+          {onComponentSelect && installed.map((component) => <button type="button" key={component.id}
             ref={(element) => { if (element) componentLabels.current.set(component.id, element); else componentLabels.current.delete(component.id) }}
-            className="world-hotspot hotspot-component" data-component-id={component.id} data-component-kind={component.kind}
-            aria-label={`${editMode ? 'Edit' : 'Open'} ${componentAccessibleName(component, installed)}`} data-selected={!overviewFocus && selectedComponentId === component.id}
+            className={`world-hotspot hotspot-component ${hotspotClasses.get(component.slotId) ?? ''}`} data-component-id={component.id} data-component-kind={component.kind}
+            aria-label={componentChoresLabel(component, installed)} data-selected={!overviewFocus && selectedComponentId === component.id}
             onClick={() => onComponentSelect(component.id)} onMouseEnter={() => setHovered({ componentId: component.id })}
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
             <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
@@ -794,7 +745,7 @@ export default function KitchenWorld({
         </div>}
         <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={placementLabelsHidden} aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'} aria-pressed={labelsShown} title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
-        <div className="world-interaction-hint"><Move size={13} />{hovered ? ('componentId' in hovered ? `${editMode ? 'Edit' : 'Open'} ${hoveredComponent ? componentAccessibleName(hoveredComponent, installed) : 'room object'}` : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : editMode ? 'Select an object to edit. Positions stay fixed.' : 'Drag to explore. Select an object to get closer.'}</div>
+        <div className="world-interaction-hint"><Move size={13} />{hovered ? ('componentId' in hovered ? hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores' : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
         {!editMode && componentAtSlot(components, 'kitchen-fridge') && <button className="world-fridge-toggle" onClick={toggle} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size={15} />{open ? 'Close the fridge' : 'Peek inside'}<span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>}
         {!editMode && componentAtSlot(components, 'kitchen-kettle') && <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size={16} /><span>{brewing ? 'Kettle is on' : 'Tea break'}</span></button>}
       </>}
