@@ -13,6 +13,7 @@ import { DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { ExpenseForm } from './ExpenseForm.tsx'
 import { dateTitle } from './format.ts'
+import { Feedback } from './Feedback.tsx'
 import './shopping.css'
 
 export type ShoppingView = 'list' | 'basket' | 'history'
@@ -112,8 +113,8 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
   const unavailableSource = !!source && (!sourceComponent?.installed || !sourceComponent.supplies.some((supply) => supply.id === source.supplyId))
   return <Form onSubmit={() => {
     if (blocked || changed) { setLocalError('Review the latest shopping item before saving.'); return }
-    if (unavailableSource) { setLocalError('This supply shortcut was removed. Close this form and choose a current supply.'); return }
-    if (duplicate) { setLocalError('This supply is already on the shared list. Close this form and review its quantity there.'); return }
+    if (unavailableSource) { setLocalError('Supply removed. Close this form and choose another supply.'); return }
+    if (duplicate) { setLocalError('Supply already on the list. Review its quantity there.'); return }
     const input = item ? shoppingItemEditSchema.safeParse({ name, quantity, notes, itemVersion: baseVersion })
       : shoppingItemInputSchema.safeParse({ name, quantity, notes, ...(source ? { componentSource: source } : {}) })
     if (!input.success) { setLocalError(input.error.issues[0].message); return }
@@ -125,14 +126,14 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
     <label className="field">Notes<textarea maxLength={240} rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} disabled={busy} placeholder="Brand, preference or anything useful" /></label>
     {sourceComponent && <p className="field-hint">Supply shortcut for {roomCatalog[sourceComponent.roomId].name}: {sourceComponent.name}. This adds to the shared shopping list, not an inventory.</p>}
     {item && <ShoppingSources sources={item.componentSources} />}
-    {unavailableSource && <p className="form-error" role="alert">This object or supply shortcut was removed. Close this form and choose a current supply, or add an ordinary shopping item.</p>}
-    {blocked && <p className="form-error" role="alert">This item left the list, is in a basket, or is being handled by another roommate. Close this form and review the list.</p>}
+    {unavailableSource && <Feedback>Object or supply removed. Close this form and choose another supply.</Feedback>}
+    {blocked && <Feedback>Item unavailable or claimed by a roommate. Close this form and review the list.</Feedback>}
     {duplicate && <p className="field-hint">This supply is already on the shared list. Review its existing quantity instead of adding it again.</p>}
     {!blocked && changed && latest && <DraftConflict
       onLatest={() => { setName(latest.name); setQuantity(latest.quantity); setNotes(latest.notes); setBaseVersion(latest.version); setLocalError('') }}
       onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
     >This item changed. Latest: {latest.quantity} {latest.name}{latest.notes ? `, ${latest.notes}` : ''}.</DraftConflict>}
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+    {localError && <Feedback>{localError}</Feedback>}{error}
     <button className="button primary full" disabled={busy || blocked || changed || duplicate || unavailableSource}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
   </Form>
 }
@@ -152,7 +153,7 @@ export function ShoppingCheckoutForm({ household, memberId, checkoutId, initialI
   const current = new Map(household.shopping.items.map((item) => [item.id, item]))
   return <ExpenseForm household={household} memberId={memberId} busy={busy} initialDescription="Shopping run" initialCategory="other"
     submitLabel="Record shopping run" submitDisabled={recorded || changed || !selected.length}
-    error={recorded ? <p className="form-error" role="alert">This run has already been recorded. Close this form and open Past runs; no duplicate expense was added.</p> : error}
+    error={recorded ? <Feedback>Run already recorded. Open Past runs; no duplicate was added.</Feedback> : error}
     onSubmit={(expense) => {
       const input = shoppingCheckoutSchema.safeParse({ ...expense, checkoutId, items: selected.map(({ id, version }) => ({ id, version })) })
       if (!input.success) { setSelectionError(input.error.issues[0].message); return }
@@ -176,12 +177,12 @@ export function ShoppingCheckoutForm({ household, memberId, checkoutId, initialI
       setSnapshot(latest)
       setSelectedIds(latest.map((item) => item.id))
       setSelectionError('')
-      setSelectionNotice('Basket refreshed. Review the receipt total and split before saving.')
+      setSelectionNotice('Basket refreshed. Review the total and split.')
     }}>Reload my basket</button>}
-    {!recorded && changed && <p className="form-error" role="alert">Your basket changed. Remove changed items from this selection or reload the basket, then review the total.</p>}
+    {!recorded && changed && <Feedback>Basket changed. Deselect changed items or reload, then review the total.</Feedback>}
     {!recorded && !selected.length && <p className="field-hint">{snapshot.length ? 'Choose at least one item for this run.' : 'Your basket is empty. Close this form and pick up items from the shared list.'}</p>}
-    {selectionNotice && <p className="field-hint" role="status">{selectionNotice}</p>}
-    {selectionError && <p className="form-error" role="alert">{selectionError}</p>}
+    {selectionNotice && <Feedback tone="info">{selectionNotice}</Feedback>}
+    {selectionError && <Feedback>{selectionError}</Feedback>}
     <p className="field-hint">Record only money already paid. The selected items are archived only after the receipt is saved.</p>
   </ExpenseForm>
 }

@@ -2,6 +2,7 @@ import { Children, Fragment, isValidElement, useEffect, useId, useState } from '
 import type { ComponentProps, ReactNode } from 'react'
 import * as Select from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
+import { Feedback } from './Feedback.tsx'
 import './dropdown.css'
 
 type Option = { value: string; label: string; disabled: boolean }
@@ -49,7 +50,7 @@ export function Dropdown({ label, value, onValueChange, disabled = false, requir
       disabled={disabled} required={required} onValueChange={(next) => {
         const option = options.find((option) => `option:${option.value}` === next)
         if (!option || option.disabled) {
-          setError('That option is no longer available. Choose another option.')
+          setError('Option unavailable. Choose another.')
           return
         }
         setError('')
@@ -80,6 +81,6 @@ export function Dropdown({ label, value, onValueChange, disabled = false, requir
         </Select.Content>
       </Select.Portal>
     </Select.Root>
-    {error && <span className="form-error" id={errorId} role="alert">{error}</span>}
+    {error && <Feedback inline id={errorId}>{error}</Feedback>}
   </>
 }

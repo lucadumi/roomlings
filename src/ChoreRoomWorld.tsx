@@ -56,6 +56,7 @@ export type ChoreRoomConfig<Target extends string> = {
   getTargetArea: (target: Target) => ChoreArea | null
   buildModel: (room: Group, style: RoomStyle) => ChoreRoomModel<Target>
   framing: (width: number, height: number, bounds: Box3, rotation?: number, pitch?: number, options?: { closeRoom?: boolean }) => Framing
+  cameraZoom?: (zoom: number, closeRoom: boolean) => number
   tourFraming: (width: number, height: number, progress: number, bounds: Box3, actorBounds: ReadonlyMap<Target, Box3>, stops: readonly ChoreRoomFocus<Target>[]) => Framing
   reducedTourFraming?: (width: number, height: number, bounds: Box3) => Framing
   minimumFocusHalfHeight?: number
@@ -368,6 +369,7 @@ export default function ChoreRoomWorld<Target extends string>({
           : model.actorBounds.get(framedFocus) ?? componentScene.bounds
       const selectedBounds = !latest.overviewFocus && !preview && !currentControls.wholeRoom && latest.selectedComponentId
         ? componentScene.getBounds(latest.selectedComponentId) : undefined
+      const closeRoom = !latest.overviewFocus && !preview && currentControls.focus === 'room' && !currentControls.wholeRoom && !selectedBounds
       if (latest.tour && tourBoundsDirty) {
         for (const target of config.targets) {
           if (!config.targetSlots[target]) continue
@@ -382,7 +384,7 @@ export default function ChoreRoomWorld<Target extends string>({
         ? reduced ? (config.reducedTourFraming ?? config.framing)(area.width, area.height, componentScene.bounds)
           : config.tourFraming(area.width, area.height, displayedProgress, componentScene.bounds, tourActorBounds, latest.tour.stops)
         : config.framing(area.width, area.height, bounds, room.rotation.y, pitch, {
-          closeRoom: !latest.overviewFocus && !preview && currentControls.focus === 'room' && !currentControls.wholeRoom,
+          closeRoom,
         })
       if (selectedBounds) framing.halfHeight = Math.max(2.05, framing.halfHeight)
       else if (!preview && framedFocus !== 'room') framing.halfHeight = Math.max(config.minimumFocusHalfHeight ?? 0, framing.halfHeight)
@@ -395,7 +397,8 @@ export default function ChoreRoomWorld<Target extends string>({
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
       halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      const desiredZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
+      const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom) : displayedZoom
       camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
       camera.position.copy(cameraCenter).add(offset.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
       camera.lookAt(cameraCenter)

@@ -10,6 +10,7 @@ import { LoadingIcon } from './Branding.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import './bills.css'
 import { Dropdown } from './Dropdown.tsx'
+import { Feedback } from './Feedback.tsx'
 
 const statusLabels = { paid: 'Paid', overdue: 'Overdue', due: 'Due today', upcoming: 'Upcoming' }
 
@@ -114,9 +115,9 @@ export function BillForm({ household, bill, busy, error, onSubmit }: {
   const appliesFrom = bill && bill.startMonth > currentMonth ? bill.startMonth : currentMonth
   return <Form onSubmit={() => {
     if (blocked || changed) { setLocalError('Review the latest monthly bill before saving.'); return }
-    if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
+    if (!cents) { setLocalError('Enter a positive amount with up to two decimal places.'); return }
     if (household.members.some((member) => member.inactive && participants.includes(member.id))) {
-      setLocalError('Remove former roommates from the participants before saving this new bill schedule.')
+      setLocalError('Remove former roommates before saving this bill.')
       return
     }
     const input = bill
@@ -135,7 +136,7 @@ export function BillForm({ household, bill, busy, error, onSubmit }: {
     <p className="field-hint">Repeats monthly in {timeZone}. Short months use their last day. You can change the actual amount when recording a payment.</p>
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
     {bill && <p className="field-hint">Changes apply from {monthTitle(appliesFrom)}. Earlier months and recorded payments keep their original details.</p>}
-    {blocked && <p className="form-error" role="alert">This monthly bill is no longer available. Close the form and review your bills.</p>}
+    {blocked && <Feedback>Bill unavailable. Close this form and review your bills.</Feedback>}
     {changed && latestRevision && <DraftConflict
       onLatest={() => {
         setName(latestRevision.name); setAmount((latestRevision.amount / 100).toFixed(2))
@@ -144,7 +145,7 @@ export function BillForm({ household, bill, busy, error, onSubmit }: {
       }}
       onKeep={() => { setReviewedRevision(latestRevision); setLocalError('') }}
     >This monthly bill changed. Review the latest schedule before saving your draft.</DraftConflict>}
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+    {localError && <Feedback>{localError}</Feedback>}{error}
     <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{bill ? 'Save monthly bill' : 'Create monthly bill'}</button>
   </Form>
 }
@@ -165,9 +166,9 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
   const disabled = busy || blocked
   return <Form onSubmit={() => {
     if (blocked || changed) { setLocalError('Review the latest bill before recording this payment.'); return }
-    if (!cents) { setLocalError('Enter a positive amount with no more than two decimal places.'); return }
+    if (!cents) { setLocalError('Enter a positive amount with up to two decimal places.'); return }
     if (household.members.some((member) => member.inactive && (member.id === paidBy || participants.includes(member.id)))) {
-      setLocalError('Choose an active payer and remove former roommates from this new payment record. Existing ledger entries remain unchanged.')
+      setLocalError('Choose an active payer and remove former roommates.')
       return
     }
     const input = billPaymentInputSchema.safeParse({ month: item.month, amount: cents, paidBy, participants, date })
@@ -187,7 +188,7 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
       onLatest={() => { setAmount((item.amount / 100).toFixed(2)); setParticipants(item.participants); setReviewedItem(item); setLocalError('') }}
       onKeep={() => { setReviewedItem(item); setLocalError('') }}
     >This unpaid bill changed. Review its latest amount, due date and split before recording your payment.</DraftConflict>}
-    {localError && <p className="form-error" role="alert">{localError}</p>}{error}
+    {localError && <Feedback>{localError}</Feedback>}{error}
     <button className="button primary full" disabled={disabled || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}Record bill payment</button>
     <p className="form-footnote">One expense for this bill and month. No money is transferred.</p>
   </Form>

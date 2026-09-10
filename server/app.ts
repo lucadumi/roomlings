@@ -19,8 +19,9 @@ import {
 import { componentStateInputSchema, roomComponentIdSchema, roomComponentLimit, roomComponentsPatchSchema } from '../shared/roomComponents.ts'
 import type { ComponentSourceSnapshot } from '../shared/roomComponents.ts'
 import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
+import { requestFailureMessage } from '../shared/requestMessages.ts'
 import type { Store } from './store.ts'
-import { ApiError } from './errors.ts'
+import { ApiError, apiMessages } from './errors.ts'
 import { accountCookieName, installAccounts } from './accounts-api.ts'
 import type { AccountOptions } from './accounts-api.ts'
 import { installRoomAccess } from './room-access.ts'
@@ -65,7 +66,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next() })
   app.use('/api/household/room-components', express.json({ limit: '256kb' }))
   app.use('/api', express.json({ limit: '32kb' }))
-  app.use('/api', rateLimit(120, 60_000, 'A lot is happening in this kitchen. Wait a minute and try again.'))
+  app.use('/api', rateLimit(120, 60_000, 'Too many requests. Wait a minute and try again.'))
 
   const accounts = installAccounts(app, store, options)
   const legacyAuthenticated = async (req: Request) => {
@@ -99,16 +100,16 @@ export function createApp(store: Store, options: AccountOptions = {}) {
         if (recorded) {
           if (recorded.memberId !== memberId) throw new ApiError(409, 'This change identifier belongs to another roommate. Start a new action.', 'MUTATION_ID_CONFLICT')
           if (recorded.fingerprint !== fingerprint) {
-            throw new ApiError(409, 'Your earlier change was already saved with different details. Review the latest kitchen before making a new change.', 'MUTATION_PAYLOAD_CHANGED')
+            throw new ApiError(409, 'This change was already saved with different details. Review the latest kitchen.', 'MUTATION_PAYLOAD_CHANGED')
           }
           return { household, replayed: true }
         }
         // An old unconfirmed request must not become a new mutation after its receipt is pruned.
         if (receipts.length === mutationReceiptLimit && mutation.mutationVersion < receipts[0].version - 1) {
-          throw new ApiError(409, 'This old change can no longer be confirmed. Review the latest kitchen, then reopen the form to make a new change.', 'MUTATION_TOO_OLD')
+          throw new ApiError(409, 'This save is too old to confirm. Review the latest kitchen and reopen the form.', 'MUTATION_TOO_OLD')
         }
       }
-      if (version !== household.version) throw new ApiError(409, 'A roommate just changed the kitchen. It has been refreshed; please try again.')
+      if (version !== household.version) throw new ApiError(409, apiMessages.householdChanged)
       await change(household, memberId)
       household.version++
       if (mutation) household.mutationReceipts = [
@@ -140,7 +141,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   const findShoppingItem = (household: Household, id: string, version: number): ShoppingItem => {
     const item = household.shopping.items.find((item) => item.id === id)
     if (!item) throw new ApiError(404, 'That item is no longer on this kitchen list.')
-    if (item.version !== version) throw new ApiError(409, 'This shopping item changed. Review the latest details and try again.')
+    if (item.version !== version) throw new ApiError(409, 'Shopping item changed. Review the latest details and try again.')
     return item
   }
   const changeShoppingItem = (item: ShoppingItem) => {
@@ -150,8 +151,8 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   const findChore = (household: Household, id: string, version: number): Chore => {
     const choreId = z.string().uuid().parse(id)
     const chore = household.chores.items.find((chore) => chore.id === choreId)
-    if (!chore) throw new ApiError(404, 'That chore was not found in this home.')
-    if (chore.version !== version) throw new ApiError(409, 'This chore changed. Review its latest details and try again.')
+    if (!chore) throw new ApiError(404, 'Chore not found in this home.')
+    if (chore.version !== version) throw new ApiError(409, 'Chore changed. Review the latest details and try again.')
     return chore
   }
   const requireRoomAdmin = async (household: Household, memberId: string) => {
@@ -192,7 +193,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
         throw new ApiError(409, 'This kitchen already has 12 active roommates.')
       }
       if (household.members.length >= retainedMemberLimit) {
-        throw new ApiError(409, 'This kitchen has reached its 200-identity history limit. Export the ledger and create a new kitchen to add a new roommate.')
+        throw new ApiError(409, '200-identity history limit reached. Export the ledger and create a new kitchen.')
       }
       if (household.members.some((member) => member.name.toLocaleLowerCase() === input.name.toLocaleLowerCase())) {
         throw new ApiError(409, 'A roommate already uses that name. Choose a different name to keep the ledger clear.')
@@ -337,7 +338,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     const componentFields = choreComponentFields(household, input)
     requireRoommates(household, input.rotation)
     if (household.chores.items.length >= choreLimit) {
-      throw new ApiError(409, 'This home has reached its limit of 200 chores. Edit an existing chore instead; archived chores and history are retained.')
+      throw new ApiError(409, 'Limit of 200 chores reached. Edit an existing chore; archiving does not free a slot.')
     }
     const now = new Date().toISOString()
     household.chores.items.push({
@@ -368,11 +369,11 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     const { choreVersion } = choreVersionSchema.parse(req.body)
     const chore = findChore(household, req.params.id, choreVersion)
     if (household.chores.history.length >= choreCompletionLimit) {
-      throw new ApiError(409, 'This home has reached its 20,000-completion history limit. Existing history has been kept.')
+      throw new ApiError(409, '20,000-completion history limit reached. Existing history is kept.')
     }
     if (household.chores.history.some((completion) => completion.choreId === chore.id
       && completion.occurrence === chore.occurrence && completion.undoneAt === null)) {
-      throw new ApiError(409, 'This chore occurrence has already been completed. Refresh its history.')
+      throw new ApiError(409, 'Chore occurrence already completed. Refresh its history.')
     }
     const now = new Date()
     const current = chore.componentId ? { ...chore, ...choreComponentFields(household, chore) } : chore
@@ -462,21 +463,21 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     if ((await store.accounts.isManaged(household.id))) throw new ApiError(403, 'Only the kitchen owner can create or revoke invitations from account settings.')
     household.inviteCode = randomBytes(12).toString('base64url')
   })))
-  app.use('/api', (_req, _res, next) => next(new ApiError(404, 'This kitchen action could not be found.')))
-  const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
+  app.use('/api', (_req, _res, next) => next(new ApiError(404, 'Action not found.')))
+  const errors: ErrorRequestHandler = (error: unknown, req, res, _next) => {
     if (error instanceof z.ZodError) {
-      res.status(400).json({ error: error.issues[0]?.message ?? 'Please check the form fields.' })
+      res.status(400).json({ error: error.issues[0]?.message ?? 'Check the form fields.' })
     } else if (error instanceof ChoreError || error instanceof RoomComponentError) {
       res.status(error.status).json({ error: error.message })
     } else if (error instanceof ApiError) {
       res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) })
     } else if (error instanceof SyntaxError && 'status' in error && error.status === 400) {
-      res.status(400).json({ error: 'The request could not be read. Please try again.' })
+      res.status(400).json({ error: 'Unreadable request. Check the form and try again.' })
     } else if (error instanceof Error && 'type' in error && error.type === 'entity.too.large') {
       res.status(413).json({ error: 'That request is too large.' })
     } else {
       console.error('Kitchen request failed:', error instanceof Error ? error.message : 'Unknown error')
-      res.status(500).json({ error: 'The kitchen could not save that change. Please try again.' })
+      res.status(500).json({ error: requestFailureMessage('unavailable', req.method) })
     }
   }
   app.use(errors)

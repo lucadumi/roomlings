@@ -444,7 +444,7 @@ test('account and primary-button loaders follow real requests, preserve retries 
   await expect(page.getByRole('alert')).toHaveText('Account access is temporarily unavailable.')
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
   const retry = await holdApiRequests(page, '**/api/account')
-  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await retry.pending
   await expectLoader(checking.locator('img.roomlings-loader'))
   await retry.release()

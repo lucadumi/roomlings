@@ -3,7 +3,7 @@ import ChoreRoomWorld from './ChoreRoomWorld.tsx'
 import type { ChoreRoomConfig, ChoreRoomWorldProps } from './ChoreRoomWorld.tsx'
 import { bathroomFocusForRequest, bathroomFraming, bathroomLabels, bathroomTargets, bathroomTourFraming, buildBathroomModel } from './bathroomModel.ts'
 import type { BathroomTarget } from './bathroomModel.ts'
-import { cameraFraming } from './camera.ts'
+import { cameraFraming, roomCameraZoom } from './camera.ts'
 import { bathroomTargetSlots } from './roomComponentScene.ts'
 
 const bathroomConfig: ChoreRoomConfig<BathroomTarget> = {
@@ -19,6 +19,7 @@ const bathroomConfig: ChoreRoomConfig<BathroomTarget> = {
   getTargetArea: (target) => target === 'chores' || target === 'supplies' ? null : target,
   buildModel: buildBathroomModel,
   framing: bathroomFraming,
+  cameraZoom: roomCameraZoom,
   tourFraming: bathroomTourFraming,
   reducedTourFraming: (width, height) => cameraFraming(width, height, 'room', true),
   lampPosition: [0.15, 3.9, -2.7],

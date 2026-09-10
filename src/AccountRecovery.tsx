@@ -4,6 +4,7 @@ import { accountRecoveryCodeCount, accountRecoverySignInSchema } from '../shared
 import type { AccountRecoverySignIn as AccountRecoveryInput, AccountRecoveryState } from '../shared/accounts.ts'
 import { CopyField, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
+import { Feedback } from './Feedback.tsx'
 
 export function AccountRecoveryPanel({ recovery, codes, busy, onGenerate, onRevoke, onRefresh, onSaved }: {
   recovery: AccountRecoveryState; codes: string[]; busy: boolean
@@ -55,7 +56,7 @@ export function AccountRecoverySignIn({ busy, initialEmail, fixedEmail = false, 
       value={code} disabled={busy} onChange={(event) => setCode(event.target.value)} /></label>
     <label className="field">Name this browser<input required autoComplete="off" maxLength={50}
       value={label} disabled={busy} onChange={(event) => setLabel(event.target.value)} /></label>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <Feedback>{error}</Feedback>}
     <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size={17} />}Recover my account</button>
     <button type="button" className="text-button" disabled={busy} onClick={() => onEmail(email)}>Use email sign-in</button>
   </Form>

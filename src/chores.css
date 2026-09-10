@@ -29,8 +29,13 @@
 .chore-confirmation { padding: 16px; margin-bottom: 18px; border: 1px solid var(--control-border); border-radius: 9px; background: var(--control-surface); }
 .chore-confirmation h3 { margin: 0 0 10px; color: var(--leaf-ink); font-size: 1.125rem; overflow-wrap: anywhere; }
 .chore-confirmation p { margin: 7px 0 0; color: var(--muted); font-size: .75rem; line-height: 1.75; overflow-wrap: anywhere; }
-.restock-item { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--control-surface); }
-.restock-item > div { min-width: 0; flex: 1 1 9rem; }
-.restock-item h3 { margin: 0 0 6px; color: var(--leaf-ink); font-size: 1rem; overflow-wrap: anywhere; }
+.restock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr)); gap: 12px; margin-bottom: 12px; }
+.restock-item { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; gap: 12px; padding: 12px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--control-surface); }
+.restock-item > div { min-width: 0; width: 100%; flex: 1; }
+.restock-grid .restock-item h3 { margin: 0 0 6px; color: var(--leaf-ink); font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
 .restock-item p { margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.7; overflow-wrap: anywhere; }
+.restock-item > .button { align-self: stretch; }
 .restock-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 18px; }
+@container room-panel (max-width: 390px) {
+  .restock-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr)); }
+}

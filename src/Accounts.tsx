@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { Check, Home, KeyRound, LogOut, Mail, Plus, RefreshCw, Users } from 'lucide-react'
 import { z } from 'zod'
@@ -10,12 +10,13 @@ import {
 import type { AccountRecoveryState, AccountState, CreateAccountHousehold, HouseholdAccess } from '../shared/accounts.ts'
 import type { Session } from '../shared/domain.ts'
 import { nameSchema } from '../shared/domain.ts'
-import { getAccountState, request, RequestError } from './api.ts'
+import { errorMessage, getAccountState, request, RequestError } from './api.ts'
 import type { SavedKitchen, SavedKitchenChange } from './api.ts'
 import { CopyField, Form, Modal } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { CreateKitchenForm } from './CreateKitchenForm.tsx'
 import { AccountRecoveryPanel, AccountRecoverySignIn } from './AccountRecovery.tsx'
+import { Feedback, FeedbackAction } from './Feedback.tsx'
 import './access.css'
 
 export type AccountIntent = 'manage' | 'create' | 'join'
@@ -57,7 +58,10 @@ export function AccountDialog({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [notice, setNoticeValue] = useState<{ message: string; tone: 'success' | 'info' } | null>(null)
+  const setNotice = useCallback((message: string, tone: 'success' | 'info' = 'success') => {
+    setNoticeValue(message ? { message, tone } : null)
+  }, [])
   const [refreshId, setRefreshId] = useState(0)
   const [access, setAccess] = useState<HouseholdAccess | null>(null)
   const [inviteSecret, setInviteSecret] = useState('')
@@ -156,8 +160,8 @@ export function AccountDialog({
     setError('')
     if (!initialState.account) {
       setNotice(pending.current
-        ? 'Account access has ended. Any queued deletion continues on the server until it succeeds.'
-        : 'Your account session has ended. Sign in again to continue.')
+        ? 'Account access ended. Queued deletions keep retrying.'
+        : 'Account session ended. Sign in again.', 'info')
     }
   }, [initialState])
   useEffect(() => {
@@ -182,7 +186,7 @@ export function AccountDialog({
       const ended = pending.current && next.account === null
       acceptState(next, ended ? 'signed-out' : 'refresh')
       if (next.deletionPending) return
-      if (ended) { setView('manage'); setError(''); setNotice('Account access has ended. Any queued deletion continues on the server until it succeeds.') }
+      if (ended) { setView('manage'); setError(''); setNotice('Account access ended. Queued deletions keep retrying.', 'info') }
       if (sameAccount && next.account && view === 'household' && access
         && next.memberships.some((membership) => membership.householdId === access.household.id)) {
         const fresh = householdAccessSchema.parse(await request(`/account/households/${access.household.id}`, { signal }))
@@ -196,7 +200,7 @@ export function AccountDialog({
       }
     }).catch((failure: unknown) => {
       if (controller.signal.aborted || contextEpoch.current !== epoch) return
-      setError(failure instanceof Error ? failure.message : 'Account access could not be loaded.')
+      setError(errorMessage(failure, 'Could not load account access. Try again.'))
       if (failure instanceof RequestError && failure.code === 'ACCOUNT_DELETION_PENDING') {
         setPendingDeletion(true)
         setRecoveryCodes([])
@@ -226,7 +230,7 @@ export function AccountDialog({
       return contextEpoch.current === epoch
     } catch (failure) {
       if (mounted.current && contextEpoch.current === epoch) {
-        setError(failure instanceof Error ? failure.message : 'Your account change could not be saved.')
+        setError(errorMessage(failure, 'Account change not confirmed. Try again.'))
         if (failure instanceof RequestError && failure.code === 'ACCOUNT_DELETION_PENDING') {
           setPendingDeletion(true)
           setConfirmation(null)
@@ -309,7 +313,7 @@ export function AccountDialog({
     }))
     setRecovery(next)
     setRecoveryCodes([])
-    setNotice('Your unused account recovery codes have been revoked. Existing sessions are unchanged.')
+    setNotice('Unused recovery codes revoked. Sessions unchanged.')
   }
   const chooseSignIn = (useRecovery: boolean, email: string) => {
     setRecoverySignIn(useRecovery)
@@ -353,14 +357,14 @@ export function AccountDialog({
       setRecoveryCodes([])
       setRecovery(null)
       navigate('manage')
-      setNotice(all ? 'Your account and linked browser sessions have been signed out.' : 'Your account is signed out on this browser.')
+      setNotice(all ? 'Account signed out on all linked devices.' : 'Account signed out on this browser.')
     }
   }
   const linkBrowserKitchen = async (kitchen: SavedKitchen) => {
     const epoch = contextEpoch.current
     try {
       await accountAction('/account/link', { token: kitchen.token }, 'POST', 'select')
-      if (mounted.current) { navigate('manage'); setNotice('Your existing roommate identity is linked. Its history is unchanged.') }
+      if (mounted.current) { navigate('manage'); setNotice('Roommate identity linked. History unchanged.') }
     } catch (failure) {
       if (mounted.current && contextEpoch.current === epoch && failure instanceof RequestError
         && failure.code === 'BROWSER_ACCESS_EXPIRED') {
@@ -382,16 +386,16 @@ export function AccountDialog({
       : view === 'join' ? 'There is a place for you.' : view === 'link' ? 'Keep your existing place.' : 'Your Roomlings account.')
   return <Modal title={title} subtitle="Account access and household membership. Your shared ledger stays the source of truth." onClose={onClose} busy={busy}>
     <div className="access-content" ref={content}>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {notice && <p className="access-notice" role="status">{notice}</p>}
+      {error && <Feedback actions={!loading && !state && !pendingDeletion
+        ? <FeedbackAction aria-label="Retry account access" onClick={() => { setError(''); setRefreshId((value) => value + 1) }}>Retry</FeedbackAction> : undefined}>{error}</Feedback>}
+      {notice && <Feedback tone={notice.tone} className="access-notice">{notice.message}</Feedback>}
       {loading && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Loading account access...</p>}
-      {!loading && !state && !pendingDeletion && <button className="button secondary full" onClick={() => { setError(''); setRefreshId((value) => value + 1) }}>Try again</button>}
       {pendingDeletion && <>
         <p className="field-hint">Account access is disabled while deletion finishes. The server retries automatically at startup and every minute. This is not a completed deletion yet.</p>
         <button className="button secondary full" disabled={disabled} onClick={() => { setRefreshId((value) => value + 1) }}>Check deletion status</button>
         {state?.account && state.csrfToken && <button className="text-button" disabled={disabled} onClick={() => { void run(async () => {
           await accountAction('/account', { confirmation: state.account?.email }, 'DELETE', 'signed-out')
-          if (mounted.current) { setPendingDeletion(false); navigate('manage'); setNotice('Your account deletion has completed.') }
+          if (mounted.current) { setPendingDeletion(false); navigate('manage'); setNotice('Account deletion completed.') }
         }) }}>Retry account deletion</button>}
       </>}
       {!loading && state && !state.configured && !account && <p className="field-hint">
@@ -403,7 +407,7 @@ export function AccountDialog({
         onEmail={(email) => chooseSignIn(false, email)}
         onSubmit={(body) => run(async () => {
           const next = await accountAction('/account/recover', body, 'POST', 'select')
-          if (mounted.current) await finishSignIn(next, 'Your account is signed in. The recovery code has been used and cannot be reused.')
+          if (mounted.current) await finishSignIn(next, 'Account signed in. This recovery code cannot be reused.')
         })}
       /> : <EmailSignIn
         busy={disabled} initialEmail={account?.email ?? signInEmail} initialName={account?.name ?? browserLegacy[0]?.memberName ?? ''}
@@ -411,11 +415,11 @@ export function AccountDialog({
         onRecovery={(email) => chooseSignIn(true, email)}
         onSend={(email) => run(async () => {
           z.object({ sent: z.literal(true) }).parse(await accountRequest('/account/code', { body: { email } }))
-          if (mounted.current) setNotice('Check your email for a one-time sign-in code.')
+          if (mounted.current) setNotice('Sign-in code sent. Check your email.')
         })}
         onVerify={(body) => run(async () => {
           const next = await accountAction('/account/verify', body, 'POST', 'select')
-          if (mounted.current) await finishSignIn(next, 'Your verified account is signed in.')
+          if (mounted.current) await finishSignIn(next, 'Account signed in.')
         })}
       />)}
       {confirmation && <Form onSubmit={() => {
@@ -436,7 +440,7 @@ export function AccountDialog({
         {view === 'manage' && <>
           <AccountProfile key={account.id} name={account.name} label={state.devices.find((device) => device.current)?.label ?? ''}
             busy={disabled}
-            onName={(name) => { void run(async () => { await accountAction('/account', { name }, 'PATCH'); setNotice('Account name saved. Existing ledger names are unchanged.') }) }}
+            onName={(name) => { void run(async () => { await accountAction('/account', { name }, 'PATCH'); setNotice('Account name saved. Ledger names unchanged.') }) }}
             onLabel={(label) => { void run(async () => { await accountAction('/account/device', { label }, 'PATCH'); setNotice('Browser name saved.') }) }} />
           <section className="access-section">
             <h3>Your kitchens</h3>
@@ -488,11 +492,11 @@ export function AccountDialog({
               description: 'This deletes your account and sign-in identity and revokes linked access. Shared ledger records retain former-roommate references so balances remain correct. Names written inside expense descriptions are not automatically removed. Export any ledgers you need first. This cannot be undone.',
               action: async (confirmation) => {
                 const input = deleteAccountSchema.parse({ confirmation })
-                if (input.confirmation !== account.email) throw new Error('Enter the email address of this account to confirm deletion.')
+                if (input.confirmation !== account.email) throw new Error('Enter your account email to confirm deletion.')
                 await accountAction('/account', input, 'DELETE', 'signed-out')
                 if (mounted.current) {
                   navigate('manage')
-                  setNotice('Your account has been deleted. Shared ledger history has been retained.')
+                  setNotice('Account deleted. Shared ledger history kept.')
                 }
               },
             })}>Delete my account</button>
@@ -500,7 +504,7 @@ export function AccountDialog({
         </>}
         {view === 'recovery' && recovery && <AccountRecoveryPanel recovery={recovery} codes={recoveryCodes} busy={disabled}
           onRefresh={() => { void openRecovery() }}
-          onSaved={() => { setRecoveryCodes([]); setNotice('Your recovery codes are ready. Keep your saved copy private.') }}
+          onSaved={() => { setRecoveryCodes([]); setNotice('Recovery codes ready. Keep your copy private.') }}
           onGenerate={() => {
             if (recovery.remaining) confirm({
               title: 'Replace your account recovery codes?',
@@ -521,12 +525,12 @@ export function AccountDialog({
           void run(async () => {
             const input = createAccountHouseholdSchema.parse(body)
             const requestId = creation.current?.accountId === account.id ? creation.current.input.requestId : undefined
-            if (!requestId && !globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to safely create a kitchen.')
+            if (!requestId && !globalThis.crypto?.randomUUID) throw new Error('Use HTTPS or localhost to create a kitchen.')
             creation.current = { accountId: account.id, input: { ...input, requestId: requestId ?? crypto.randomUUID() } }
             await accountAction('/account/households', creation.current.input, 'POST', 'select')
             if (mounted.current) {
               if (autoEnter) onClose()
-              else { navigate('manage'); setNotice('Your account now owns the new kitchen.') }
+              else { navigate('manage'); setNotice('Kitchen created.') }
             }
           })
         }} />}
@@ -538,7 +542,7 @@ export function AccountDialog({
               if (autoEnter) onClose()
               else {
                 navigate('manage')
-                setNotice('The kitchen is linked to your account. Reopening the invitation will not add another roommate.')
+                setNotice('Kitchen linked. No duplicate roommate added.')
               }
             }
           })
@@ -558,7 +562,7 @@ export function AccountDialog({
             </li>)}</ul>
           <LinkRecoveryForm inputRef={recoveryInput} busy={disabled} onSubmit={(body) => run(async () => {
             await accountAction('/account/link', body, 'POST', 'select')
-            if (mounted.current) { navigate('manage'); setNotice('Your recovery identity is linked to this account.') }
+            if (mounted.current) { navigate('manage'); setNotice('Recovered identity linked to your account.') }
           })} />
         </>}
         {view === 'household' && access && <>
@@ -584,7 +588,7 @@ export function AccountDialog({
               const result = accountInvitationResultSchema.parse(await accountRequest(`/account/households/${access.household.id}/invitations`, {
                 body: { version: access.household.version, expiresInDays: 7 }, csrfToken: state.csrfToken,
               }))
-              if (mounted.current) { acceptAccess(result.access); setInviteSecret(result.code); setNotice('Invitation created. Copy it now; its secret is not stored in the invitation list.') }
+              if (mounted.current) { acceptAccess(result.access); setInviteSecret(result.code); setNotice('Invitation created. Copy it now; the link is shown once.') }
             }) }}>Create seven-day invitation</button>
             {inviteSecret && <CopyField label="Account invitation link" value={`${location.origin}${location.pathname}#account-invite=${encodeURIComponent(inviteSecret)}`} buttonLabel="Copy account invitation" copiedLabel="Account invitation copied" />}
             {(location.hostname === 'localhost' || location.hostname === '127.0.0.1') && <p className="field-hint">This is a local preview link. Use your shared HTTPS deployment when inviting other devices.</p>}
@@ -606,7 +610,7 @@ export function AccountDialog({
               title: 'Leave this kitchen?', description: `You will lose access to ${access.household.name}, including through old browser sessions and recovery codes. Your historical ledger entries and balances remain. If you are the only active roommate, the kitchen will be closed to new access.`,
               button: 'Leave kitchen', action: async () => {
                 await accountAction(`/account/households/${access.household.id}/membership`, { version: access.household.version }, 'DELETE', 'select')
-                if (mounted.current) { navigate('manage'); setNotice('You have left the kitchen. Its financial history is unchanged.') }
+                if (mounted.current) { navigate('manage'); setNotice('Left the kitchen. Ledger history kept.') }
               },
             })}>Leave kitchen</button>
           </section>
@@ -665,7 +669,7 @@ function EmailSignIn({ busy, initialEmail, initialName, fixedEmail = false, onSe
       <label className="field">Name this browser<input required maxLength={50} autoComplete="off" value={label} disabled={busy} onChange={(event) => setLabel(event.target.value)} /></label>
       <p className="field-hint">The display name is used when creating a new account. Signing into an existing account keeps its saved name.</p>
     </>}
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <Feedback>{error}</Feedback>}
     <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Mail size={17} />}{sent ? 'Verify and sign in' : 'Send sign-in code'}</button>
     {sent && <div className="button-row">
       {!fixedEmail && <button type="button" className="text-button" disabled={busy} onClick={() => { setSent(false); setCode(''); setError('') }}>Use another email</button>}
@@ -703,7 +707,7 @@ function AccountProfile({ name, label, busy, onName, onLabel }: {
       <label className="field">Name this account browser<input required maxLength={50} value={draftLabel} disabled={busy} onChange={(event) => setDraftLabel(event.target.value)} /></label>
       <button className="button secondary full" disabled={busy || draftLabel.trim() === label}><Check size={15} />Save account browser name</button>
     </Form>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <Feedback>{error}</Feedback>}
   </>
 }
 
@@ -727,7 +731,7 @@ function AccountJoinForm({ initialInvite, name, busy, onSubmit }: {
     <label className="field">Account invitation link or code<input required autoComplete="off" value={invite} disabled={busy} onChange={(event) => setInvite(event.target.value)} /></label>
     <label className="field">Your name in this kitchen<input required maxLength={50} value={memberName} disabled={busy} onChange={(event) => setMemberName(event.target.value)} /></label>
     <p className="field-hint">This creates a membership for your signed-in account. To keep an existing roommate identity, link its browser access or recovery code instead.</p>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <Feedback>{error}</Feedback>}
     <button className="button primary full" disabled={busy}>Accept kitchen invitation</button>
   </Form>
 }
@@ -746,7 +750,7 @@ function LinkRecoveryForm({ busy, onSubmit, inputRef }: {
   }}>
     <label className="field">Existing roommate recovery code<input ref={inputRef} type="password" required autoComplete="off" autoCapitalize="none" spellCheck={false} value={recoveryCode} disabled={busy} onChange={(event) => setRecoveryCode(event.target.value)} /></label>
     <p className="field-hint">This proves access to an existing roommate. It is not an invitation and will not create another person.</p>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <Feedback>{error}</Feedback>}
     <button className="button primary full" disabled={busy}>Link recovery identity to my account</button>
   </Form>
 }

@@ -298,7 +298,7 @@ describe('shared chores API', () => {
     assert.equal(saved.chores.history[0].completedBy, attempts[0].status === 200 ? owner.memberId : roommate.memberId)
     const staleTask = await f.call(`/chores/${entry.id}/complete`, { ...body, version: saved.version }, { token: owner.token })
     assert.equal(staleTask.status, 409)
-    assert.match(staleTask.data.error, /chore changed/)
+    assert.match(staleTask.data.error, /Chore changed/)
     assert.equal((await f.call(`/chores/${entry.id}/complete`, { ...body, choreVersion: 1 }, { token: owner.token })).status, 409)
     const other = await f.add(roommate, { title: 'Wipe the mirror', roomId: 'bathroom', area: 'mirror' })
     const latest = await f.current(owner)

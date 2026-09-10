@@ -108,6 +108,45 @@ test.describe('UI polish', () => {
     await expect(rules).toBeFocused()
   })
 
+  test('the enlarged share summary stays clear of the dock and opens settlements', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.goto('/kitchen')
+    const share = page.getByRole('button', { name: 'Your household balance', exact: true })
+    await expect(share.locator('.balance-caption')).toHaveCSS('font-size', '11px')
+    await expect(share.locator('strong')).toHaveText('\u20ac0.00')
+    await expect(share.locator('strong')).toHaveCSS('font-size', '28px')
+    await expect(share.locator('span').last()).toHaveText('all square')
+    await expect(share.locator('span').last()).toHaveCSS('font-size', '13px')
+    await expect(share).toHaveCSS('padding', '11px 16px')
+    await page.evaluate(() => document.fonts.ready)
+
+    for (const width of [1440, 1280, 1251]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect(share).toBeInViewport({ ratio: 1 })
+      await expectTouchTarget(share)
+      await expectNoOverflow(share)
+      const balance = await share.boundingBox()
+      const dock = await page.locator('.game-dock').boundingBox()
+      expect(balance).not.toBeNull()
+      expect(dock).not.toBeNull()
+      expect(balance!.x + balance!.width + 12).toBeLessThanOrEqual(dock!.x)
+    }
+
+    await share.click()
+    await expect(page.getByRole('region', { name: 'Keep it even.', exact: true })).toBeFocused()
+    await expect(share).toHaveAttribute('aria-pressed', 'true')
+    await page.keyboard.press('Escape')
+    await expect(share).toBeFocused()
+    await expect(share).toHaveAttribute('aria-pressed', 'false')
+
+    for (const width of [1250, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expect(share).toBeHidden()
+      await expect(page.getByRole('navigation', { name: 'Household tools' }).getByRole('button', { name: 'Settle up', exact: true })).toBeInViewport({ ratio: 1 })
+      await expectNoOverflow(page.locator('html'))
+    }
+  })
+
   // The intermediate width also covers space reserved by non-overlay scrollbars on wider phones.
   for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }, { width: 320, height: 568 }]) {
     test(`panels and forms stay usable at ${viewport.width}px`, async ({ page, populatedHousehold: _household }) => {

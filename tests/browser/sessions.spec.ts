@@ -32,7 +32,7 @@ test('a failed startup reports the error and retries the saved kitchen', async (
   await expect(page.getByRole('alert')).toHaveText('The kitchen is temporarily unavailable.')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
   await page.unroute('**/api/household')
-  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.locator('.game-house')).toContainText('The saved house')
   await expect(page.locator('.player-button')).toHaveAttribute('aria-label', 'The roommates, playing as Riley')
   await expect(page.getByRole('alert')).toHaveCount(0)
