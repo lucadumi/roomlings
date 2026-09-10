@@ -106,7 +106,7 @@ async function configureDesignedSlots(accounts: AccountHarness, session: Session
   return household.roomComponents
 }
 
-async function roomPoint(page: Page, position: [number, number, number], rotation = 0, roomBounds?: Box3) {
+async function roomPoint(page: Page, position: [number, number, number], rotation = 0, roomBounds?: Box3, viewZoom = 1) {
   const layout = await page.locator('.kitchen-world').evaluate((world) => {
     const canvas = world.querySelector('.world-canvas')!.getBoundingClientRect()
     const area = (world.querySelector('.bathroom-scene-area') ?? world).getBoundingClientRect()
@@ -122,7 +122,7 @@ async function roomPoint(page: Page, position: [number, number, number], rotatio
     : { x: 0, y: 0, width: layout.width, height: layout.height }
   const framing = roomBounds ? fitRoomBounds(area.width, area.height, roomBounds, rotation)
     : roomEntryFraming(layout.width, layout.height, area, rotation)
-  const zoom = roomCameraZoom(1, !roomBounds)
+  const zoom = roomCameraZoom(viewZoom, !roomBounds)
   const projection = cameraProjection(layout.width, layout.height, area, framing.halfHeight, zoom)
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
   camera.zoom = zoom
@@ -336,8 +336,10 @@ for (const roomId of roomIds) {
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+    if (roomId === 'kitchen') await world.getByRole('button', { name: 'Zoom out', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
-    const screen = await roomPoint(page, point)
+    const screen = await roomPoint(page, point, 0, undefined, roomId === 'kitchen' ? 0.8 : 1)
+    expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y) instanceof HTMLCanvasElement, screen)).toBe(true)
     await page.mouse.click(screen.x, screen.y)
     await expect(world).toHaveAttribute('data-selected-component', component.id)
     await expect(page.getByRole('region', { name: `${component.name} manual state`, exact: true })).toBeVisible()
