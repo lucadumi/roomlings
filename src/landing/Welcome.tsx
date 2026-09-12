@@ -41,7 +41,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
 
   useEffect(() => {
     const previousTitle = document.title
-    document.title = 'Roomlings | Share a home. Not the hassle.'
+    document.title = 'Roomlings \u00b7 Share a home. Not the hassle.'
     let cancelled = false
     const saved: unknown = history.state
     const scroll = saved !== null && typeof saved === 'object' && 'roomlingsTourScroll' in saved

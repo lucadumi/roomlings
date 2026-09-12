@@ -181,7 +181,7 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
   }, { token: original.token, kitchen })
 
   await page.goto('/kitchen')
-  await expect(page).toHaveTitle('Roomlings | A home to share')
+  await expect(page).toHaveTitle('Roomlings \u00b7 A home to share')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
   await expect.poll(() => page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
@@ -219,6 +219,7 @@ test('flat Patchwork branding keeps accessible links and fits phones, tablets an
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/welcome')
+  await expect(page).toHaveTitle('Roomlings \u00b7 Share a home. Not the hassle.')
   const header = page.locator('.welcome-header .brand')
   const footer = page.locator('.welcome footer .brand')
   for (const brand of [header, footer]) {
