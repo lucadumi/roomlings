@@ -184,7 +184,7 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
   await expect(page).toHaveTitle('Roomlings \u00b7 A home to share')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([kitchen])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(original.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([kitchen])
