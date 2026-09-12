@@ -209,7 +209,7 @@ for (const room of roomIds) {
 }
 
 for (const width of [1440, 320]) {
-  test(`the closing invitation keeps a single direct CTA at ${width}px`, async ({ page }) => {
+  test(`the closing invitation keeps a single web CTA at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
     const requests: string[] = []
     page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()) })
@@ -217,6 +217,7 @@ for (const width of [1440, 320]) {
     const letter = page.locator('#get-started')
     const entry = letter.getByRole('link', { name: 'Start sharing', exact: true })
     await expect(entry).toBeVisible()
+    await expect(letter.getByRole('heading')).toHaveText('Make room for your people.')
     await expect(letter.getByRole('button')).toHaveCount(0)
     await expect(letter.getByRole('link')).toHaveCount(1)
     await expect(entry).toHaveAttribute('href', '/rooms/kitchen#account=create')

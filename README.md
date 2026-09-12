@@ -22,7 +22,9 @@ npm install
 npm run preview:local
 ```
 
-Open http://localhost:5173 (API: port 4311). Explore the rooms on the public landing page, then sign in to create or join your household.
+Open http://localhost:5173 (API: port 4311). Explore the rooms on the public landing page. Desktop and Android visitors can use **Get started** in the hero or **Sign in** in the header to create or join a household.
+
+On iPhone and iPad, the landing promotes the iOS-only mobile app, which is still in development, instead of showing web signup or sign-in links. Its **Download** and closing **Start sharing** buttons are temporarily disabled. Device detection also recognizes iPadOS desktop mode, regardless of orientation or mouse input. Android and desktop browsers keep web signup and sign-in, even in narrow windows. Public room exploration and existing direct household links remain available.
 
 | Entry | Purpose |
 | --- | --- |
