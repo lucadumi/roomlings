@@ -62,24 +62,44 @@ async function settleView(page: Page) {
 }
 
 async function dragView(page: Page, tilt = 0, { animated = true } = {}) {
-  await page.emulateMedia({ reducedMotion: animated ? 'no-preference' : 'reduce' })
   const world = page.locator('.kitchen-world')
-  const start = await world.locator('canvas').evaluate((canvas, tilt) => {
-    const bounds = canvas.getBoundingClientRect()
+  const canvas = world.locator('canvas')
+  const start = await canvas.evaluate((element, { tilt, animated }) => {
+    if (!(element instanceof HTMLCanvasElement)) throw new Error('The live room canvas is missing.')
+    const bounds = element.getBoundingClientRect()
     for (const yFraction of [0.55, 0.65, 0.45, 0.75]) for (const xFraction of [0.2, 0.3, 0.4, 0.55, 0.65, 0.75]) {
       const x = bounds.x + bounds.width * xFraction
       const y = bounds.y + bounds.height * yFraction
-      if (document.elementFromPoint(x, y) === canvas && document.elementFromPoint(x + 220, y + tilt) === canvas) return { x, y }
+      if (document.elementFromPoint(x, y) === element && document.elementFromPoint(x + 220, y + tilt) === element) {
+        if (animated) element.addEventListener('pointerdown', (event) => {
+          element.dataset.orbitTestPointerId = String(event.pointerId)
+        }, { once: true })
+        return { x, y }
+      }
     }
     throw new Error('There is no unobstructed drag area in the room.')
-  }, tilt)
+  }, { tilt, animated })
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  const steps = animated ? 10 : 1
-  for (let step = 1; step <= steps; step++) {
-    await page.mouse.move(start.x + step * 220 / steps, start.y + tilt * step / steps)
-    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  await page.emulateMedia({ reducedMotion: animated ? 'no-preference' : 'reduce' })
+  if (animated) {
+    // Sample the captured pointer in-browser without drawing extra poses between protocol calls.
+    await canvas.evaluate(async (element, { x, y, tilt }) => {
+      if (!(element instanceof HTMLCanvasElement)) throw new Error('The live room canvas is missing.')
+      const pointerId = Number(element.dataset.orbitTestPointerId)
+      delete element.dataset.orbitTestPointerId
+      if (!Number.isInteger(pointerId) || !element.hasPointerCapture(pointerId)) throw new Error('The native drag did not capture its pointer.')
+      for (let step = 1; step <= 10; step++) {
+        element.dispatchEvent(new PointerEvent('pointermove', {
+          bubbles: true, pointerId, pointerType: 'mouse', isPrimary: true, buttons: 1, button: -1,
+          clientX: x + step * 22, clientY: y + tilt * step / 10,
+        }))
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
+    }, { ...start, tilt })
   }
+  await page.mouse.move(start.x + 220, start.y + tilt)
+  if (!animated) await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
   await page.mouse.up()
   await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
   const frames = await cameraFrames(page)
