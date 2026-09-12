@@ -173,6 +173,7 @@ async function expectStaticSvg(page: Page, markup: string, tone: 'color' | 'ligh
 }
 
 test('the Roomlings rebrand restores existing Coldshare households without replacing them', async ({ page, accounts }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const original = await createPopulatedHousehold(accounts.store)
   const kitchen = savedKitchen(original)
   await page.addInitScript(({ token, kitchen }) => {
@@ -197,6 +198,7 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
 })
 
 test('Roomlings sessions take precedence over retained legacy browser storage', async ({ page, accounts }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const legacy = await createHousehold(accounts.store, 'The legacy household', 'Legacy roommate')
   const current = await createHousehold(accounts.store, 'The current household', 'Current roommate')
   const currentKitchen = savedKitchen(current)
