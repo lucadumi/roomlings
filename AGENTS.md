@@ -4,7 +4,9 @@
 
 Roomlings is a game-like shared-living app, not a dashboard with a decorative 3D model. Preserve the existing interactive kitchen and build on it incrementally.
 
-- Keep the warm cream, sage and tomato palette, flat-shaded low-poly models, and object-driven interactions.
+- Keep the original warm cream, sage and tomato UI theme and object-driven interactions. Room palettes remain independent.
+- Give 3D furniture and props natural rounded edges without changing layouts or proportions. Keep walls, paper and foliage crisp instead of rounding everything.
+- Speakers are single-piece, sharp-edged cuboids with flush fabric fronts and flat driver circles, without rounded housings or separate controls.
 - Consult the owner before UI, UX, branding or logo design decisions. Present options and wait for a choice.
 - Every visible action must work. Do not leave unfinished features or placeholder controls in the app.
 - The shared ledger is the source of truth. Rooms and objects visualize it; they must not calculate separate, contradictory debts.
@@ -28,9 +30,13 @@ Do not rewrite history or discard unrelated changes. Keep the owner's existing k
 - Validate API inputs with the existing Zod schemas. Keep optimistic version checks for ledger mutations.
 - Do not silently swallow failed saves or show a successful state when a request fails.
 - Keep database files, browser session tokens, credentials, build output and test artifacts out of commits.
+- Enforce room-zone budgets only for new, moved or restored placements against the final atomic patch. Keep over-budget saved homes valid and never auto-remove objects.
+- Use the shared surface metadata and existing availability helpers for zone decisions. Keep storage as `installed: false` with `linkedChores: 'pause'`, preserving owned IDs and history.
 - Browser storage reads retain compatibility with the original Coldshare keys. Do not remove that compatibility without a migration plan.
 - Fit landing-page cameras to measured CSS scene areas, not separate device breakpoints. Preserve coverage for longer copy, orientation changes and constrained viewports.
+- Keep orbit, pan and zoom on the camera in every room viewer. Do not move the room root for view navigation; individual gameplay animations remain separate.
 - Batch static opaque siblings with `batchStaticMeshes`, keeping interactive group boundaries intact. Add individually animated or visibility-controlled meshes to its preserved set.
+- Use `roomGeometry.ts` for bounded corner rounding and circular detail. Keep the existing dimensions and flat support surfaces; do not apply blanket subdivision.
 - Invalidate cached shadows when a caster moves or changes visibility. Camera-only motion reuses the shadow map; gentle ambient leaf movement refreshes at 4 Hz.
 
 ## Existing commands
@@ -51,7 +57,7 @@ Prefer `npm run preview:local` for uninterrupted review. Its API does not watch 
 
 Use the smallest relevant existing test selection while iterating. Cover the changed behavior and preserve the existing household, settlement, persistence and accessibility flows before presenting a feature for approval.
 
-Tag browser rendering and 3D interaction scenarios with `@room`. CI runs household and room suites in two shards each, with one worker per shard. Browser tests must remain independent so `--fully-parallel` can partition them safely; the normal browser command still runs every test.
+Tag browser rendering and 3D interaction scenarios with `@room`. CI runs four household shards and eight room shards, with one worker per shard. Room scenarios have a longer overall CI budget for software rendering, and ordinary browser assertions allow ten seconds in CI instead of five locally. Use `waitForRoomReady` or `waitForTourReady` before asserting on scene geometry or controls. Browser tests must remain independent so `--fully-parallel` can partition them safely; the normal browser command still runs every test.
 
 Browser CI uses the official Playwright image with preinstalled browsers and OS libraries. Keep its version aligned with the locked `@playwright/test` version; do not reintroduce runtime `apt` or `playwright install --with-deps` steps. CI runs for pull requests and pushes to main, with manual dispatch available for branch checks.
 

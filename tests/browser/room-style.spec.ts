@@ -5,7 +5,7 @@ import { componentFinishes } from '../../shared/componentFinishes.ts'
 import { getRoomComponents } from '../../shared/roomComponents.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { roomPresets } from '../../src/roomStyles.ts'
-import { chooseOption, createHousehold, openRoomEditor, pauseRequest, savedKitchen, selectRoom } from './fixtures.ts'
+import { chooseOption, createHousehold, openRoomEditor, pauseRequest, savedKitchen, selectRoom, waitForRoomReady } from './fixtures.ts'
 
 test.use({ providerEnabled: false })
 test.use({ reducedMotion: 'reduce' })
@@ -40,7 +40,7 @@ async function roomScreenshot(page: Page) {
 async function savedRoomImages(page: Page) {
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
-  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
+  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 })
   const images: Record<string, string> = {}
   for (const roomId of ['kitchen', 'bathroom']) {
     const image = menu.locator(`[data-room-preview="${roomId}"] img`)
@@ -52,7 +52,7 @@ async function savedRoomImages(page: Page) {
   return images
 }
 
-async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
+async function visibleAccentChange(page: Page, before: Buffer, after: Buffer) {
   return page.evaluate(async (frames) => {
     const pixels: Uint8ClampedArray[] = []
     for (const frame of frames) {
@@ -77,7 +77,7 @@ async function strongColorChange(page: Page, before: Buffer, after: Buffer) {
         Math.abs(pixels[0][i + 1] - pixels[1][i + 1]),
         Math.abs(pixels[0][i + 2] - pixels[1][i + 2]),
       )
-      if (difference >= 30) changed++
+      if (difference >= 12) changed++
     }
     if (!visible) throw new Error('The room screenshots contain no visible room pixels.')
     return changed / visible
@@ -210,15 +210,18 @@ test('switching saved kitchens loads each household preset without replacing its
     localStorage.setItem('roomlings.kitchens', JSON.stringify(kitchens))
   }, [savedKitchen(sage), savedKitchen(linen)])
   await page.goto('/kitchen')
+  await waitForRoomReady(page)
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-room-style', 'sage')
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
   await page.getByRole('button', { name: 'The linen kitchen Return as Alex', exact: true }).click()
   await expect(page.locator('.game-house')).toContainText('The linen kitchen')
+  await waitForRoomReady(page)
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-room-style', 'linen')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(linen.token)
   await page.getByRole('button', { name: 'The roommates', exact: true }).click()
   await page.getByRole('button', { name: 'The sage kitchen Return as Rowan', exact: true }).click()
   await expect(page.locator('.game-house')).toContainText('The sage kitchen')
+  await waitForRoomReady(page)
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-room-style', 'sage')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(sage.token)
 })
@@ -227,6 +230,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.clock.setFixedTime(new Date())
   await page.goto('/kitchen')
+  await waitForRoomReady(page)
   const room = page.locator('.kitchen-world')
   await expect(room).toHaveAttribute('data-rendering', 'paused')
   const canvas = await page.locator('.world-canvas canvas').elementHandle()
@@ -261,7 +265,7 @@ test('saved finishes repaint the same scene and restore Original without resetti
       expect(image.equals(original)).toBe(true)
     } else {
       for (const previous of seen) expect(image.equals(previous)).toBe(false)
-      expect(await strongColorChange(page, original, image), `${name} should strongly recolor at least 30% of the room view`).toBeGreaterThanOrEqual(0.3)
+      expect(await visibleAccentChange(page, original, image), `${name} should visibly change furniture accents`).toBeGreaterThanOrEqual(0.05)
       seen.push(image)
     }
   }
@@ -274,6 +278,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) for (const style of ['coa
     await page.goto('/kitchen')
     if (roomId === 'bathroom') await selectRoom(page, roomId)
     const room = page.locator(roomId === 'bathroom' ? '.bathroom-world' : '.kitchen-world')
+    await waitForRoomReady(page, room)
     await expect(room).toHaveAttribute('data-rendering', 'paused')
     if (roomId === 'kitchen') await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
     await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
@@ -291,7 +296,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) for (const style of ['coa
     await expect(room).toHaveAttribute('data-rendering', 'paused')
     expect(await canvas!.evaluate((element) => element.isConnected)).toBe(true)
     const changed = await roomScreenshot(page)
-    expect(await strongColorChange(page, original, changed), `${style} should strongly recolor at least 30% of the ${roomId} view`).toBeGreaterThanOrEqual(0.3)
+    expect(await visibleAccentChange(page, original, changed), `${style} should visibly change the ${roomId} furniture accents`).toBeGreaterThanOrEqual(0.05)
     await openPicker(page)
     await picker.getByRole('radio', { name: 'Roomlings', exact: true }).check()
     await picker.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
@@ -322,7 +327,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     const editor = await openRoomEditor(page)
     const card = editor.getByRole('button', { name: `Edit ${component.name}`, exact: true })
     const thumbnail = card.locator('.component-preview')
-    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true', { timeout: 15_000 })
     const originalImage = await thumbnail.locator('img').getAttribute('src')
     await card.click()
     const control = editor.getByRole('combobox', { name: 'Finish', exact: true })
@@ -343,7 +348,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     }
     expect(await accounts.store.get(owner.household.id)).toEqual(before)
     await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
-    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true', { timeout: 15_000 })
     const draftImage = await thumbnail.locator('img').getAttribute('src')
     expect(draftImage).not.toBe(originalImage)
     const applying = page.waitForRequest('**/api/household/room-components')
@@ -369,7 +374,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await page.reload()
     if (roomId === 'bathroom' && !await page.locator('.bathroom-world').isVisible()) await selectRoom(page, roomId)
     await openRoomEditor(page)
-    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true', { timeout: 15_000 })
     await expect(thumbnail.locator('img')).toHaveAttribute('src', draftImage!)
     await card.click()
     await expect(control).toHaveAttribute('data-value', savedFinish)
@@ -404,7 +409,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }
     await page.goto('/kitchen')
     const tools = page.locator('.house-tools')
     await expect(tools).toBeVisible()
-    await expect(page.locator('.world-camera-controls')).toBeVisible()
+    await waitForRoomReady(page)
     const controls = await tools.boundingBox()
     const camera = await page.locator('.world-camera-controls').boundingBox()
     expect(controls).not.toBeNull()

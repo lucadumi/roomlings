@@ -3,6 +3,8 @@ import { roomCatalog, roomIdSchema } from './rooms.ts'
 import type { ChoreArea, RoomId } from './rooms.ts'
 import { normalizeShoppingName } from './shopping.ts'
 import { componentFinishSchema } from './componentFinishes.ts'
+import { componentSurfaces, componentZonePlacementReason } from './roomZones.ts'
+import type { ComponentSurface } from './roomZones.ts'
 export { componentFinishSchema, componentFinishes } from './componentFinishes.ts'
 export type { ComponentFinish } from './componentFinishes.ts'
 
@@ -23,6 +25,20 @@ export const componentKinds = [
 ] as const
 export const componentKindSchema = z.enum(componentKinds)
 export type ComponentKind = z.infer<typeof componentKindSchema>
+export const retiredComponentKinds = [
+  'knife-block', 'cookbook-stand', 'kitchen-cart', 'storage-jars', 'speaker', 'watering-can',
+  'storage-cabinet', 'key-hooks', 'bath-tray', 'bathroom-stool', 'mug-tree', 'wall-shelf',
+  'bathroom-scales', 'kitchen-scale',
+  'rice-cooker', 'air-purifier', 'waffle-maker', 'reed-diffuser', 'first-aid-kit',
+  'record-player', 'cereal-dispenser', 'toilet-brush', 'ironing-board', 'shower-squeegee',
+  'tissue-box', 'wall-calendar', 'hair-dryer', 'egg-basket', 'vacuum', 'toothbrush-holder', 'dish-rack',
+] as const satisfies readonly ComponentKind[]
+const retiredKinds: ReadonlySet<ComponentKind> = new Set(retiredComponentKinds)
+
+export function componentIsRetired(kind: ComponentKind): boolean {
+  return retiredKinds.has(kind)
+}
+
 export const componentCategories = {
   appliances: 'Appliances', fixtures: 'Fixtures', furniture: 'Furniture', decor: 'Decor and plants', household: 'Household tools',
 } as const
@@ -47,6 +63,7 @@ export type ComponentDefinition = {
   supplies: readonly ComponentSupply[]
   chores: readonly ComponentChoreSuggestion[]
   placementRooms?: readonly RoomId[]
+  placementSlots?: readonly RoomSlotId[]
 }
 const supply = (id: string, name: string, quantity = '1 bottle'): ComponentSupply => ({ id, name, quantity })
 const chore = (title: string, repeatDays: number | null): ComponentChoreSuggestion => ({ title, repeatDays })
@@ -158,11 +175,12 @@ export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
     states: states('Clear', 'Dishes drying', 'Ready to put away'),
   }),
   bins: define('Bin', 'Choose rubbish, recycling or compost.', 'fixtures', {
+    placementRooms: ['kitchen', 'bathroom'],
     area: 'bins', variants: variants('Rubbish', 'Recycling', 'Compost'),
     supplies: [supply('rubbish-bags', 'Rubbish bags', '1 roll')],
     chores: [chore('Empty the bin', 3), chore('Wash the bin', 30)], states: states('Clear', 'Needs emptying'),
   }),
-  vacuum: define('Vacuum cleaner', 'A vacuum with filter and dust-container care.', 'appliances', {
+  vacuum: define('Vacuum cleaner', 'A canister vacuum with filter and dust-container care.', 'appliances', {
     supplies: [supply('vacuum-bags', 'Vacuum bags', '1 pack'), supply('vacuum-filter', 'Vacuum filter', '1 filter')],
     chores: [chore('Empty the vacuum', 7), chore('Clean the vacuum filter', 30)], states: states('Ready', 'Needs emptying'),
   }),
@@ -212,11 +230,12 @@ export const componentCatalog: Record<ComponentKind, ComponentDefinition> = {
     supplies: [supply('apples', 'Apples', '6 apples'), supply('bananas', 'Bananas', '1 bunch')],
     chores: [chore('Check the fruit bowl', 3), chore('Wash the fruit bowl', 14)],
   }),
-  'spice-rack': define('Spice rack', 'Keep seasonings together and plan refills.', 'fixtures', {
+  'spice-rack': define('Spice rack', 'Wall-mounted seasonings with shared refill shortcuts.', 'fixtures', {
+    placementSlots: ['kitchen-spice-rack', 'kitchen-wall-art', 'kitchen-left-wall'],
     supplies: [supply('salt', 'Salt', '1 pack'), supply('black-pepper', 'Black pepper', '1 jar'), supply('mixed-herbs', 'Mixed herbs', '1 jar')],
     chores: [chore('Refill and tidy the spices', 30)],
   }),
-  'bread-box': define('Bread box', 'A wooden roll-top bread box.', 'furniture', {
+  'bread-box': define('Bread box', 'A low, open wooden bread box.', 'furniture', {
     supplies: [supply('bread', 'Bread', '1 loaf')], chores: [chore('Clear crumbs from the bread box', 7)],
   }),
   'knife-block': define('Knife block', 'A wooden block for cooking tools.', 'fixtures', {
@@ -469,7 +488,7 @@ export const roomSlots = [
   slot('living-room-sofa', 'living-room', 'Sofa corner', ['sofa'], 'sofa', false),
   slot('living-room-coffee-table', 'living-room', 'Coffee table', ['coffee-table'], 'coffee-table', false),
   slot('living-room-media-unit', 'living-room', 'Media unit', ['media-unit'], 'media-unit', false),
-  slot('living-room-tv', 'living-room', 'On the media unit', ['tv'], 'tv'),
+  slot('living-room-tv', 'living-room', 'Living-room wall TV', ['tv'], 'tv'),
   slot('living-room-bookshelf', 'living-room', 'Books and games shelf', ['bookshelf'], 'bookshelf', false),
   slot('living-room-floor-lamp', 'living-room', 'Reading light', ['floor-lamp'], 'floor-lamp'),
   slot('living-room-rug', 'living-room', 'Lounge rug', ['rug'], 'rug'),
@@ -477,7 +496,7 @@ export const roomSlots = [
   slot('living-room-curtains', 'living-room', 'Window curtains', ['curtains'], 'curtains'),
   slot('living-room-supply-shelf', 'living-room', 'Room supply shelf', ['supply-shelf'], 'supply-shelf', false),
   slot('living-room-cleaning-caddy', 'living-room', 'Room cleaning caddy', ['cleaning-caddy'], 'cleaning-caddy', false),
-  slot('living-room-bins', 'living-room', 'Lounge bin', ['bins'], 'bins'),
+  slot('living-room-bins', 'living-room', 'Lounge bin', ['bins']),
   slot('living-room-table-top', 'living-room', 'Coffee table centerpiece', ['board-game', 'tea-set', 'tissue-box', 'reed-diffuser', 'plant'], 'board-game'),
   slot('living-room-media-accessory', 'living-room', 'Beside the TV', ['record-player', 'speaker', 'plant']),
   slot('living-room-shelf-accessory', 'living-room', 'Open shelf space', ['board-game', 'speaker', 'plant', 'reed-diffuser']),
@@ -526,11 +545,11 @@ export type RoomComponent = z.infer<typeof roomComponentSchema>
 export const roomComponentChangeSchema = z.object({
   ...componentFields,
   componentVersion: z.number().int().nonnegative().nullable(),
-  linkedChores: z.enum(['keep', 'archive']).optional(),
+  linkedChores: z.enum(['keep', 'archive', 'pause']).optional(),
 }).superRefine(validateComponent)
 export type RoomComponentChange = z.infer<typeof roomComponentChangeSchema>
 export const roomComponentsPatchSchema = z.object({
-  roomId: roomIdSchema, changes: z.array(roomComponentChangeSchema).min(1, 'Change an object before applying.').max(roomSlots.length),
+  roomId: roomIdSchema, changes: z.array(roomComponentChangeSchema).min(1, 'Change an object before applying.').max(roomComponentLimit),
 }).superRefine((patch, context) => {
   if (new Set(patch.changes.map((change) => change.id)).size !== patch.changes.length) {
     context.addIssue({ code: 'custom', message: 'Update each object only once.', path: ['changes'] })
@@ -587,25 +606,71 @@ export function defaultRoomComponents(): RoomComponent[] {
   return roomSlots.flatMap((slot) => slot.defaultKind ? [createRoomComponent(slot.defaultKind, slot.id, `default-${slot.id}`)] : [])
 }
 
+export function newHouseholdRoomComponents(createId: () => string): RoomComponent[] {
+  const bathroomAdditions: readonly (readonly [ComponentKind, RoomSlotId])[] = [
+    ['laundry-basket', 'bathroom-laundry-basket'], ['bins', 'bathroom-bins'],
+    ['plant', 'bathroom-plant'], ['soap-dispenser', 'bathroom-soap-dispenser'],
+    ['towel-rack', 'bathroom-towel-rack'], ['shower-shelf', 'bathroom-shower-shelf'],
+  ]
+  const components = [
+    ...defaultRoomComponents(),
+    ...bathroomAdditions.map(([kind, slotId]) => createRoomComponent(kind, slotId, z.string().uuid().parse(createId()))),
+  ]
+  const invalid = validateRoomComponents(components)
+  if (invalid) throw new Error(invalid)
+  for (const component of components) {
+    const reason = componentZonePlacementReason(components, component.roomId, component.slotId, component.id)
+    if (reason) throw new Error(reason)
+  }
+  return components
+}
+
 export function getRoomComponents(household: { roomComponents?: readonly RoomComponent[] }): readonly RoomComponent[] {
   const components = household.roomComponents
   if (!components) return defaultRoomComponents()
+  const retiredBin = (component: RoomComponent) => component.kind === 'bins' && component.roomId === 'living-room' && component.installed
+  // Keep old bin identities and linked history, but retire their living-room placement into Storage.
+  const current = components.some(retiredBin)
+    ? components.map((component) => retiredBin(component) ? { ...component, installed: false } : component)
+    : components
   // Older saved layouts have no living room. Any saved record, including a removed
   // object, marks it as initialized so customization is never reset.
-  if (components.some((component) => component.roomId === 'living-room')) return components
-  return [...components, ...defaultRoomComponents().filter((component) => component.roomId === 'living-room')]
+  if (current.some((component) => component.roomId === 'living-room')) return current
+  return [...current, ...defaultRoomComponents().filter((component) => component.roomId === 'living-room')]
 }
 
-export function availableComponentSlots(components: readonly RoomComponent[], roomId: RoomId, kind: ComponentKind) {
+export type ComponentSlotContext = {
+  surface?: ComponentSurface
+  movingComponentId?: string
+  ignoreZoneCapacity?: boolean
+}
+
+export function availableComponentSlots(
+  components: readonly RoomComponent[], roomId: RoomId, kind: ComponentKind, context: ComponentSlotContext = {},
+) {
   if (!componentAllowedInRoom(kind, roomId)) return []
+  const moving = components.find((component) => component.id === context.movingComponentId
+    && component.kind === kind && component.roomId === roomId)
   return roomSlots.filter((slot) => slot.roomId === roomId && slot.kinds.includes(kind)
+    && (!context.surface || componentSurfaces[slot.id] === context.surface)
+    && componentPositionOffered(kind, slot.id)
     && componentPositionSupported(slot.id, components)
-    && !components.some((component) => component.installed && component.slotId === slot.id))
+    && !components.some((component) => component.installed && component.slotId === slot.id && component.id !== moving?.id)
+    && (context.ignoreZoneCapacity || (moving?.installed && moving.slotId === slot.id)
+      || !componentZonePlacementReason(components, roomId, slot.id, moving?.id)))
 }
 
 export function componentAllowedInRoom(kind: ComponentKind, roomId: RoomId): boolean {
+  if (componentIsRetired(kind)) return false
   const rooms = componentCatalog[kind].placementRooms
-  return (!rooms || rooms.includes(roomId)) && roomSlots.some((slot) => slot.roomId === roomId && slot.kinds.includes(kind))
+  return (!rooms || rooms.includes(roomId)) && roomSlots.some((slot) => slot.roomId === roomId
+    && slot.kinds.includes(kind) && componentPositionOffered(kind, slot.id))
+}
+
+// Historical positions remain schema-valid; this only controls new placements.
+export function componentPositionOffered(kind: ComponentKind, slotId: RoomSlotId): boolean {
+  const positions = componentCatalog[kind].placementSlots
+  return !positions || positions.includes(slotId)
 }
 
 export function componentPositionSupported(slotId: RoomSlotId, components: readonly RoomComponent[]): boolean {
@@ -631,6 +696,13 @@ export function componentChoreMatches(
   if (chore.componentId) return chore.componentId === component.id
   const area = componentChoreArea(component)
   return component.id === `default-${component.slotId}` && area !== null && chore.roomId === component.roomId && chore.area === area
+}
+
+export function componentChoreIsPaused(
+  chore: { componentId?: string | null; archived: boolean }, components: readonly RoomComponent[],
+): boolean {
+  return !chore.archived && !!chore.componentId
+    && components.some((component) => component.id === chore.componentId && !component.installed)
 }
 
 export function validateRoomComponents(components: readonly RoomComponent[]): string | null {

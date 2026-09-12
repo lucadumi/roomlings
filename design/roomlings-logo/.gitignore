@@ -1,6 +1,4 @@
-*.blend1
 __pycache__/
 fonts/*.ttf
 renders/
 exports/
-loader/

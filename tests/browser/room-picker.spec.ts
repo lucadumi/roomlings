@@ -1,9 +1,49 @@
 import { expect, test } from './account-fixtures.ts'
-import { openRoomEditor, selectRoom } from './fixtures.ts'
+import { openRoomEditor, selectRoom, waitForRoomReady } from './fixtures.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
+
+test('room-selector spinners stay visible while renders load and stop when the saved previews are ready', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  let release: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  await page.route(/\/src\/householdRoomPreview\.ts(?:\?.*)?$/, async (route) => {
+    await pending
+    await route.continue()
+  })
+  const before = await accounts.store.get(owner.household.id)
+  try {
+    await page.goto(roomPath())
+    const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+    await trigger.click()
+    const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
+    const previews = picker.getByRole('group', { name: 'Choose a room', exact: true })
+    await expect(previews).toHaveAttribute('aria-busy', 'true')
+    await expect(picker.getByRole('status')).toHaveCount(roomIds.length)
+    await expect(picker.locator('.room-menu-preview img:visible')).toHaveCount(0)
+    for (const spinner of await picker.locator('.room-menu-preview-status .spin').all()) {
+      await expect(spinner).toBeVisible()
+      await expect(spinner).toHaveCSS('animation-name', 'spin')
+    }
+    await expect(picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true })).toBeEnabled()
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    for (const spinner of await picker.locator('.room-menu-preview-status .spin').all()) {
+      await expect(spinner).toHaveCSS('animation-name', 'none')
+    }
+    release?.()
+    await expect(previews).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 })
+    await expect(picker.locator('.room-menu-preview-status')).toHaveCount(0)
+    await expect.poll(() => picker.locator('img').evaluateAll((images) =>
+      images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true)
+    await page.keyboard.press('Escape')
+    await trigger.click()
+    await expect(previews).toHaveAttribute('aria-busy', 'false')
+    await expect(picker.getByRole('status')).toHaveCount(0)
+    expect(await accounts.store.get(owner.household.id)).toEqual(before)
+  } finally { release?.() }
+})
 
 test('saved room images are warmed before opening and reused without illustration backgrounds', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.addInitScript(() => {
@@ -19,7 +59,7 @@ test('saved room images are warmed before opening and reused without illustratio
   })
   await page.goto(roomPath())
   const renders = () => page.evaluate(() => Number(Reflect.get(window, 'savedRoomPreviewRenders')))
-  await expect.poll(renders).toBe(1)
+  await expect.poll(renders, { timeout: 20_000 }).toBe(1)
   const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
   await trigger.click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
@@ -136,14 +176,18 @@ test('an open room menu follows its button when the viewport changes', async ({ 
   const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
   await trigger.click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
+  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 })
   for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 960 }]) {
     await page.setViewportSize(viewport)
-    await expect.poll(async () => {
-      const anchor = await trigger.boundingBox()
-      const bounds = await menu.boundingBox()
-      return !!anchor && !!bounds && Math.abs(bounds.y - anchor.y - anchor.height - 8) < 2
-        && bounds.x >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height
-    }).toBe(true)
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    await expect.poll(() => menu.evaluate((element) => {
+      const anchor = document.querySelector('.room-picker-trigger')!.getBoundingClientRect()
+      const bounds = element.getBoundingClientRect()
+      return Math.abs(bounds.top - anchor.bottom - 8) < 2
+        && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight
+    }), { message: `Room menu follows its anchor at ${viewport.width}x${viewport.height}` }).toBe(true)
   }
   await page.keyboard.press('Escape')
   await expect(trigger).toBeFocused()
@@ -208,11 +252,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
   test(`both rooms start close up with the same measured scene space at ${viewport.width}px`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath())
+    await waitForRoomReady(page)
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-framing', 'close')
     const kitchen = await page.locator('.kitchen-world').boundingBox()
     if (!kitchen) throw new Error('The kitchen scene is missing.')
     await selectRoom(page, 'bathroom')
+    await waitForRoomReady(page)
     const bathroom = page.locator('.bathroom-world')
     await expect(bathroom).toHaveAttribute('data-camera-moving', 'false')
     await expect(bathroom).toHaveAttribute('data-framing', 'close')

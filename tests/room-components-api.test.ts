@@ -77,8 +77,11 @@ describe('shared room component API', () => {
     assert.equal(edited.status, 200, JSON.stringify(edited.data))
     assert.equal(getRoomComponents(resultHousehold(edited.data)).find((component) => component.id === kitchenWasher.id)?.finish, 'teal')
     const bathroomWasher = createRoomComponent('washing-machine', 'bathroom-laundry', randomUUID())
+    const bathroomPlant = getRoomComponents(before).find((component) => component.slotId === 'bathroom-plant')!
     const placed = await api.mutate('/household/room-components', {
-      roomId: 'bathroom', changes: [change(bathroomWasher, { componentVersion: null })],
+      roomId: 'bathroom', changes: [
+        change(bathroomWasher, { componentVersion: null }), change(bathroomPlant, { installed: false, linkedChores: 'pause' }),
+      ],
     })
     assert.equal(placed.status, 200, JSON.stringify(placed.data))
     const saved = resultHousehold(placed.data)
@@ -263,7 +266,7 @@ describe('shared room component API', () => {
     assert.equal(balances(after).get(api.roommate.memberId), 250)
   })
 
-  it('does not accept new supply or chore links to another household or a removed object', async (context) => {
+  it('does not accept new supply or chore links to another household or a stored object', async (context) => {
     const api = await fixture(context)
     const component = await api.install()
     const foreign = await api.store.create('Another household', 'Other', 'EUR', 45000)
@@ -273,7 +276,7 @@ describe('shared room component API', () => {
     const { version: _foreignVersion, ...restock } = body
     const removedSupply = await api.mutate('/shopping/items', restock, api.owner, 'POST')
     assert.equal(removedSupply.status, 409)
-    assert.match(z.object({ error: z.string() }).parse(removedSupply.data).error, /removed/)
+    assert.match(z.object({ error: z.string() }).parse(removedSupply.data).error, /in storage/)
     const invalidChore = await api.mutate('/chores', {
       title: 'Removed object chore', roomId: 'kitchen', area: null, componentId: component.id,
       dueDate: '2026-09-08', repeatDays: null, rotation: [api.owner.memberId],

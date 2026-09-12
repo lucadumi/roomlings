@@ -1,16 +1,10 @@
-import type { RoomId } from '../shared/rooms.ts'
 import { roomIds } from '../shared/rooms.ts'
 import { createRoomPreviewCache } from './roomPreviewCache.ts'
 import type { RoomPreviewOptions } from './roomPreviewCache.ts'
-import kitchen from './assets/rooms/kitchen.png'
-import bathroom from './assets/rooms/bathroom.png'
-import livingRoom from './assets/rooms/living-room.png'
-
-export const roomPreviewImages: Record<RoomId, string> = { kitchen, bathroom, 'living-room': livingRoom }
-
-const savedPreviews = createRoomPreviewCache(async (options) => {
+const savedPreviews = createRoomPreviewCache(async (options, signal) => {
   const { renderHouseholdRoomPreviews } = await import('./householdRoomPreview.ts')
-  return renderHouseholdRoomPreviews(options)
+  signal?.throwIfAborted()
+  return renderHouseholdRoomPreviews(options, signal)
 })
 
 export function roomSelectorPreviewSizes(ratio = 1): RoomPreviewOptions['sizes'] {
@@ -26,4 +20,8 @@ export function cachedHouseholdRoomPreviews(options: RoomPreviewOptions, househo
 
 export function householdRoomPreviews(options: RoomPreviewOptions, householdId: string) {
   return savedPreviews.render(options, householdId)
+}
+
+export function preloadHouseholdRoomPreviews(options: RoomPreviewOptions, householdId: string, signal: AbortSignal) {
+  return savedPreviews.preload(options, householdId, signal)
 }

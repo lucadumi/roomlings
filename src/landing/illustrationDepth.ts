@@ -77,7 +77,7 @@ function partition(faces: OrderedFace[]): OrderedFace[] {
     }
     for (const [points, side] of [[near, front], [far, back]] as const) {
       const clipped = clean(points)
-      if (clipped.length >= 3 && projectedArea(clipped) > epsilon) side.push({ ...face, points: clipped })
+      if (clipped.length >= 3 && projectedArea(clipped) > epsilon && plane(clipped)) side.push({ ...face, points: clipped })
     }
   }
   const facing = dot(boundary.normal, view) > 0

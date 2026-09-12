@@ -28,6 +28,10 @@ export const roomAccents = {
   metal: '#d7d9e1',
 } as const
 
+const neutralArchitecture = {
+  wall: '#faf7ee', trim: '#ded9ce', floor: '#f4f4ee', floorAlternate: '#e2e3db',
+} as const
+
 export const roomPresets: Record<RoomStyle, {
   name: string
   description: string
@@ -35,85 +39,85 @@ export const roomPresets: Record<RoomStyle, {
 }> = {
   original: {
     name: 'Original',
-    description: 'Soft white, mint-sage finishes, honey wood and warm clay accents.',
+    description: 'Warm neutrals, gentle sage furniture and honey wood.',
     colors: {
-      wall: '#faf7ee', trim: '#ded5c4', floor: '#f4f5ef', floorAlternate: '#d2e2d5',
-      fridge: '#81b29a', fridgeDoor: '#acd0ba', fridgeEdge: '#5d8b73',
-      cabinet: '#5d8973', cabinetPanel: '#83b099', counter: '#fffdf7',
+      ...neutralArchitecture,
+      fridge: '#8fad9a', fridgeDoor: '#b7cec0', fridgeEdge: '#718e7b',
+      cabinet: '#75917e', cabinetPanel: '#9fb7a7', counter: '#fffdf7',
       wood: '#ba9164', lightWood: '#e4bf88', woodGrain: '#c5a375',
     },
   },
   sage: {
     name: 'Sage',
-    description: 'Forest cabinets, sage walls, ivory finishes and honey oak.',
+    description: 'Soft sage cabinetry, ivory furniture and honey oak against neutral walls.',
     colors: {
-      wall: '#b1cabb', trim: '#7b9c89', floor: '#faf8f1', floorAlternate: '#90b29b',
-      fridge: '#ede9db', fridgeDoor: '#fffdf5', fridgeEdge: '#b4ae9d',
-      cabinet: '#426450', cabinetPanel: '#5a836b', counter: '#fcfaf4',
+      ...neutralArchitecture,
+      fridge: '#e7e9df', fridgeDoor: '#f6f7ee', fridgeEdge: '#b2b9a7',
+      cabinet: '#667f6d', cabinetPanel: '#8ca18d', counter: '#fcfaf4',
       wood: '#a27c51', lightWood: '#d0ab73', woodGrain: '#856644',
     },
   },
   clay: {
     name: 'Clay',
-    description: 'Burnt-clay cabinets, a tomato fridge and bold sand-and-clay tiles.',
+    description: 'Dusty-clay furniture and warm wood, with neutral walls and stone floors.',
     colors: {
-      wall: '#e0af89', trim: '#c28f6e', floor: '#f7e3c5', floorAlternate: '#ca9676',
-      fridge: '#cb7057', fridgeDoor: '#e49376', fridgeEdge: '#a75b46',
-      cabinet: '#c78a69', cabinetPanel: '#e0ae88', counter: '#fffaf0',
+      ...neutralArchitecture,
+      fridge: '#b68b7a', fridgeDoor: '#d8b3a2', fridgeEdge: '#947768',
+      cabinet: '#aa8973', cabinetPanel: '#cfb197', counter: '#fffaf0',
       wood: '#af815b', lightWood: '#dcba87', woodGrain: '#8e6848',
     },
   },
   linen: {
     name: 'Linen',
-    description: 'Cream cabinets and fridge, pale stone walls and dark walnut wood.',
+    description: 'Ivory furniture, quiet stone surfaces and natural walnut wood.',
     colors: {
-      wall: '#f1eee3', trim: '#b9b6a6', floor: '#eeeae0', floorAlternate: '#73786c',
-      fridge: '#ded5c1', fridgeDoor: '#fbf1d8', fridgeEdge: '#b5a68c',
-      cabinet: '#e1d9c7', cabinetPanel: '#f7efdc', counter: '#57564b',
+      ...neutralArchitecture,
+      fridge: '#e0dcd0', fridgeDoor: '#f1eee4', fridgeEdge: '#b7b09f',
+      cabinet: '#ddd8cb', cabinetPanel: '#f0ece2', counter: '#57564b',
       wood: '#4e3528', lightWood: '#6a4834', woodGrain: '#a17751',
     },
   },
-  // Coolors: https://coolors.co/palette/a6bbc6-5f8195-70968f-b9cbd0-eeeae0-b7a184
+  // Accent family: https://coolors.co/palette/a6bbc6-5f8195-70968f-b9cbd0-eeeae0-b7a184
   coastal: {
     name: 'Coastal',
-    description: 'Muted ocean cabinets, soft teal appliances, blue-grey tiles and sandy oak.',
+    description: 'Muted ocean and sea-green furniture, sandy oak and a neutral room.',
     colors: {
-      wall: '#a6bbc6', trim: '#7d9ca5', floor: '#5f8195', floorAlternate: '#b9cbd0',
-      fridge: '#5c7b77', fridgeDoor: '#70968f', fridgeEdge: '#45635f',
-      cabinet: '#466271', cabinetPanel: '#5f8195', counter: '#eeeae0',
+      ...neutralArchitecture,
+      fridge: '#7c9592', fridgeDoor: '#a1b8b0', fridgeEdge: '#627b75',
+      cabinet: '#687f88', cabinetPanel: '#94a8ad', counter: '#eeeae0',
       wood: '#8c7157', lightWood: '#b7a184', woodGrain: '#705b47',
     },
   },
-  // Coolors: https://coolors.co/palette/afa0ba-725879-a48faf-b4a2bb-eee7e7-b69d90
+  // Accent family: https://coolors.co/palette/afa0ba-725879-a48faf-b4a2bb-eee7e7-b69d90
   lavender: {
     name: 'Lavender',
-    description: 'Dusty plum cabinets, soft lilac appliances, muted lavender tiles and rosewood.',
+    description: 'Restrained lilac furniture and rosewood, with warm neutral walls and floors.',
     colors: {
-      wall: '#afa0ba', trim: '#88758f', floor: '#a48faf', floorAlternate: '#b4a2bb',
-      fridge: '#8c7894', fridgeDoor: '#a48faf', fridgeEdge: '#6d5a75',
-      cabinet: '#59445f', cabinetPanel: '#725879', counter: '#eee7e7',
+      ...neutralArchitecture,
+      fridge: '#9b8d9f', fridgeDoor: '#c0b3c5', fridgeEdge: '#817385',
+      cabinet: '#85738c', cabinetPanel: '#ad9fb4', counter: '#f4f1ed',
       wood: '#8b726b', lightWood: '#b69d90', woodGrain: '#6e5954',
     },
   },
-  // Coolors: https://coolors.co/palette/c5be9c-879367-d3bd85-b6bd92-f0eadb-b29c79
+  // Accent family: https://coolors.co/palette/c5be9c-879367-d3bd85-b6bd92-f0eadb-b29c79
   citrus: {
     name: 'Citrus',
-    description: 'Soft olive cabinets, butter-yellow appliances, warm oat walls and honey wood.',
+    description: 'Soft olive and butter-yellow furniture, honey wood and neutral surroundings.',
     colors: {
-      wall: '#c5be9c', trim: '#9fa17c', floor: '#dbd4b8', floorAlternate: '#b6bd92',
-      fridge: '#b7a36e', fridgeDoor: '#d3bd85', fridgeEdge: '#8f8056',
-      cabinet: '#6a7651', cabinetPanel: '#879367', counter: '#f0eadb',
+      ...neutralArchitecture,
+      fridge: '#b7b083', fridgeDoor: '#d9d0a8', fridgeEdge: '#989373',
+      cabinet: '#879172', cabinetPanel: '#abb394', counter: '#f5f1e6',
       wood: '#8c7657', lightWood: '#b29c79', woodGrain: '#6f5e45',
     },
   },
-  // Coolors: https://coolors.co/palette/c6acb0-986b7a-c7969b-d4b9ba-eee6df-8f7467
+  // Accent family: https://coolors.co/palette/c6acb0-986b7a-c7969b-d4b9ba-eee6df-8f7467
   rose: {
     name: 'Rose',
-    description: 'Dusty berry cabinets, muted rose appliances, blush-grey tiles and walnut wood.',
+    description: 'Dusty rose furniture and walnut wood, with calm neutral walls and floors.',
     colors: {
-      wall: '#c6acb0', trim: '#9c7e87', floor: '#c7969b', floorAlternate: '#d4b9ba',
-      fridge: '#a87985', fridgeDoor: '#c7969b', fridgeEdge: '#835d68',
-      cabinet: '#785260', cabinetPanel: '#986b7a', counter: '#eee6df',
+      ...neutralArchitecture,
+      fridge: '#b3979d', fridgeDoor: '#d5bdc0', fridgeEdge: '#927a82',
+      cabinet: '#957f88', cabinetPanel: '#baa5ae', counter: '#f5f1ec',
       wood: '#6f5851', lightWood: '#8f7467', woodGrain: '#574741',
     },
   },

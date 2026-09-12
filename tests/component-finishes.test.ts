@@ -15,7 +15,7 @@ import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { roomPresets } from '../src/roomStyles.ts'
 
 const expectedFinishes = {
-  room: { name: 'Match room colors', color: null },
+  room: { name: 'Default materials', color: null },
   cream: { name: 'Warm cream', color: '#fcf9f1' },
   sage: { name: 'Sage green', color: '#81b29a' },
   tomato: { name: 'Tomato red', color: '#e07a5f' },
@@ -31,7 +31,7 @@ const expectedFinishes = {
   rose: { name: 'Rose', color: '#c7969b' },
 }
 
-test('finish metadata keeps every persisted identifier, name and color and preserves public imports', () => {
+test('finish metadata keeps every persisted identifier and color and describes natural defaults', () => {
   assert.deepEqual(componentFinishes, expectedFinishes)
   assert.deepEqual(componentFinishSchema.options, Object.keys(expectedFinishes))
   assert.equal(publicFinishes, componentFinishes)
@@ -76,25 +76,30 @@ test('new finishes reduce perceptual chroma by at least 40% without becoming nea
   }
 })
 
-test('all new room surfaces stay low-chroma while the main colored surfaces retain medium tones', () => {
+test('room presets keep neutral architecture and low-chroma furniture accents', () => {
   for (const style of ['coastal', 'lavender', 'citrus', 'rose'] as const) {
     for (const [surface, color] of Object.entries(roomPresets[style].colors)) {
       assert.ok(perceptualColor(color).chroma <= 0.1, `${style} ${surface} must not reintroduce saturated paint`)
     }
-    for (const surface of ['wall', 'cabinetPanel', 'fridgeDoor'] as const) {
+    for (const surface of ['wall', 'trim', 'floor', 'floorAlternate'] as const) {
+      assert.equal(roomPresets[style].colors[surface], roomPresets.original.colors[surface])
+    }
+    for (const surface of ['cabinetPanel', 'fridgeDoor'] as const) {
       const { lightness } = perceptualColor(roomPresets[style].colors[surface])
-      assert.ok(lightness >= 0.4 && lightness <= 0.84, `${style} ${surface} must keep meaningful depth rather than fade to white`)
+      assert.ok(lightness >= 0.4 && lightness <= 0.9, `${style} ${surface} must retain a visible furniture accent`)
     }
   }
 })
 
-test('approved object finishes match the cabinet and appliance anchors in each new room family', () => {
+test('softer room accents do not change the saved custom object finishes', () => {
   for (const [style, cabinet, appliance] of [
     ['coastal', 'ocean', 'teal'], ['lavender', 'plum', 'lilac'],
     ['citrus', 'lime', 'lemon'], ['rose', 'berry', 'rose'],
   ] as const) {
-    assert.equal(componentFinishes[cabinet].color, roomPresets[style].colors.cabinetPanel)
-    assert.equal(componentFinishes[appliance].color, roomPresets[style].colors.fridgeDoor)
+    for (const [finish, surface] of [[cabinet, 'cabinetPanel'], [appliance, 'fridgeDoor']] as const) {
+      assert.equal(componentFinishes[finish].color, expectedFinishes[finish].color)
+      assert.ok(perceptualColor(roomPresets[style].colors[surface]).chroma < perceptualColor(componentFinishes[finish].color!).chroma)
+    }
   }
 })
 
@@ -158,7 +163,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
         for (const [index, actor] of actors.entries()) {
           const color = componentFinishes[finish].color
           if (color) assert.ok(colors(actor).includes(color.slice(1)), `${targets[index].kind} must visibly use ${finish} in ${style}`)
-          else assert.deepEqual(colors(actor), baseline.get(style)![index], `Match room colors must restore ${targets[index].kind} in ${style}`)
+          else assert.deepEqual(colors(actor), baseline.get(style)![index], `Default materials must restore ${targets[index].kind} in ${style}`)
         }
         assert.deepEqual(colors(neighbor), baseline.get(style)![actors.length], `Changing ${finish} must not recolor a neighboring object`)
       }

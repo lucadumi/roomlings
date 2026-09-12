@@ -36,6 +36,7 @@ type Props = {
   focusRequest: FocusRequest
   syncState: 'saved' | 'offline'
   inert: boolean
+  deferColdStart?: boolean
   panelOpen: boolean
   overviewFocus?: boolean
   panelSide?: 'left' | 'right'
@@ -69,38 +70,43 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 export function GameHome({
   roomId, onRooms, roomsOpen, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
-  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, panelOpen, activeTool, onAction, onInvite, onSelect,
+  monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, deferColdStart = false, panelOpen, activeTool, onAction, onInvite, onSelect,
   components, editMode, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
   panelSide = 'right',
   overviewFocus = false,
 }: Props) {
   const World = roomViews[roomId]
   const home = useRef<HTMLElement>(null)
+  const header = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const bar = dock.current
+    const hud = header.current
     const app = home.current?.closest<HTMLElement>('.game-app')
-    if (!bar || !app) return
-    // The bottom sheet and the room must reserve the same actual dock height.
+    if (!bar || !hud || !app) return
+    // The sheet must leave room for the actual header, dock and focused-room controls.
     const measure = () => {
       const style = getComputedStyle(bar)
       const height = bar.getBoundingClientRect().height + parseFloat(style.marginTop) + parseFloat(style.marginBottom)
       app.style.setProperty('--game-dock-space', `${height}px`)
+      app.style.setProperty('--game-header-space', `${hud.getBoundingClientRect().height}px`)
     }
     const observer = new ResizeObserver(measure)
     observer.observe(bar)
+    observer.observe(hud)
     window.addEventListener('resize', measure)
     measure()
     return () => {
       observer.disconnect()
       window.removeEventListener('resize', measure)
       app.style.removeProperty('--game-dock-space')
+      app.style.removeProperty('--game-header-space')
     }
   }, [])
   const viewer = household.members.find((member) => member.id === memberId)!
   const activeMembers = household.members.filter((member) => !member.inactive)
   return <main className="game-home" id="main" ref={home} data-panel-open={panelOpen && !overviewFocus} data-panel-side={panelSide} data-edit-mode={editMode} inert={inert} aria-hidden={inert || undefined}>
-    <header className="game-hud">
+    <header className="game-hud" ref={header}>
       <div className="game-identity">
         <a className="brand" href="/" aria-label="Roomlings home"><Brand decorative /></a>
         <i className="hud-divider" />
@@ -118,8 +124,8 @@ export function GameHome({
     <h1 className="sr-only">{household.name}: {roomCatalog[roomId].label}</h1>
     <SceneBoundary key={`${roomId}:${household.id}`}>
       <Suspense fallback={<SceneLoading label={`Opening ${roomCatalog[roomId].label.toLowerCase()}...`} />}>
-        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || (panelOpen && !editMode)} panelOpen={panelOpen && !overviewFocus} overviewFocus={overviewFocus} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
-          components={components ?? getRoomComponents(household)} editMode={editMode} selectedComponentId={selectedComponentId}
+        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || roomsOpen || (panelOpen && !editMode)} panelOpen={panelOpen && !overviewFocus} overviewFocus={overviewFocus} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
+          components={components ?? getRoomComponents(household)} editMode={editMode} selectedComponentId={selectedComponentId} deferColdStart={deferColdStart}
           placementPreviewId={placementPreviewId} onComponentSelect={onComponentSelect} />
       </Suspense>
     </SceneBoundary>

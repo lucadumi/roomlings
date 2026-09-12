@@ -1,8 +1,7 @@
 import {
-  Box3, BoxGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial,
-  Object3D, Shape, ShapeGeometry, Vector3,
+  Box3, CircleGeometry, Group, Mesh, MeshStandardMaterial,
+  Object3D, Vector3,
 } from 'three'
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { RoomStyle } from '../shared/domain.ts'
 import { defaultRoomComponents } from '../shared/roomComponents.ts'
 import type { RoomSlotId } from '../shared/roomComponents.ts'
@@ -13,10 +12,15 @@ import { roomShellLayout } from './roomLayout.ts'
 import type { SceneFocus } from './camera.ts'
 import type { ContactShadow } from './lighting.ts'
 import { livingRoomWindow } from './livingRoomComponentModels.ts'
+import { buildWindowLandscape } from './windowLandscape.ts'
 import { buildRoomComponentModel } from './roomComponentModels.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
+import { createRoomMaterial, prepareRoomSurfaceGeometry, roomMaterialSurface } from './surfaceMaterials.ts'
+import type { RoomSurface } from './surfaceMaterials.ts'
+import { createRoomBoxGeometry } from './roomGeometry.ts'
+import { componentMaterialColors } from './componentMaterials.ts'
 
 export { livingRoomLampPosition } from './livingRoomComponentModels.ts'
 export const livingRoomTargets = ['sofa', 'surfaces', 'plants', 'floor', 'bins', 'chores', 'supplies'] as const
@@ -57,25 +61,26 @@ export function livingRoomFocusForRequest(target: SceneFocus | LivingRoomFocus):
 
 export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original') {
   const materials: MeshStandardMaterial[] = []
-  const material = (name: string, color: string, roughness = 0.85) => {
-    const result = new MeshStandardMaterial({ name, color, roughness, flatShading: true })
+  const material = (name: string, color: string, roughness = 0.85, finish: RoomSurface = 'paint') => {
+    const result = createRoomMaterial(color, roughness, finish, name)
     materials.push(result)
     return result
   }
-  const surface = (name: keyof RoomStyleMaterials) => material(name, roomPresets[style].colors[name])
+  const surface = (name: keyof RoomStyleMaterials, finish: RoomSurface = 'paint') => material(name, roomPresets[style].colors[name], 0.85, finish)
   const styleMaterials: RoomStyleMaterials = {
-    wall: surface('wall'), trim: surface('trim'), floor: surface('floor'), floorAlternate: surface('floorAlternate'),
+    wall: surface('wall', 'plaster'), trim: surface('trim'), floor: surface('floor', 'wood'), floorAlternate: surface('floorAlternate', 'wood'),
     fridge: surface('fridge'), fridgeDoor: surface('fridgeDoor'), fridgeEdge: surface('fridgeEdge'),
     cabinet: surface('cabinet'), cabinetPanel: surface('cabinetPanel'), counter: surface('counter'),
-    wood: surface('wood'), lightWood: surface('lightWood'), woodGrain: surface('woodGrain'),
+    wood: surface('wood', 'wood'), lightWood: surface('lightWood', 'wood'), woodGrain: surface('woodGrain', 'wood'),
   }
-  const sky = material('Daylight sky', roomAccents.sky)
+  const sky = material('Daylight sky', roomAccents.sky, 0.9, 'light')
   sky.emissive.set(roomAccents.sky)
   sky.emissiveIntensity = 0.15
-  const cloud = material('Distant clouds', roomAccents.cream)
-  const hills = material('Distant sage hills', roomAccents.leafLight)
-  const trees = material('Distant trees', roomAccents.leaf)
-  const sunshine = material('Window sunshine', roomAccents.gold)
+  const cloud = material('Distant clouds', roomAccents.cream, 0.9, 'light')
+  const hills = material('Distant sage hills', roomAccents.leafLight, 0.9, 'light')
+  const trees = material('Distant trees', roomAccents.leaf, 0.9, 'light')
+  const sunshine = material('Window sunshine', roomAccents.gold, 0.9, 'light')
+  const doorHardware = material('Entry door hardware', componentMaterialColors.steel, 0.38, 'metal')
   const actors = new Map<LivingRoomTarget, Group>()
   const anchors = new Map<LivingRoomTarget, Object3D>()
   const contacts: ContactShadow[] = []
@@ -83,19 +88,10 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
   const componentFixtures: ComponentFixtures = new Map()
   const preserved = new Set<Object3D>()
   const box = (parent: Group, size: Position, position: Position, mat: MeshStandardMaterial, radius = 0) => {
-    const mesh = new Mesh(radius ? new RoundedBoxGeometry(...size, 1, radius) : new BoxGeometry(...size), mat)
+    const mesh = new Mesh(createRoomBoxGeometry(size, radius), mat)
     mesh.position.set(...position)
     mesh.castShadow = Math.min(...size) > 0.025
     mesh.receiveShadow = true
-    parent.add(mesh)
-    return mesh
-  }
-  const silhouette = (parent: Group, points: readonly [number, number][], z: number, mat: MeshStandardMaterial) => {
-    const shape = new Shape()
-    points.forEach(([x, y], index) => index ? shape.lineTo(x, y) : shape.moveTo(x, y))
-    shape.closePath()
-    const mesh = new Mesh(new ShapeGeometry(shape), mat)
-    mesh.position.z = z
     parent.add(mesh)
     return mesh
   }
@@ -137,6 +133,7 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
   buildRoomWalls(wall, 'living-room', {
     name: 'Living room', centerY: 2.25, wall: styleMaterials.wall, trim: styleMaterials.trim,
     opening: { left, right, bottom, top },
+    entryDoor: { panel: styleMaterials.trim, frame: styleMaterials.trim, hardware: doorHardware },
   })
 
   const window = new Group()
@@ -146,19 +143,11 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
   const windowPane = createRoomWallGroup(window, 'back', 'Living room window cutaway')
   box(windowPane, [right - left, top - bottom, 0.018],
     [(left + right) / 2, (bottom + top) / 2, -3.405], sky).receiveShadow = false
-  silhouette(windowPane, [[left, bottom], [right, bottom], [right, 2.58], [0.82, 2.81],
-    [0.1, 2.55], [-0.8, 2.83], [-1.64, 2.56], [left, 2.75]], -3.387, hills)
-  silhouette(windowPane, [[left, bottom], [right, bottom], [right, 2.35], [0.77, 2.54],
-    [0.1, 2.33], [-0.82, 2.52], [-1.74, 2.29], [left, 2.41]], -3.377, trees)
-  const sun = new Mesh(new CylinderGeometry(0.22, 0.22, 0.012, 12), sunshine)
-  sun.rotation.x = Math.PI / 2
-  sun.position.set(-1.79, 3.6, -3.383)
+  buildWindowLandscape(windowPane, { left, right, bottom, top, z: -3.387 }, { cloud, hills, trees })
+  const sun = new Mesh(new CircleGeometry(0.22, 16), sunshine)
+  sun.name = 'Flat living room sun'
+  sun.position.set(-1.79, 3.6, -3.382)
   windowPane.add(sun)
-  for (const [x, y, width] of [[-0.33, 3.65, 0.62], [0.76, 3.29, 0.48]]) {
-    silhouette(windowPane, [[x - width / 2, y - 0.04], [x + width / 2, y - 0.04], [x + width / 2, y + 0.04],
-      [x + width * 0.18, y + 0.04], [x, y + 0.16], [x - width * 0.2, y + 0.06],
-      [x - width / 2, y + 0.05]], -3.38, cloud)
-  }
   for (const x of [left, right]) {
     box(windowPane, [0.095, top - bottom + 0.14, 0.245], [x, (top + bottom) / 2, -3.23], styleMaterials.counter, 0.008)
     box(windowPane, [0.045, top - bottom + 0.06, 0.018], [x, (top + bottom) / 2, -3.095], styleMaterials.wood, 0.005)
@@ -172,9 +161,17 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
   box(window, [4.29, 0.095, 0.08], [-0.55, 1.958, -3.102], styleMaterials.trim, 0.01)
 
   let lampMaterial: MeshStandardMaterial | undefined
-  for (const component of defaultRoomComponents().filter((item) => item.roomId === 'living-room')) {
+  for (const component of defaultRoomComponents().filter((item) => item.roomId === 'living-room' && item.slotId !== 'living-room-bins')) {
     const generated = buildRoomComponentModel(component, style)
-    const replacements = new Map([...generated.styleSurfaces].map(([source, name]) => [source, styleMaterials[name]]))
+    const replacements = new Map<MeshStandardMaterial, MeshStandardMaterial>()
+    for (const [source, name] of generated.styleSurfaces) {
+      const shared = styleMaterials[name]
+      if (roomMaterialSurface(source) === roomMaterialSurface(shared)) replacements.set(source, shared)
+      else {
+        source.color = shared.color
+        source.name = `${name} ${roomMaterialSurface(source)}`
+      }
+    }
     const used = new Set<MeshStandardMaterial>()
     generated.root.traverse((object) => {
       if (!(object instanceof Mesh)) return
@@ -205,14 +202,15 @@ export function buildLivingRoomModel(room: Group, style: RoomStyle = 'original')
   room.updateMatrixWorld(true)
   attachTarget('floor', floor, [-1.25, 0.15, 2.48])
   for (const [target, slotId] of Object.entries(targetSlots) as [Exclude<LivingRoomTarget, 'floor'>, RoomSlotId][]) {
-    const binding = componentBindings.get(slotId)!
-    attachTarget(target, binding.root, binding.anchor!)
+    const binding = componentBindings.get(slotId)
+    if (binding) attachTarget(target, binding.root, binding.anchor!)
   }
   room.updateMatrixWorld(true)
   const bounds = new Box3().setFromObject(room)
   const actorBounds = new Map([...actors].map(([target, group]) => [
     target, new Box3().setFromObject(group).expandByPoint(anchors.get(target)!.getWorldPosition(new Vector3())),
   ]))
+  prepareRoomSurfaceGeometry(room)
   return { materials, styleMaterials, actors, anchors, bounds, actorBounds, contacts, lampMaterial,
     windowMaterials: { sky, disc: sunshine }, componentBindings, componentFixtures, preserved }
 }

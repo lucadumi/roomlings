@@ -1,7 +1,8 @@
 # Roomlings branding
 
-The room-built r represents a shared home, not a specific room. Use the supplied
-artwork rather than redrawing the mark or replacing the wordmark with ordinary text.
+The **Patchwork home** icon represents different pieces comfortably sharing one
+home. The logo is entirely 2D, with lowercase **Baloo 2** lettering. Use the supplied
+SVGs rather than redrawing the mark or replacing the outlined wordmark with text.
 
 ![Approved Roomlings icon, wordmark and compact variants](images/roomlings-identity.png)
 
@@ -12,55 +13,60 @@ set from `src/assets/brand`.
 
 | Component | Use |
 |---|---|
-| `Brand` | Compact flat icon with the outlined SVG wordmark |
-| `Brand variant="featured"` | Rendered 3D icon with the SVG wordmark in the landing header; switches to the flat icon on narrow screens |
+| `Brand` | Flat Patchwork icon with the outlined Baloo 2 wordmark |
+| `Brand variant="featured"` | The same 2D artwork in the landing header; no image-type breakpoint |
 | `Brand decorative` | Artwork inside a link that already has its own accessible name |
-| `LoadingIcon` | Decorative 2D loading mark within an existing loading status or control |
+| `LoadingIcon` | Static, decorative Patchwork icon within an existing loading status or control |
 | `LoadingIcon tone="light"` | The light monochrome mark on filled primary buttons |
-| `LoadingIcon reducedMotion` | Static mark when a local motion control or paused view requires it |
+| `LoadingIcon reducedMotion` | The same static mark; retained for existing motion-aware callers |
 | `SceneLoading` | Shared, eagerly imported Suspense fallback with the existing status text |
 
 Keep logo link destinations and accessible names. Reserve image dimensions and
-preserve the artwork's aspect ratio and clear space. Do not add a WebGL renderer
-for branding; the featured icon is a PNG, and the wordmark remains a crisp SVG.
-The favicon is the same flat r.
+preserve the artwork's aspect ratio and clear space. Intrinsic dimensions are
+generated with the SVGs in `src/assets/brand/dimensions.ts`. The favicon is an exact
+copy of the color Patchwork icon. There is no 3D logo, PNG fallback or WebGL renderer
+for branding.
 
-## 2D loader
+## Typography
 
-The r stays still. Only the threshold lifts and settles. The SVG performs the
-animation without JavaScript timers or a 3D scene.
+Baloo 2 Variable is used at weight 600 for the existing heading and display-text
+roles: page and dialog titles, selected landing headings, room names, large
+summary amounts and decorative notes. DM Sans Variable remains the body and
+interface font, including buttons, forms, dropdowns and detailed financial rows.
+The logo lettering is separately outlined at weight 650 with `-0.025em` tracking.
 
-![The 2D loader at rest, lifting, at its peak and settling](images/roomlings-loader-frames.png)
+Baloo 2 uses its native upright forms. Do not synthesize an italic version or keep
+the previous font's variation axes. Both interface families are bundled locally
+through Fontsource.
 
-| Property | Value |
-|---|---|
-| Duration | 2 seconds |
-| Threshold position | 0, -8, 0 SVG units at 0%, 50%, 100% |
-| ViewBox | 128 by 128 |
-| Easing per half | `cubic-bezier(.37, 0, .63, 1)` |
-| Reduced motion | Static threshold at rest |
+## Static 2D loader
 
-The full-color and light SVGs both handle `prefers-reduced-motion` internally.
-The landing tour also passes its own motion and pause state to `LoadingIcon`.
-Do not apply `.spin`, rotate the full mark, add shadows or turn this into a
-progress meter.
+The owner chose the static Patchwork icon for loading states. It has no animation,
+timer, 3D treatment or alternate reduced-motion asset. The color and light icons
+are reused directly, so there are no duplicate loader files. Do not apply `.spin`,
+add a pulse or turn the mark into a progress meter.
+
+Object-card image rendering uses a separate circular spinner while its render is
+pending, not a rotating Patchwork mark. That spinner stops when the image or an
+error is available and stays still for reduced motion.
 
 Render the loader only while the existing operation is pending. Remove it when
 the operation finishes or fails, without waiting for the animation loop to finish.
 Keep existing errors, retries, disabled controls and loading messages. Announce
 the message in the existing status element; the artwork itself is decorative.
 
-## Source designs
+## Source designs and regeneration
 
-The editable [Blender logo](../design/roomlings-logo/roomlings-logo.blend), generation
-scripts and [design handoff](../design/roomlings-logo/DESIGN-HANDOFF.md) live under
-`design/roomlings-logo`. The Blender file has a packed, licensed Fraunces font and
-relative paths so it does not depend on an external design workspace.
+The editable [color icon](../design/roomlings-logo/source/icon-flat.svg),
+[single-ink icon](../design/roomlings-logo/source/icon-mono.svg), glyph data,
+generation scripts and [design handoff](../design/roomlings-logo/DESIGN-HANDOFF.md)
+live under `design/roomlings-logo`. The old 3D logo and animated-threshold sources
+have been retired.
 
-The wordmark is Fraunces 650, optical size 48, softness 45, wonk 1, with adjusted
-spacing. Font licenses accompany the design sources. Generated presentation files
-and intermediate frames stay out of Git; the runtime assets and approved reference
-images above are retained. No Blender or Python dependency is needed by the app.
+Font licenses accompany the design sources. Generated fonts and presentation
+exports stay out of Git; runtime SVGs, their dimensions and the approved reference
+image above are retained. No Python or design-rendering dependency is needed by
+the app itself.
 
 ## Saved plant illustrations
 

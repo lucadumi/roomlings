@@ -6,8 +6,9 @@ import type { BufferGeometry, Object3D } from 'three'
 import { componentCatalog, createRoomComponent, defaultRoomComponents, roomSlots } from '../shared/roomComponents.ts'
 import type { RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds } from '../src/camera.ts'
+import { baseCameraOffset, cameraOrbitOffset, cameraProjection, fitRoomBounds } from '../src/camera.ts'
 import { livingRoomLampPosition, livingRoomPlacements, livingRoomWindow } from '../src/livingRoomComponentModels.ts'
+import { worldTriangles } from './room-layout-fixture.ts'
 import {
   buildLivingRoomModel, livingRoomFocusForRequest, livingRoomFraming, livingRoomLabels,
   livingRoomTargets, livingRoomTourFraming,
@@ -16,7 +17,10 @@ import type { LivingRoomFocus, LivingRoomTarget } from '../src/livingRoomModel.t
 import { buildRoomComponentModel } from '../src/roomComponentModels.ts'
 import { createRoomComponentScene, isSceneObjectVisible } from '../src/roomComponentScene.ts'
 import { applyRoomStyle, roomAccents, roomPresets } from '../src/roomStyles.ts'
-import { roomShellBounds } from '../src/roomLayout.ts'
+import { roomShellBounds, roomShellLayout } from '../src/roomLayout.ts'
+import { componentMaterialColors } from '../src/componentMaterials.ts'
+import { roomMaterialSurface } from '../src/surfaceMaterials.ts'
+import { assertRoomSurface, meshSurfaceMaterials } from './surface-fixture.ts'
 
 function meshes(root: Object3D): Mesh[] {
   const result: Mesh[] = []
@@ -62,10 +66,13 @@ test('living room focus requests retain lounge and shared utility targets only',
 
 test('living room actors are the original component roots with attached measured labels', (t) => {
   const { room, model } = lounge(t)
-  assert.deepEqual([...model.actors.keys()].sort(), [...livingRoomTargets].sort())
-  assert.deepEqual([...model.anchors.keys()].sort(), [...livingRoomTargets].sort())
-  assert.equal(new Set(model.actors.values()).size, livingRoomTargets.length)
-  for (const target of livingRoomTargets) {
+  const defaults = defaultRoomComponents()
+  const expectedTargets = livingRoomTargets.filter((target) => target === 'floor'
+    || defaults.some((component) => component.slotId === targetSlots[target]))
+  assert.deepEqual([...model.actors.keys()].sort(), [...expectedTargets].sort())
+  assert.deepEqual([...model.anchors.keys()].sort(), [...expectedTargets].sort())
+  assert.equal(new Set(model.actors.values()).size, expectedTargets.length)
+  for (const target of expectedTargets) {
     const actor = model.actors.get(target)!
     const anchor = model.anchors.get(target)!
     assert.equal(actor.parent, room)
@@ -104,8 +111,8 @@ test('the original lounge and thumbnail factory use exactly the same component g
       assert.deepEqual(mesh.position.toArray(), thumbnail.position.toArray())
       assert.deepEqual(mesh.rotation.toArray(), thumbnail.rotation.toArray())
       assert.deepEqual(mesh.scale.toArray(), thumbnail.scale.toArray())
-      assert.ok(mesh.material instanceof MeshStandardMaterial && thumbnail.material instanceof MeshStandardMaterial)
-      assert.equal(mesh.material.color.getHexString(), thumbnail.material.color.getHexString())
+      assert.deepEqual(meshSurfaceMaterials(mesh).map((material) => material.color.getHexString()),
+        meshSurfaceMaterials(thumbnail).map((material) => material.color.getHexString()))
     }
   }
 })
@@ -126,13 +133,14 @@ test('all lounge geometry is finite, low-poly, opaque and covered by one materia
     for (let i = 0; i < positions.count; i++) {
       assert.ok([positions.getX(i), positions.getY(i), positions.getZ(i)].every(Number.isFinite))
     }
-    assert.ok(mesh.material instanceof MeshStandardMaterial)
-    assert.ok(model.materials.includes(mesh.material))
-    assert.equal(mesh.material.flatShading, true)
-    assert.equal(mesh.material.transparent, false)
-    assert.equal(mesh.material.opacity, 1)
-    assert.equal(mesh.material.depthWrite, true)
-    assert.ok(mesh.material.name)
+    for (const material of meshSurfaceMaterials(mesh)) {
+      assert.ok(model.materials.includes(material))
+      assertRoomSurface(material)
+      assert.equal(material.transparent, false)
+      assert.equal(material.opacity, 1)
+      assert.equal(material.depthWrite, true)
+      assert.ok(material.name)
+    }
   }
   for (const binding of model.componentBindings.values()) {
     for (const material of binding.finishes) assert.ok(model.materials.includes(material))
@@ -194,7 +202,7 @@ test('the reading lamp uses its physical bulb position and the TV is genuinely o
   assert.equal(tv.indicator, undefined)
   const screen = tv.materials.find((material) => material.name === 'TV off screen')!
   assert.ok(meshes(tv.root).some((mesh) => mesh.material === screen))
-  assert.equal(screen.color.getHexString(), roomAccents.ink.slice(1))
+  assert.equal(screen.color.getHexString(), componentMaterialColors.screen.slice(1))
   assert.equal(screen.emissive.getHex(), 0)
 })
 
@@ -210,7 +218,7 @@ test('batching keeps the lounge interaction boundaries, labels, lamp and complet
   assert.ok(meshes(room).length < beforeCount * 0.5)
   assert.ok(before.min.distanceTo(after.min) < 0.00001)
   assert.ok(before.max.distanceTo(after.max) < 0.00001)
-  for (const target of livingRoomTargets) {
+  for (const target of model.actors.keys()) {
     assert.equal(model.actors.get(target), actors.get(target))
     assert.equal(model.anchors.get(target), anchors.get(target))
     assert.equal(anchors.get(target)!.parent, actors.get(target))
@@ -229,7 +237,7 @@ test('every lounge chore target remains physically reachable from the open corne
     floor: [-1.25, 0.02, 2.48], bins: [4.2, 0.59, 2.23],
     chores: [2.55, 0.26, 2.94], supplies: [4.16, 2.12, 0.25],
   }
-  for (const target of livingRoomTargets) {
+  for (const target of model.actors.keys()) {
     const offset = new Vector3(...baseCameraOffset)
     const ray = new Raycaster(new Vector3(...points[target]).add(offset), offset.negate().normalize())
     let object: Object3D | undefined = ray.intersectObject(room, true).find(({ object }) => isSceneObjectVisible(object, room))?.object
@@ -251,11 +259,12 @@ test('all designed lounge slots and advertised variants have bounded physical mo
       assert.ok(bounds.min.x >= -5.1 && bounds.max.x <= 5.1, `${slot.id} must fit the room width`)
       assert.ok(bounds.min.z >= -3.5 && bounds.max.z <= 3.4, `${slot.id} must fit the room depth`)
       assert.ok(bounds.min.y >= 0 && bounds.max.y < 4.6, `${slot.id} must fit the room height`)
-      assert.ok(model.finishes.some((finish) => meshes(model.root).some((mesh) => mesh.material === finish)))
+      assert.ok(model.finishes.some((finish) => meshes(model.root).some((mesh) => meshSurfaceMaterials(mesh).includes(finish))))
       for (const mesh of meshes(model.root)) {
-        assert.ok(mesh.material instanceof MeshStandardMaterial)
-        assert.equal(mesh.material.transparent, false)
-        assert.equal(mesh.material.flatShading, true)
+        for (const material of meshSurfaceMaterials(mesh)) {
+          assert.equal(material.transparent, roomMaterialSurface(material) === 'clear-glass')
+          assertRoomSurface(material)
+        }
       }
     }
   }
@@ -289,7 +298,7 @@ test('the TV, table and shelf accessories have permanent supports and separate c
     return new Raycaster(new Vector3(x, 5, z), new Vector3(0, -1, 0)).intersectObject(root, true)[0]?.point.y
   }
   for (const [accessory, support] of [
-    ['living-room-tv', 'living-room-media-unit'], ['living-room-media-accessory', 'living-room-media-unit'],
+    ['living-room-media-accessory', 'living-room-media-unit'],
     ['living-room-table-top', 'living-room-coffee-table'],
   ] as const) {
     const [x, y, z] = livingRoomPlacements[accessory].position
@@ -297,6 +306,8 @@ test('the TV, table and shelf accessories have permanent supports and separate c
     assert.equal(roomSlots.find((slot) => slot.id === support)!.removable, false)
   }
   const television = new Box3().setFromObject(model.componentBindings.get('living-room-tv')!.root)
+  assert.ok(Math.abs(television.min.x - roomShellLayout('living-room').inner.left) < 0.004,
+    'The existing TV mounting plate must meet the wall, not stand on the console.')
   for (const kind of ['record-player', 'speaker', 'plant'] as const) {
     const accessory = componentModel(t, createRoomComponent(kind, 'living-room-media-accessory', `media-${kind}`))
     assert.equal(television.intersectsBox(new Box3().setFromObject(accessory.root)), false)
@@ -311,6 +322,24 @@ test('the TV, table and shelf accessories have permanent supports and separate c
     const [x, y, z] = livingRoomPlacements['living-room-shelf-accessory'].position
     const support = new Raycaster(new Vector3(x, y + 0.001, z), new Vector3(0, -1, 0)).intersectObject(shelf, true)[0]
     assert.ok(support && y - support.point.y < 0.004)
+  }
+})
+
+test('windowsill objects clear actual curtain triangles instead of a batch box spanning the empty window', (t) => {
+  const { room, model } = lounge(t)
+  batchStaticMeshes(room, model.preserved)
+  room.updateMatrixWorld(true)
+  const curtains = model.componentBindings.get('living-room-curtains')!.root
+  const triangles = worldTriangles(curtains)
+  for (const [kind, variant] of [
+    ['plant', 'original'], ['plant', 'cactus'], ['plant', 'herbs'],
+    ['reed-diffuser', 'original'], ['watering-can', 'original'],
+  ] as const) {
+    const component = { ...createRoomComponent(kind, 'living-room-windowsill', `window-${kind}-${variant}`), variant }
+    const object = componentModel(t, component)
+    const bounds = new Box3().setFromObject(object.root, true)
+    assert.equal(triangles.some((triangle) => bounds.intersectsTriangle(triangle)), false,
+      `${kind}/${variant} must not touch the curtain geometry.`)
   }
 })
 
@@ -336,7 +365,7 @@ test('room presets reach original component sources and component finishes canno
   const initialMeshes = meshes(room)
   const initialGeometries = initialMeshes.map((mesh) => mesh.geometry)
   const finishes = new Set(Object.values(model.styleMaterials))
-  const unchanged = model.materials.filter((material) => !finishes.has(material))
+  const unchanged = model.materials.filter((material) => ![...finishes].some((source) => source.color === material.color))
     .map((material) => ({ material, color: material.color.getHexString() }))
   for (const style of ['sage', 'clay', 'linen', 'original'] as const) {
     applyRoomStyle(model.styleMaterials, style)
@@ -392,12 +421,12 @@ test('measured living room framing fits wide, tall, constrained and offset CSS s
         const projection = cameraProjection(width, height, area, framing.halfHeight, 1)
         const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
         const center = new Vector3(...framing.center)
-        camera.position.copy(center).add(new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
+        camera.position.copy(center).add(cameraOrbitOffset(rotation, pitch))
         camera.lookAt(center)
         camera.updateMatrixWorld(true)
         for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) {
           for (const z of [bounds.min.z, bounds.max.z]) {
-            const corner = new Vector3(x, y, z).applyAxisAngle(new Vector3(0, 1, 0), rotation).project(camera)
+            const corner = new Vector3(x, y, z).project(camera)
             const screenX = (corner.x * 0.5 + 0.5) * width
             const screenY = (-corner.y * 0.5 + 0.5) * height
             assert.ok(screenX >= area.x && screenX <= area.x + area.width, 'Fit the measured scene width')

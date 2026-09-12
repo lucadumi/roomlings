@@ -1,7 +1,7 @@
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
 import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
-import { pauseRequest } from './fixtures.ts'
+import { pauseRequest, waitForTourReady } from './fixtures.ts'
 import { buildKitchenModel } from '../../src/kitchenModel.ts'
 import { bathroomTourFraming, buildBathroomModel } from '../../src/bathroomModel.ts'
 import { baseCameraOffset } from '../../src/camera.ts'
@@ -64,7 +64,7 @@ test('kitchen objects are explorable without opening a household', { tag: '@room
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()) })
   await page.goto('/#tour')
   const tour = page.locator('.welcome-tour')
-  await expect(tour).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   for (const [action, chapter] of [['stock', 'groceries'], ['ledger', 'receipts'], ['budget', 'house-pot'], ['settle', 'come-in']] as const) {
     const point = await kitchenPoint(page, action)
     const previous = await tour.getAttribute('data-chapter')
@@ -87,7 +87,7 @@ test('bathroom fixtures and keyboard controls explore the real 3D room without d
   page.on('request', (request) => { if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url()) })
   await page.goto('/#tour-bathroom')
   const preview = page.locator('.welcome-tour')
-  await expect(preview).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(preview.locator('.bathroom-preview-canvas canvas')).toBeVisible()
   for (const target of ['sink', 'mirror', 'toilet', 'bath', 'chores', 'supplies'] as const) {
     const point = await bathroomPoint(page, target)
@@ -125,7 +125,7 @@ for (const [room, module] of [['kitchen', 'TourScene'], ['bathroom', 'BathroomWo
     expect(svg).not.toMatch(/@keyframes|<animate/)
     await route.continue()
     await expect(loading).toHaveCount(0)
-    await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+    await waitForTourReady(page)
   })
 }
 
@@ -143,7 +143,8 @@ test('bathroom rendering failure leaves fixture exploration available', { tag: '
   const preview = page.locator('.welcome-tour')
   await expect(preview).toHaveAttribute('data-scene', 'unavailable')
   await expect(preview.locator('.welcome-explore-loading')).toHaveCount(0)
-  await expect(preview.locator('.welcome-static')).toBeVisible()
+  await expect(preview.locator('.welcome-static, .welcome-stage-shell img, .welcome-stage-shell svg')).toHaveCount(0)
+  await expect(preview.locator('.welcome-preview-unavailable')).toBeVisible()
   await preview.getByRole('button', { name: 'Mirror', exact: true }).click()
   await expect(preview).toHaveAttribute('data-chapter', 'bathroom-mirror')
   await expect(preview.getByRole('link', { name: /^Open (kitchen|bathroom)$/ })).toHaveCount(0)
@@ -153,13 +154,13 @@ test('both room overviews use the same template, angle and world scale', { tag: 
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/#tour')
   const tour = page.locator('.welcome-tour')
-  await expect(tour).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   const kitchen = page.locator('.welcome-canvas')
   const angle = await kitchen.getAttribute('data-camera-angle')
   const scale = await kitchen.getAttribute('data-camera-scale')
   const bounds = await page.locator('.welcome-stage-shell').boundingBox()
   await tour.getByRole('radio', { name: 'Bathroom', exact: true }).check()
-  await expect(tour).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   const bathroom = page.locator('.bathroom-preview-canvas')
   await expect(bathroom).toHaveAttribute('data-camera-angle', angle!)
   await expect(bathroom).toHaveAttribute('data-camera-scale', scale!)
@@ -178,7 +179,7 @@ for (const room of roomIds) {
     await page.goto(`/#tour-${room}`)
     const tour = page.locator('.welcome-tour')
     const track = tour.locator('.welcome-tour-track')
-    await expect(tour).toHaveAttribute('data-scene', 'ready')
+    await waitForTourReady(page)
     await expect(track).toHaveAttribute('data-flow', 'false')
     const chapters = roomTourChapters[room]
     const renderer = page.locator(room === 'kitchen' ? '.welcome-canvas' : `.${room}-preview-canvas`)

@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
 import { householdSchema, memberColors, nameSchema } from '../shared/domain.ts'
-import { defaultRoomComponents } from '../shared/roomComponents.ts'
+import { newHouseholdRoomComponents } from '../shared/roomComponents.ts'
 import type { Household, Session } from '../shared/domain.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryCodeSchema } from '../shared/access.ts'
 import type { AccessState, RecoveryRotation, RecoveryRotationInput } from '../shared/access.ts'
@@ -168,7 +168,7 @@ export class Store {
       expenses: [], settlements: [], bills: [], billingTimeZone: 'UTC',
       shopping: { items: [], runs: [] },
       chores: { items: [], history: [] },
-      roomComponents: defaultRoomComponents(),
+      roomComponents: newHouseholdRoomComponents(randomUUID),
     }
     await this.save(household)
     return (await this.session(household, memberId))

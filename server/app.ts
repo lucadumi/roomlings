@@ -16,7 +16,7 @@ import { canEditShoppingItem, checkoutItems, normalizeShoppingName } from '../sh
 import {
   applyRoomComponentPatch, choreComponentFields, requireInstalledComponent, RoomComponentError, setRoomComponentState,
 } from '../shared/componentChanges.ts'
-import { componentStateInputSchema, roomComponentIdSchema, roomComponentLimit, roomComponentsPatchSchema } from '../shared/roomComponents.ts'
+import { componentChoreIsPaused, componentStateInputSchema, getRoomComponents, roomComponentIdSchema, roomComponentLimit, roomComponentsPatchSchema } from '../shared/roomComponents.ts'
 import type { ComponentSourceSnapshot } from '../shared/roomComponents.ts'
 import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema } from '../shared/access.ts'
 import { requestFailureMessage } from '../shared/requestMessages.ts'
@@ -368,6 +368,9 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   app.post('/api/chores/:id/complete', async (req, res) => (await mutate(req, res, (household, memberId) => {
     const { choreVersion } = choreVersionSchema.parse(req.body)
     const chore = findChore(household, req.params.id, choreVersion)
+    if (componentChoreIsPaused(chore, getRoomComponents(household))) {
+      throw new RoomComponentError(409, 'This chore is paused while its object is in storage. Bring it back before completing the chore.')
+    }
     if (household.chores.history.length >= choreCompletionLimit) {
       throw new ApiError(409, '20,000-completion history limit reached. Existing history is kept.')
     }

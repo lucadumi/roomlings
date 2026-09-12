@@ -5,9 +5,9 @@ import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, r
 import { kitchenLayout } from '../../src/roomLayout.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { localDate } from '../../shared/domain.ts'
-import { createHousehold, openGroceryForm, savedKitchen } from './fixtures.ts'
+import { createHousehold, openGroceryForm, savedKitchen, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
-test.use({ providerEnabled: false })
+test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
 async function frameRoom(page: Page) {
   await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
@@ -50,7 +50,7 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.goto('/kitchen')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Close the fridge' }).click()
   await expect(page.getByRole('button', { name: 'Peek inside' })).toBeVisible()
   await page.getByRole('button', { name: 'Peek inside' }).click()
@@ -102,7 +102,7 @@ test('a new kitchen can be joined from a separate browser session', async ({ pag
   const owner = await createHousehold(accounts.store, 'The browser house', 'Charlie')
   const invitation = new URL('/rooms/kitchen', baseURL)
   invitation.hash = `join=${encodeURIComponent(owner.household.inviteCode)}`
-  const context = await browser.newContext()
+  const context = await browser.newContext({ reducedMotion: 'reduce' })
   try {
     const roommate = await context.newPage()
     await routeAccountApi(roommate, accounts)
@@ -167,7 +167,7 @@ test('mobile layout has no horizontal overflow and supports keyboard dialogs', a
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await openGroceryForm(page)
   await expect(page.getByLabel('What did you pick up?')).toBeFocused()
@@ -227,7 +227,7 @@ test.describe('room controls', { tag: '@room' }, () => {
   test.beforeEach(async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto('/kitchen')
-    await expect(page.locator('.world-canvas canvas')).toBeVisible()
+    await waitForRoomReady(page)
   })
 
   test('lighting switches between daylight and evening', async ({ page }) => {
@@ -249,6 +249,38 @@ test.describe('room controls', { tag: '@room' }, () => {
     await expect(page.locator('.world-hotspots')).toBeHidden()
     await page.getByRole('button', { name: 'Show object labels', exact: true }).click()
     await expect(page.locator('.world-hotspots')).toBeVisible()
+  })
+
+  test('fridge and kettle shortcuts stay compact as labels and viewports change', async ({ page }) => {
+    const actions = page.getByRole('group', { name: 'Kitchen quick actions', exact: true })
+    const fridge = actions.locator('.world-fridge-toggle')
+    const kettle = actions.getByRole('button', { name: 'Put the kettle on', exact: true })
+    for (const width of [1440, 1251, 390, 320]) {
+      await page.setViewportSize({ width, height: 960 })
+      for (let state = 0; state < 2; state++) {
+        const layout = await actions.evaluate((element) => {
+          const buttons = [...element.querySelectorAll('button')].map((button) => button.getBoundingClientRect())
+          const [first, second] = buttons
+          const sameRow = Math.abs(first.top - second.top) < 1
+          return {
+            gap: sameRow ? second.left - first.right : second.top - first.bottom,
+            sizes: buttons.map((bounds) => [bounds.width, bounds.height]),
+          }
+        })
+        expect(layout.gap).toBeCloseTo(8, 1)
+        for (const [buttonWidth, buttonHeight] of layout.sizes) {
+          expect(buttonWidth).toBeGreaterThanOrEqual(width <= 560 ? 44 : 40)
+          expect(buttonHeight).toBeGreaterThanOrEqual(width <= 560 ? 44 : 40)
+        }
+        const open = await fridge.getAttribute('aria-pressed')
+        await fridge.click()
+        await expect(fridge).toHaveAttribute('aria-pressed', open === 'true' ? 'false' : 'true')
+        if (!state) {
+          await kettle.click()
+          await expect(kettle).toHaveAttribute('aria-pressed', 'true')
+        }
+      }
+    }
   })
 
   const hotspots = [
@@ -294,6 +326,7 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/kitchen')
+  await waitForRoomReady(page)
   await expect(page.locator('.hotspot-stock')).toBeVisible()
   await frameRoom(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -303,9 +336,17 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await expect(page.getByRole('dialog')).toContainText('What is in the bag?')
   await page.getByLabel('What did you pick up?').fill('Groceries from the 3D bag')
   await page.getByLabel('Total (EUR)').fill('8.70')
-  await page.getByRole('button', { name: 'Add & split the groceries' }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
+  // Keep the transient notice alive while saving redraws the room.
+  const savedAt = Date.now()
+  await page.clock.install({ time: savedAt - 60_000 })
+  await page.clock.pauseAt(savedAt)
+  try {
+    await page.getByRole('button', { name: 'Add & split the groceries' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
+  } finally {
+    await page.clock.resume()
+  }
   await frameRoom(page)
   await clickRoomPoint(page, [kitchenLayout.ledger[0], kitchenLayout.ledger[1] + 0.1, kitchenLayout.ledger[2]])
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
@@ -313,22 +354,18 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
 })
 
 test('the kitchen ignores nonvisual household refreshes while paused and still renders scene updates', { tag: '@room' }, async ({ page, accounts, populatedHousehold }) => {
-  await page.addInitScript(() => {
-    let draws = 0
-    const original = WebGL2RenderingContext.prototype.drawElements
-    Object.defineProperty(WebGL2RenderingContext.prototype, 'drawElements', {
-      value(this: WebGL2RenderingContext, ...args: Parameters<WebGL2RenderingContext['drawElements']>) {
-        if (this.canvas instanceof HTMLCanvasElement && this.canvas.closest('.world-canvas')) draws++
-        return Reflect.apply(original, this, args)
-      },
-    })
-    Object.defineProperty(window, 'roomlingsTestDrawCalls', { get: () => draws })
-  })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  const drawing = await trackDrawing(page)
   await page.goto('/kitchen')
-  const drawCalls = () => page.evaluate(() => Number(Reflect.get(window, 'roomlingsTestDrawCalls')))
-  await expect.poll(drawCalls).toBeGreaterThan(0)
+  await waitForRoomReady(page)
+  const drawCalls = async () => (await drawing()).draws
+  expect(await drawCalls()).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
+  await page.locator('.kitchen-world').evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const pausedAt = await drawCalls()
@@ -347,19 +384,20 @@ test('the kitchen ignores nonvisual household refreshes while paused and still r
   latest.version++
   await accounts.store.save(latest)
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
+  await page.waitForFunction((count) => Number(Reflect.get(window, 'roomlingsFrameDrawCalls')) > count, pausedAt, { timeout: 15_000 })
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   const updatedAt = await drawCalls()
   await page.waitForTimeout(250)
   expect(await drawCalls()).toBe(updatedAt)
   await page.keyboard.press('Escape')
-  await expect.poll(drawCalls).toBeGreaterThan(updatedAt)
+  await page.waitForFunction((count) => Number(Reflect.get(window, 'roomlingsFrameDrawCalls')) > count, updatedAt, { timeout: 15_000 })
 })
 
 test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const canvas = await page.locator('.world-canvas').boundingBox()
   expect(canvas).not.toBeNull()
@@ -396,7 +434,7 @@ test('the phone view gives the room most of the screen and keeps panels below it
 
 test('wheel zoom and the kettle respond without changing the household ledger', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto('/kitchen')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   const before = await page.locator('.fund-trigger strong').innerText()
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await page.locator('.world-canvas canvas').hover()
@@ -414,7 +452,7 @@ test('wheel zoom and the kettle respond without changing the household ledger', 
 
 test('header and footer wrappers are transparent while their controls keep their own surfaces', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto('/kitchen')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   for (const selector of ['.game-hud', '.game-bottom']) {
     await expect(page.locator(selector)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     await expect(page.locator(selector)).toHaveCSS('background-image', 'none')
@@ -438,9 +476,10 @@ test('header and footer wrappers are transparent while their controls keep their
 })
 
 test('touch gestures zoom and turn the room without opening an object', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/kitchen')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   const touch = await page.context().newCDPSession(page)
   await touch.send('Input.dispatchTouchEvent', {

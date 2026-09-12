@@ -70,3 +70,49 @@ test('the preview cache evicts least-recently-used snapshots instead of growing 
   assert.ok(cache.read(options(), 'c'))
   assert.throws(() => createRoomPreviewCache(async () => images('ready'), 0), /positive integer/)
 })
+
+test('completed background preloads populate the shared cache', async () => {
+  let renders = 0
+  const cache = createRoomPreviewCache(async () => { renders++; return images('warmed') })
+  await cache.preload(options(), 'home-a', new AbortController().signal)
+  assert.deepEqual(cache.read(options(), 'home-a'), images('warmed'))
+  assert.deepEqual(await cache.render(options(), 'home-a'), images('warmed'))
+  assert.equal(renders, 1)
+})
+
+test('cancelled background work cannot cache results or invalidate a foreground request', async () => {
+  let finishBackground!: (result: ReturnType<typeof images>) => void
+  let renders = 0
+  const cache = createRoomPreviewCache(async (_options, signal) => {
+    renders++
+    return signal ? new Promise((resolve) => { finishBackground = resolve }) : images('foreground')
+  })
+  const controller = new AbortController()
+  const background = cache.preload(options(), 'home-a', controller.signal)
+  const foreground = await cache.render(options(), 'home-a')
+  controller.abort()
+  finishBackground(images('cancelled'))
+  await assert.rejects(background, (cause) => cause === controller.signal.reason)
+  assert.equal(cache.read(options(), 'home-a'), foreground)
+  assert.equal(renders, 2)
+})
+
+test('aborted preloads never start rendering and foreground work is not duplicated by warming', async () => {
+  let renders = 0
+  let finish!: (result: ReturnType<typeof images>) => void
+  const cache = createRoomPreviewCache(async () => {
+    renders++
+    return new Promise((resolve) => { finish = resolve })
+  })
+  const aborted = new AbortController()
+  aborted.abort()
+  await assert.rejects(cache.preload(options(), 'home-a', aborted.signal), (cause) => cause === aborted.signal.reason)
+  assert.equal(renders, 0)
+  const foreground = cache.render(options(), 'home-a')
+  const background = new AbortController()
+  await cache.preload(options(), 'home-a', background.signal)
+  background.abort()
+  assert.equal(renders, 1)
+  finish(images('ready'))
+  assert.deepEqual(await foreground, images('ready'))
+})

@@ -10,6 +10,8 @@ import { applyRoomStyle, roomAccents, roomPresets } from '../src/roomStyles.ts'
 import { kitchenUtilityAnchors } from '../src/room.ts'
 import { kitchenLayout, kitchenWorktops, kitchenShelves } from '../src/roomLayout.ts'
 import { visibleRoomBounds } from '../src/roomComponentScene.ts'
+import { assertRoomSurface } from './surface-fixture.ts'
+import { componentMaterialColors } from '../src/componentMaterials.ts'
 
 function modelFor(context: TestContext, style: RoomStyle = 'original') {
   const room = new Group()
@@ -79,7 +81,7 @@ describe('shared kitchen model', () => {
     closeTo(hob.getWorldPosition(new Vector3()), kitchenLayout.hob)
     closeTo(kettle.getWorldPosition(new Vector3()), kitchenLayout.kettle)
     assert.equal(hob.rotation.y, -Math.PI / 2)
-    const ray = new Raycaster(new Vector3(kitchenLayout.kettle[0], 4, kitchenLayout.kettle[2]), new Vector3(0, -1, 0))
+    const ray = new Raycaster(new Vector3(kitchenLayout.kettle[0], kettleBounds.min.y + 0.2, kitchenLayout.kettle[2]), new Vector3(0, -1, 0))
     const burner = ray.intersectObject(hob, true)[0]
     assert.ok(burner?.object instanceof Mesh)
     assert.equal(burner.object.geometry.type, 'CylinderGeometry')
@@ -332,7 +334,7 @@ describe('shared kitchen model', () => {
     assert.equal(foods[1].group.visible, true)
   })
 
-  it('returns a complete flat-shaded material registry and the same grocery palette instances', (context) => {
+  it('returns a complete surface-material registry and the same grocery palette instances', (context) => {
     const { room, foods, materials, scenery, foodMaterials } = modelFor(context)
     const registry = new Set(materials)
     assert.equal(registry.size, materials.length)
@@ -342,13 +344,12 @@ describe('shared kitchen model', () => {
       for (const material of used) {
         assert.ok(material instanceof MeshStandardMaterial)
         assert.ok(registry.has(material))
-        assert.equal(material.flatShading, true)
-        assert.equal(material.map, null)
+        assertRoomSurface(material)
       }
     })
     for (const material of [scenery.sky, scenery.windowDisc, scenery.bulb]) assert.ok(registry.has(material))
     const palette: { category: Category; color: string }[] = [
-      { category: 'produce', color: roomAccents.tomato.slice(1) },
+      { category: 'produce', color: componentMaterialColors.apple.slice(1) },
       { category: 'dairy', color: 'f8f3de' },
       { category: 'pantry', color: roomAccents.gold.slice(1) },
       { category: 'drinks', color: roomAccents.blue.slice(1) },

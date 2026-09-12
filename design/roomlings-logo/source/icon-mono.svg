@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Roomlings">
+  <title>Roomlings</title>
+  <defs>
+    <mask id="quilt-seams" maskUnits="userSpaceOnUse" x="-32" y="-32" width="320" height="320">
+      <rect x="-32" y="-32" width="320" height="320" fill="white"/>
+      <path d="M130 24L117 237M20 121L237 139" fill="none" stroke="black" stroke-width="13"/>
+    </mask>
+  </defs>
+  <g mask="url(#quilt-seams)">
+    <path d="M65 42Q45 42 42 65L35 189Q34 209 56 212L187 221Q208 223 212 201L221 67Q222 45 200 44Z" fill="#3d405b"/>
+  </g>
+</svg>

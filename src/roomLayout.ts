@@ -1,6 +1,8 @@
 import { Box3, Vector3 } from 'three'
 import type { RoomId } from '../shared/rooms.ts'
 import type { ComponentKind, RoomSlotId } from '../shared/roomComponents.ts'
+import { componentSurfaces } from '../shared/roomZones.ts'
+import type { ComponentSurface } from '../shared/roomZones.ts'
 import { livingRoomPlacements } from './livingRoomComponentModels.ts'
 
 export type RoomPosition = [number, number, number]
@@ -9,7 +11,7 @@ export type ComponentPlacement = {
   scale?: number | RoomPosition
   scaleByKind?: Partial<Record<ComponentKind, number | RoomPosition>>
   rotation?: number
-  surface: 'floor' | 'counter' | 'table' | 'wall' | 'fitted' | 'bath'
+  surface: ComponentSurface
 }
 
 export const roomFootprints = {
@@ -18,7 +20,35 @@ export const roomFootprints = {
   'living-room': { width: 10, depth: 6.6, centerZ: 0, wallHeight: 4.5, wallThickness: 0.14, backZ: -3.23, leftX: -4.92 },
 } as const
 
+export const roomEntryDoors = {
+  kitchen: { centerX: 3.2, width: 1.5, height: 3.55, hinge: 'right' },
+  bathroom: { centerX: 0.8, width: 1.5, height: 3.55, hinge: 'right' },
+  'living-room': { centerX: -3.4, width: 1.5, height: 3.55, hinge: 'left' },
+} as const satisfies Record<RoomId, { centerX: number; width: number; height: number; hinge: 'left' | 'right' }>
+
 const cookingSurface: RoomPosition = [4.875, 0, 0.3075]
+
+const kitchenCounterApplianceScales = {
+  'waffle-maker': 1.28,
+} satisfies Partial<Record<ComponentKind, number>>
+
+const kitchenDrinksScales = {
+  'kitchen-scale': 1.25,
+  'cereal-dispenser': 1.2,
+} satisfies Partial<Record<ComponentKind, number>>
+
+const kitchenTableCenterScales = {
+  plant: 0.52,
+  'kitchen-scale': 1.25,
+  'cereal-dispenser': 1.2,
+  'tissue-box': 1.8,
+  'first-aid-kit': 1.8,
+  'record-player': 1.8,
+} satisfies Partial<Record<ComponentKind, number>>
+
+const kitchenWindowsillScales = {
+  plant: 0.42,
+} satisfies Partial<Record<ComponentKind, number>>
 
 export const kitchenLayout = {
   fridge: [-3.2, 0.025, -2.25],
@@ -29,7 +59,7 @@ export const kitchenLayout = {
   rug: [2.5, 0, -1.15],
   plant: [-4.72, 0.02, 2.8],
   counterPlant: [4.43, 1.76, -0.64],
-  supplies: [-5.08, 1.25, -1.8],
+  supplies: [-5.08, 1.25, -1.86],
   chores: [-3.7, 0.025, 2.78],
   stock: [-0.54, 1.51, 0.65],
   ledger: [-0.18, 1.54, 1.55],
@@ -101,90 +131,91 @@ const bathroomObjectScales = {
   'storage-cabinet': 1,
 } satisfies Partial<Record<ComponentKind, number>>
 
-export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>> = {
-  ...Object.fromEntries(Object.entries(livingRoomPlacements).map(([slotId, placement]) => [slotId, {
-    ...placement,
-    surface: slotId === 'living-room-wall-art' || slotId === 'living-room-curtains' ? 'wall'
-      : slotId === 'living-room-table-top' ? 'table'
-        : ['living-room-tv', 'living-room-media-accessory', 'living-room-shelf-accessory', 'living-room-windowsill'].includes(slotId) ? 'counter' : 'floor',
-  } satisfies ComponentPlacement])),
-  'kitchen-table': { position: kitchenLayout.table, surface: 'floor' },
-  'kitchen-plant-floor': { position: kitchenLayout.plant, surface: 'floor' },
-  'kitchen-plant-counter': { position: kitchenLayout.counterPlant, scale: 0.48, rotation: -Math.PI / 2, surface: 'counter' },
+const authoredComponentPlacements: Partial<Record<RoomSlotId, Omit<ComponentPlacement, 'surface'>>> = {
+  ...livingRoomPlacements,
+  'kitchen-table': { position: kitchenLayout.table },
+  'kitchen-plant-floor': { position: kitchenLayout.plant },
+  'kitchen-plant-counter': { position: kitchenLayout.counterPlant, scale: 0.48, rotation: -Math.PI / 2 },
   ...Object.fromEntries(kitchenApplianceBays.map(({ slotId, x, z, rotation }) =>
-    [slotId, { position: [x, 0.235, z], scale: [0.9, 0.89, 0.91], rotation, surface: 'fitted' }])),
-  'kitchen-coffee': { position: [-1.57, 1.735, -2.48], surface: 'counter' },
-  'kitchen-small-appliance': { position: [-1.3, 2.83, -2.87], surface: 'counter' },
-  'kitchen-drinks': { position: [-0.72, 1.735, -2.43], surface: 'counter' },
-  'kitchen-dish-rack': { position: [4.3, 1.735, -2.26], surface: 'counter' },
-  'kitchen-bins': { position: [3.5, 0.235, -2.36], surface: 'fitted' },
-  'kitchen-vacuum': { position: [-2.63, 0.02, 2.85], surface: 'floor' },
-  'kitchen-wall-art': { position: [-1.45, 4, -3.238], scale: 0.72, surface: 'wall' },
-  'kitchen-soap-dispenser': { position: [3.98, 1.735, -3.02], scale: 0.65, surface: 'counter' },
-  'kitchen-table-center': { position: [0.72, 1.495, 0.76], scale: 0.72, surface: 'table' },
-  'kitchen-windowsill': { position: [2.24, 2.36, -2.63], scale: 0.35, surface: 'counter' },
-  'kitchen-left-wall': { position: [-5.495, 3.9, -0.5], scale: 0.68, rotation: Math.PI / 2, surface: 'wall' },
-  'kitchen-air-fryer': { position: [5.1, 1.735, -2.28], surface: 'counter' },
-  'kitchen-stand-mixer': { position: [5.23, 1.735, -1.49], rotation: -Math.PI / 2, surface: 'counter' },
-  'kitchen-blender': { position: [5.23, 1.735, -0.63], rotation: -Math.PI / 2, surface: 'counter' },
-  'kitchen-rice-cooker': { position: [2.18, 1.735, -2.48], surface: 'counter' },
-  'kitchen-scale': { position: [0.06, 1.735, -2.25], surface: 'counter' },
-  'kitchen-cookbook': { position: [2.7, 1.735, -2.48], surface: 'counter' },
-  'kitchen-cutting-boards': { position: [4.43, 1.735, -1.38], rotation: -Math.PI / 2, surface: 'counter' },
-  'kitchen-knife-block': { position: [2.82, 1.735, -3.07], surface: 'counter' },
-  'kitchen-egg-basket': { position: [0.04, 1.735, -2.88], surface: 'counter' },
-  'kitchen-toaster': { position: [0.77, 1.735, -2.42], surface: 'counter' },
-  'kitchen-waffle-maker': { position: [1.4, 1.735, -2.45], surface: 'counter' },
-  'kitchen-bread-box': { position: [-0.18, 2.36, -2.63], surface: 'counter' },
-  'kitchen-water-filter': { position: [4.35, 1.735, -2.97], surface: 'counter' },
-  'kitchen-mug-tree': { position: [0.42, 2.36, -2.63], surface: 'counter' },
-  'kitchen-cereal-dispenser': { position: [1.91, 2.36, -2.63], surface: 'counter' },
-  'kitchen-tea-set': { position: [1.22, 2.36, -2.63], surface: 'counter' },
-  'kitchen-paper-towels': { position: [4.92, 1.735, -2.98], surface: 'counter' },
-  'kitchen-spice-rack': { position: [2.9, 2.62, -3.12], surface: 'wall' },
-  'kitchen-key-hooks': { position: [-5.495, 2.5, 0.85], rotation: Math.PI / 2, surface: 'wall' },
-  'kitchen-wall-shelf': { position: [2.75, 3.8, -3.12], surface: 'wall' },
-  'kitchen-first-aid': { position: [-5.17, 2.22, 1.62], rotation: Math.PI / 2, surface: 'counter' },
-  'kitchen-speaker': { position: [-5.17, 1.75, 1.2], rotation: Math.PI / 2, surface: 'counter' },
-  'kitchen-record-player': { position: [-5.17, 1.75, 2], rotation: Math.PI / 2, surface: 'counter' },
-  'kitchen-tissue-box': { position: [-5.17, 2.22, 2.3], rotation: Math.PI / 2, surface: 'counter' },
-  'kitchen-diffuser': { position: [-5.17, 1.75, 2.72], rotation: Math.PI / 2, surface: 'counter' },
-  'kitchen-board-game': { position: [0.78, 1.495, 1.65], surface: 'table' },
-  'kitchen-storage-cabinet': { position: [-5.22, 0.02, 1.8], rotation: Math.PI / 2, surface: 'floor' },
-  'kitchen-cart': { position: [4.93, 0.02, 1.53], surface: 'floor' },
-  'kitchen-pet-bowls': { position: [4.88, 0.02, 2.84], surface: 'floor' },
-  'kitchen-air-purifier': { position: [5, 0.02, 2.3], surface: 'floor' },
-  'kitchen-watering-can': { position: [-4.5, 0.02, 2.08], surface: 'floor' },
-  'bathroom-bath': { position: bathroomLayout.bath, surface: 'floor' },
-  'bathroom-laundry': { position: [-3.94, 0.02, 1.98], rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-laundry-basket': { position: [-4.04, 0.02, 0.72], scaleByKind: bathroomObjectScales, rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-drying-rack': { position: [-1.13, 0.02, 2.06], scale: 1.1, surface: 'floor' },
-  'bathroom-towel-rack': { position: [-4.555, 2.65, -1.25], rotation: Math.PI / 2, surface: 'wall' },
-  'bathroom-plant': { position: [4.08, 0.02, 0.55], scale: 0.86, scaleByKind: bathroomObjectScales, surface: 'floor' },
-  'bathroom-wall-art': { position: [2.95, 3.25, -3.088], surface: 'wall' },
-  'bathroom-soap-dispenser': { position: [bathroomLayout.sink[0] - 0.85, 1.66, -2.19], surface: 'counter' },
-  'bathroom-shower-shelf': { position: [-3.25, 2.45, -3.088], surface: 'wall' },
-  'bathroom-bins': { position: [3.14, 0.02, -2.12], scale: 0.7, surface: 'floor' },
-  'bathroom-vanity-accessory': { position: [bathroomLayout.sink[0] + 0.95, 1.66, -2.16], scale: 0.48, scaleByKind: bathroomObjectScales, surface: 'counter' },
-  'bathroom-floor-storage': { position: [-1.51, 0.025, 0.64], scale: 0.85, scaleByKind: bathroomObjectScales, rotation: Math.PI / 2, surface: 'floor' },
-  'bathroom-bath-tray': { position: [bathroomLayout.bath[0], 1.2, -0.8], surface: 'bath' },
-  'bathroom-toilet-accessory': { position: [3.23, 0.025, -1.31], scale: 0.65, scaleByKind: bathroomObjectScales, surface: 'floor' },
-  'bathroom-dryer': { position: [-3.94, 1.61, 1.98], rotation: Math.PI / 2, surface: 'fitted' },
-  'bathroom-storage-cabinet': { position: [-1.65, 0.02, -2.7], surface: 'floor' },
-  'bathroom-stool': { position: [-2.07, 0.02, -0.1], scale: bathroomObjectScales['bathroom-stool'], surface: 'floor' },
-  'bathroom-air-purifier': { position: [4.07, 0.02, 1.45], scale: bathroomObjectScales['air-purifier'], surface: 'floor' },
-  'bathroom-ironing-board': { position: [1.45, 0.02, 2.22], scale: 1.2, surface: 'floor' },
-  'bathroom-wall-calendar': { position: [-4.555, 3.15, 0.67], rotation: Math.PI / 2, surface: 'wall' },
-  'bathroom-key-hooks': { position: [-4.555, 3.42, 1.98], rotation: Math.PI / 2, surface: 'wall' },
-  'bathroom-wall-shelf': { position: [-1.65, 2.35, -3.088], surface: 'wall' },
-  'bathroom-shower-squeegee': { position: [-4.3, 2.6, -3.088], surface: 'wall' },
-  'bathroom-hair-dryer': { position: [bathroomLayout.sink[0] - 1.07, 1.66, -2.6], scale: bathroomObjectScales['hair-dryer'], surface: 'counter' },
-  'bathroom-storage-jars': { position: [1.52, 2.44, -2.92], scale: bathroomObjectScales['storage-jars'], surface: 'counter' },
-  'bathroom-tissue-box': { position: [2.12, 2.44, -2.92], scale: bathroomObjectScales['tissue-box'], surface: 'counter' },
-  'bathroom-first-aid': { position: [1.52, 3.02, -2.92], scale: bathroomObjectScales['first-aid-kit'], surface: 'counter' },
-  'bathroom-diffuser': { position: [2.12, 3.02, -2.92], scale: bathroomObjectScales['reed-diffuser'], surface: 'counter' },
-  'bathroom-vacuum': { position: [4, 0.02, 2.38], surface: 'floor' },
+    [slotId, { position: [x, 0.235, z], scale: [0.9, 0.89, 0.91], rotation }])),
+  'kitchen-coffee': { position: [-1.57, 1.735, -2.48], scaleByKind: kitchenCounterApplianceScales },
+  'kitchen-small-appliance': { position: [-1.3, 2.83, -2.9], scaleByKind: kitchenCounterApplianceScales },
+  'kitchen-drinks': { position: [-0.72, 1.735, -2.43], scaleByKind: kitchenDrinksScales },
+  'kitchen-dish-rack': { position: [4.4, 1.735, -2.26] },
+  'kitchen-bins': { position: [3.5, 0.235, -2.36] },
+  'kitchen-vacuum': { position: [-2.63, 0.02, 2.85] },
+  'kitchen-wall-art': { position: [-1.45, 4, -3.17], scale: 0.72 },
+  'kitchen-soap-dispenser': { position: [3.98, 1.735, -3.095], scale: 0.85 },
+  'kitchen-table-center': { position: [0.72, 1.495, 0.76], scale: 1, scaleByKind: kitchenTableCenterScales },
+  'kitchen-windowsill': { position: [2.17, 2.36, -2.63], scale: 0.85, scaleByKind: kitchenWindowsillScales },
+  'kitchen-left-wall': { position: [-5.505, 3.9, -0.5], scale: 0.68, rotation: Math.PI / 2 },
+  'kitchen-air-fryer': { position: [5.1, 1.735, -2.28] },
+  'kitchen-stand-mixer': { position: [5.23, 1.735, -1.49], rotation: -Math.PI / 2 },
+  'kitchen-blender': { position: [5.23, 1.735, -0.63], rotation: -Math.PI / 2 },
+  'kitchen-rice-cooker': { position: [2.18, 1.735, -2.48] },
+  'kitchen-scale': { position: [0.06, 1.735, -2.25], scale: 1.25 },
+  'kitchen-cookbook': { position: [2.7, 1.735, -2.48] },
+  'kitchen-cutting-boards': { position: [4.43, 1.735, -1.38], rotation: -Math.PI / 2 },
+  'kitchen-knife-block': { position: [2.82, 1.735, -3.07] },
+  'kitchen-egg-basket': { position: [0.04, 1.735, -2.88] },
+  'kitchen-toaster': { position: [0.77, 1.735, -2.42] },
+  'kitchen-waffle-maker': { position: [1.4, 1.735, -2.45], scale: 1.28 },
+  'kitchen-bread-box': { position: [-0.18, 2.36, -2.63] },
+  'kitchen-water-filter': { position: [4.35, 1.735, -2.97] },
+  'kitchen-mug-tree': { position: [0.42, 2.36, -2.63] },
+  'kitchen-cereal-dispenser': { position: [1.79, 2.36, -2.63], scale: 1.2 },
+  'kitchen-tea-set': { position: [1.22, 2.36, -2.63] },
+  'kitchen-paper-towels': { position: [4.92, 1.735, -2.98] },
+  'kitchen-spice-rack': { position: [2.9, 2.62, -3.12] },
+  'kitchen-key-hooks': { position: [-5.495, 2.5, 0.85], rotation: Math.PI / 2 },
+  'kitchen-wall-shelf': { position: [2.75, 3.8, -3.215] },
+  'kitchen-first-aid': { position: [-5.17, 2.22, 1.62], scale: 1.8, rotation: Math.PI / 2 },
+  'kitchen-speaker': { position: [-5.17, 1.75, 1.2], rotation: Math.PI / 2 },
+  'kitchen-record-player': { position: [-5.17, 1.75, 2], scale: 1.8, rotation: Math.PI / 2 },
+  'kitchen-tissue-box': { position: [-5.17, 2.22, 2.3], scale: 1.8, rotation: Math.PI / 2 },
+  'kitchen-diffuser': { position: [-5.17, 1.75, 2.72], rotation: Math.PI / 2 },
+  'kitchen-board-game': { position: [0.78, 1.495, 1.65] },
+  'kitchen-storage-cabinet': { position: [-5.22, 0.02, 1.8], rotation: Math.PI / 2 },
+  'kitchen-cart': { position: [4.93, 0.02, 1.53] },
+  'kitchen-pet-bowls': { position: [4.88, 0.02, 2.84], scale: 1.6 },
+  'kitchen-air-purifier': { position: [5, 0.02, 2.3] },
+  'kitchen-watering-can': { position: [-4.5, 0.02, 2.08] },
+  'bathroom-bath': { position: bathroomLayout.bath },
+  'bathroom-laundry': { position: [-3.94, 0.02, 1.98], rotation: Math.PI / 2 },
+  'bathroom-laundry-basket': { position: [-4.04, 0.02, 0.72], scaleByKind: bathroomObjectScales, rotation: Math.PI / 2 },
+  'bathroom-drying-rack': { position: [-1.13, 0.02, 2.06], scale: 1.1 },
+  'bathroom-towel-rack': { position: [-4.555, 2.65, -1.25], rotation: Math.PI / 2 },
+  'bathroom-plant': { position: [4.08, 0.02, 0.55], scale: 0.86, scaleByKind: bathroomObjectScales },
+  'bathroom-wall-art': { position: [2.95, 3.25, -3.04] },
+  'bathroom-soap-dispenser': { position: [bathroomLayout.sink[0] - 0.88, 1.66, -2.19] },
+  'bathroom-shower-shelf': { position: [-3.25, 2.45, -3.088] },
+  'bathroom-bins': { position: [3.14, 0.02, -2.12], scale: 0.7 },
+  'bathroom-vanity-accessory': { position: [bathroomLayout.sink[0] + 0.95, 1.66, -2.16], scale: 0.48, scaleByKind: bathroomObjectScales },
+  'bathroom-floor-storage': { position: [-1.51, 0.025, 0.64], scale: 0.85, scaleByKind: bathroomObjectScales, rotation: Math.PI / 2 },
+  'bathroom-bath-tray': { position: [bathroomLayout.bath[0], 1.2, -0.8] },
+  'bathroom-toilet-accessory': { position: [3.23, 0.025, -1.31], scale: 0.65, scaleByKind: bathroomObjectScales },
+  'bathroom-dryer': { position: [-3.94, 1.61, 1.98], rotation: Math.PI / 2 },
+  'bathroom-storage-cabinet': { position: [-1.65, 0.02, -2.7] },
+  'bathroom-stool': { position: [-2.07, 0.02, -0.1], scale: bathroomObjectScales['bathroom-stool'] },
+  'bathroom-air-purifier': { position: [4.07, 0.02, 1.45], scale: bathroomObjectScales['air-purifier'] },
+  'bathroom-ironing-board': { position: [2.12, 0.02, 1.55], scale: 1.2, rotation: Math.PI / 2 },
+  'bathroom-wall-calendar': { position: [-4.53, 3.15, 0.67], rotation: Math.PI / 2 },
+  'bathroom-key-hooks': { position: [-4.515, 3.42, 1.98], rotation: Math.PI / 2 },
+  'bathroom-wall-shelf': { position: [-1.65, 2.35, -3.065] },
+  'bathroom-shower-squeegee': { position: [-4.3, 2.6, -3.088] },
+  'bathroom-hair-dryer': { position: [bathroomLayout.sink[0] - 1.07, 1.66, -2.6], scale: bathroomObjectScales['hair-dryer'] },
+  'bathroom-storage-jars': { position: [1.52, 2.44, -2.92], scale: bathroomObjectScales['storage-jars'] },
+  'bathroom-tissue-box': { position: [2.12, 2.44, -2.92], scale: bathroomObjectScales['tissue-box'] },
+  'bathroom-first-aid': { position: [1.52, 3.02, -2.92], scale: bathroomObjectScales['first-aid-kit'] },
+  'bathroom-diffuser': { position: [2.12, 3.02, -2.92], scale: bathroomObjectScales['reed-diffuser'] },
+  'bathroom-vacuum': { position: [4, 0.02, 2.38] },
 }
+
+export const componentPlacements: Partial<Record<RoomSlotId, ComponentPlacement>> = Object.fromEntries(
+  Object.entries(authoredComponentPlacements).map(([slotId, placement]) => [
+    slotId, { ...placement, surface: componentSurfaces[slotId as RoomSlotId]! },
+  ]),
+)
 
 export function roomShellLayout(roomId: RoomId) {
   const footprint = roomFootprints[roomId]

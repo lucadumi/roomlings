@@ -56,14 +56,16 @@ function listedTests(args: readonly string[]): Set<string> {
   return ids
 }
 
-test('the four browser shards run every existing browser scenario exactly once', () => {
+test('the twelve browser shards run every existing browser scenario exactly once', () => {
   const selectors = [...workflow.matchAll(/^\s+args: (.+)$/gm)].map((match) => match[1].trim().split(/\s+/))
-  assert.equal(selectors.length, 4)
+  assert.equal(selectors.length, 12)
+  assert.match(workflow, /npm run test:browser -- --reporter=line/)
   const all = listedTests([])
   assert.ok(all.size > 0)
   const covered = new Set<string>()
   for (const selector of selectors) {
     assert.ok(selector.includes('--fully-parallel'))
+    assert.equal(selector.includes('--timeout=180000'), selector.includes('--grep'))
     const shard = listedTests(selector)
     assert.ok(shard.size > 0)
     for (const id of shard) {
