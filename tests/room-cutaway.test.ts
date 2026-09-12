@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Raycaster, Vector3 } from 'three'
 import { defaultRoomComponents } from '../shared/roomComponents.ts'
 import { roomIds } from '../shared/rooms.ts'
-import { baseCameraOffset } from '../src/camera.ts'
+import { baseCameraOffset, cameraOrbitOffset } from '../src/camera.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { isSceneObjectVisible, visibleRoomBounds } from '../src/roomComponentScene.ts'
 import { createRoomCutaway, createRoomWallGroup, roomWallSide } from '../src/roomCutaway.ts'
@@ -91,7 +91,7 @@ test('hidden walls retain physical bounds but cannot intercept object picking', 
 })
 
 for (const roomId of roomIds) {
-  test(`${roomId} keeps four independent walls, stable bounds and interactive objects through full rotations`, (t) => {
+  test(`${roomId} keeps its authored transform, walls and objects through full camera orbits`, (t) => {
     const components = defaultRoomComponents()
     const before = JSON.stringify(components)
     const model = createConfiguredRoomPreview(roomId, 'original', components)
@@ -104,6 +104,8 @@ for (const roomId of roomIds) {
     assert.deepEqual(new Set(walls.map(roomWallSide)), new Set(['back', 'left', 'front', 'right']))
     assert.ok(walls.every((wall) => wall.children.length > 0))
     const bounds = model.componentScene.bounds.clone()
+    model.room.updateMatrixWorld(true)
+    const roomTransform = model.room.matrixWorld.clone()
     const originalActors = [...model.componentScene.actors.values()].map((actor) => ({
       actor, parent: actor.parent, position: actor.position.clone(), scale: actor.scale.clone(), quaternion: actor.quaternion.clone(),
     }))
@@ -112,11 +114,14 @@ for (const roomId of roomIds) {
       [0, 'front,right'], [Math.PI / 2, 'left,front'], [Math.PI, 'back,left'],
       [-Math.PI / 2, 'back,right'], [Math.PI * 2, 'front,right'], [Math.PI * 4, 'front,right'],
     ] as const) {
-      model.room.rotation.y = angle
+      camera.position.copy(cameraOrbitOffset(angle))
+      camera.lookAt(0, 0, 0)
+      camera.updateMatrixWorld(true)
       cutaway.update(camera)
       assert.equal(cutaway.update(camera).hiddenSides, hidden)
       assert.equal(cutaway.update(camera).shadowsChanged, false)
       const next = visibleRoomBounds(model.room)
+      assert.ok(model.room.matrixWorld.equals(roomTransform))
       assert.ok(next.min.distanceTo(bounds.min) < 0.000001)
       assert.ok(next.max.distanceTo(bounds.max) < 0.000001)
       hologram.update(candidate, model.componentScene.actors.values())

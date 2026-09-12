@@ -231,13 +231,14 @@ function withoutWebGL(page: Page) {
   })
 }
 
-test('WebGL startup failure keeps the illustration, object navigation and real-room entry available', { tag: '@room' }, async ({ page }) => {
+test('WebGL startup failure shows only a message while navigation and real-room entry remain available', { tag: '@room' }, async ({ page }) => {
   await withoutWebGL(page)
   await page.goto('/welcome')
   await page.locator('#tour').scrollIntoViewIfNeeded()
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'unavailable')
   await expect(page.locator('.welcome-scene-status')).toContainText('3D is unavailable')
-  await expect(page.locator('.welcome-static')).toBeVisible()
+  await expect(page.locator('.welcome-static, .welcome-stage-shell img, .welcome-stage-shell svg')).toHaveCount(0)
+  await expect(page.locator('.welcome-preview-unavailable')).toBeVisible()
   await chooseChapter(page, 2)
   await expect(page.getByRole('heading', { name: 'Bills and receipts.', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'Sign in', exact: true }).click()
@@ -246,7 +247,7 @@ test('WebGL startup failure keeps the illustration, object navigation and real-r
   await expect(page.locator('.game-house')).toHaveCount(0)
 })
 
-test('context loss restores the illustration without breaking the shorter tour', { tag: '@room' }, async ({ page }) => {
+test('context loss shows the unavailable message without a replacement illustration', { tag: '@room' }, async ({ page }) => {
   await page.goto('/welcome')
   await openTour(page)
   await page.locator('.welcome-canvas canvas').evaluate((canvas) => {
@@ -257,7 +258,8 @@ test('context loss restores the illustration without breaking the shorter tour',
   })
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'unavailable')
   await chooseChapter(page, 1)
-  await expect(page.locator('.welcome-static')).toBeVisible()
+  await expect(page.locator('.welcome-static, .welcome-stage-shell img, .welcome-stage-shell svg')).toHaveCount(0)
+  await expect(page.locator('.welcome-preview-unavailable')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Shopping and groceries.', exact: true })).toBeVisible()
 })
 

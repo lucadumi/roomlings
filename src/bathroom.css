@@ -4,6 +4,30 @@
   pointer-events: none;
 }
 
+.chore-room-quick-actions { right: 28px; max-width: 310px; container: chore-actions / inline-size; }
+.chore-room-quick-actions > button { flex: 1 1 0; min-width: 0; background: var(--control-surface); opacity: 1; }
+.chore-room-quick-actions > button > svg { flex-shrink: 0; }
+.chore-room-quick-actions .world-action-label { display: inline; min-width: 0; }
+@container chore-actions (max-width: 250px) {
+  .chore-room-quick-actions .world-action-label { display: none; }
+}
+@media (max-width: 560px) {
+  .game-home[data-panel-open="true"]:has(.chore-room-world) .house-tools { display: none; }
+  .chore-room-quick-actions { inset: auto; width: min(310px, 100%); flex-wrap: nowrap; }
+  .game-home[data-panel-open="true"] .chore-room-quick-actions { grid-column: 1; width: 100%; align-self: center; }
+  .game-home[data-panel-open="true"] .chore-room-world .world-camera-controls {
+    position: relative;
+    inset: auto;
+    transform: none;
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: end;
+    align-self: center;
+    gap: 0;
+    padding: 3px;
+  }
+}
+
 .bathroom-unavailable, .chore-room-unavailable {
   position: absolute;
   top: 45%;

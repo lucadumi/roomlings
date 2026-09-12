@@ -330,9 +330,9 @@ export const householdSchema = z.object({
     }
     if (chore.componentId) {
       const component = componentsById.get(chore.componentId)
-      if (!component || component.roomId !== chore.roomId || (!component.installed && !chore.archived)
+      if (!component || component.roomId !== chore.roomId
         || (chore.area !== null && componentChoreArea(component) !== chore.area)) {
-        context.addIssue({ code: 'custom', message: 'An active object chore must reference an installed object in its room.', path: ['chores', 'items', index, 'componentId'] })
+        context.addIssue({ code: 'custom', message: 'An object chore must reference an object in its room and matching area.', path: ['chores', 'items', index, 'componentId'] })
       }
     }
   })

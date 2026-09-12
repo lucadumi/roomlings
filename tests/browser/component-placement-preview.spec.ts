@@ -1,17 +1,33 @@
 import { randomUUID } from 'node:crypto'
 import { expect, rememberBrowserHousehold, test } from './account-fixtures.ts'
-import { componentCatalog, createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
+import type { AccountHarness } from './account-fixtures.ts'
+import type { Session } from '../../shared/domain.ts'
+import { componentCatalog, createRoomComponent, defaultRoomComponents, getRoomComponents } from '../../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
+async function useOriginalRooms(accounts: AccountHarness, owner: Session) {
+  const household = { ...owner.household, roomComponents: defaultRoomComponents() }
+  await accounts.store.save(household)
+  owner.household = household
+}
+
 for (const roomId of roomIds) {
   test(`${roomId} placement uses a short two-action dialog and stays private until applied`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }, testInfo) => {
-    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Speaker'
-    const count = roomId === 'kitchen' ? 20 : roomId === 'bathroom' ? 6 : 13
+    if (roomId === 'bathroom') await useOriginalRooms(accounts, owner)
+    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Wall art'
+    const household = await accounts.store.get(owner.household.id)
+    if (!household) throw new Error('The isolated placement household is missing.')
+    if (roomId === 'living-room') {
+      household.roomComponents = getRoomComponents(household).map((component) => component.slotId === 'living-room-curtains'
+        ? { ...component, installed: false } : component)
+      await accounts.store.save(household)
+    }
     const before = await accounts.store.get(owner.household.id)
+    const count = getRoomComponents(before ?? {}).filter((component) => component.roomId === roomId && component.installed).length
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
     const editor = await openRoomEditor(page)
@@ -73,7 +89,8 @@ for (const roomId of roomIds) {
   })
 }
 
-test('the floating bathroom triangle animates without repainting shadows and stops after dismissal', { tag: '@room' }, async ({ page, emptyHousehold: _owner }) => {
+test('the floating bathroom triangle animates without repainting shadows and stops after dismissal', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+  await useOriginalRooms(accounts, owner)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1440, height: 960 })
   const drawing = await trackDrawing(page)
@@ -95,22 +112,20 @@ test('the floating bathroom triangle animates without repainting shadows and sto
 })
 
 for (const [kind, slotId] of [
-  ['first-aid-kit', 'bathroom-first-aid'],
-  ['tissue-box', 'bathroom-tissue-box'],
-  ['hair-dryer', 'bathroom-hair-dryer'],
-  ['bathroom-stool', 'bathroom-stool'],
-  ['toothbrush-holder', 'bathroom-vanity-accessory'],
-  ['ironing-board', 'bathroom-ironing-board'],
+  ['soap-dispenser', 'bathroom-soap-dispenser'],
+  ['washing-machine', 'bathroom-laundry'],
+  ['dryer', 'bathroom-dryer'],
   ['drying-rack', 'bathroom-drying-rack'],
 ] as const) {
   test(`${kind} starts in its correctly sized bathroom position and keeps it after placement`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }, testInfo) => {
+    await useOriginalRooms(accounts, owner)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath('bathroom'))
     const editor = await openRoomEditor(page)
     await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
     const name = componentCatalog[kind].name
     const picture = editor.getByRole('button', { name: `Preview ${name} in the room`, exact: true })
-    await expect(picture).toHaveAttribute('aria-description', 'Place or discard next.')
+    await expect(picture).toHaveAttribute('aria-description', new RegExp(`^Available to add\\. ${name} can be previewed at `))
     await picture.click()
     const id = await editor.getAttribute('data-placement-preview')
     if (!id) throw new Error('The bathroom preview has no object identifier.')
@@ -131,26 +146,36 @@ for (const [kind, slotId] of [
   })
 }
 
-test('restoring a bathroom accessory preserves its original generic position and saved identity', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
-  const archived = { ...createRoomComponent('first-aid-kit', 'bathroom-vanity-accessory', randomUUID()), installed: false, finish: 'berry' as const }
-  const household = await accounts.store.get(owner.household.id)
-  if (!household) throw new Error('The isolated household is missing.')
-  household.roomComponents = [...getRoomComponents(household), archived]
-  await accounts.store.save(household)
-  await page.goto(roomPath('bathroom'))
-  const editor = await openRoomEditor(page)
-  await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-  await editor.getByRole('button', { name: 'Preview restoring First-aid kit', exact: true }).click()
-  await expect(editor).toHaveAttribute('data-placement-preview', archived.id)
-  await page.getByRole('dialog', { name: 'Try First-aid kit', exact: true }).getByRole('button', { name: 'Place object', exact: true }).click()
-  await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
-  await expect(editor).toHaveCount(0)
-  const saved = (await accounts.store.get(owner.household.id))?.roomComponents?.filter((component) => component.kind === archived.kind)
-  expect(saved).toHaveLength(1)
-  expect(saved?.[0]).toMatchObject({ id: archived.id, slotId: archived.slotId, finish: 'berry', installed: true })
-})
+for (const [roomId, kind, slotId] of [
+  ['bathroom', 'soap-dispenser', 'bathroom-vanity-accessory'],
+  ['kitchen', 'paper-towel-holder', 'kitchen-dish-rack'],
+] as const) {
+  test(`${roomId} Storage restoration preserves an accessory's generic position and saved identity`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+    if (roomId === 'bathroom') await useOriginalRooms(accounts, owner)
+    const archived = { ...createRoomComponent(kind, slotId, randomUUID()), installed: false, finish: 'berry' as const }
+    const household = await accounts.store.get(owner.household.id)
+    if (!household) throw new Error('The isolated household is missing.')
+    household.roomComponents = [...getRoomComponents(household), archived]
+    await accounts.store.save(household)
+    const before = await accounts.store.get(owner.household.id)
+    await page.goto(roomPath(roomId))
+    const editor = await openRoomEditor(page)
+    await editor.getByRole('button', { name: 'Storage', exact: true }).click()
+    const card = editor.locator(`[data-stored-component="${archived.id}"]`)
+    await card.getByRole('button', { name: `Bring back ${componentCatalog[kind].name}`, exact: true }).click()
+    await expect(editor).toHaveAttribute('data-placement-preview', archived.id)
+    await page.getByRole('dialog', { name: `Try ${componentCatalog[kind].name}`, exact: true })
+      .getByRole('button', { name: 'Place object', exact: true }).click()
+    expect(await accounts.store.get(owner.household.id)).toEqual(before)
+    await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
+    await expect(editor).toHaveCount(0)
+    const saved = (await accounts.store.get(owner.household.id))?.roomComponents?.filter((component) => component.kind === archived.kind)
+    expect(saved).toHaveLength(1)
+    expect(saved?.[0]).toMatchObject({ id: archived.id, slotId: archived.slotId, finish: 'berry', installed: true })
+  })
+}
 
-test.describe('placement draft safety without WebGL', () => {
+test.describe('placement draft safety without WebGL', { tag: '@room' }, () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       const original = HTMLCanvasElement.prototype.getContext
@@ -180,26 +205,23 @@ test.describe('placement draft safety without WebGL', () => {
     await page.keyboard.press('Escape')
     await expect(dialog).toHaveCount(0)
     await expect(picture).toBeFocused()
-    await expect(editor).toContainText('1 object has unapplied changes.')
+    await expect(editor.locator('.room-editor-footer').getByRole('status')).toHaveText('1 object has unapplied changes.')
     await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     const saved = await accounts.store.get(owner.household.id)
     expect(saved?.roomComponents?.find((component) => component.kind === 'table')?.name).toBe('Keep this table edit')
     expect(saved?.roomComponents?.some((component) => component.kind === 'coffee-machine')).toBe(false)
   })
 
-  test('discarding a restore trial keeps an earlier removal, while accepting it can undo that removal', async ({ page, accounts, emptyHousehold: owner }) => {
+  test('discarding a Bring back trial keeps earlier Storage changes, while accepting it can undo them', async ({ page, accounts, emptyHousehold: owner }) => {
     await page.goto('/kitchen')
     const editor = await openRoomEditor(page)
     await editor.getByRole('button', { name: 'Edit Kettle', exact: true }).click()
-    await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
-    await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
-    await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-    await editor.getByLabel('Find an object', { exact: true }).fill('Kettle')
-    await editor.getByRole('button', { name: 'Preview restoring Kettle', exact: true }).click()
+    await editor.getByRole('button', { name: 'Put in storage', exact: true }).click()
+    await editor.getByRole('button', { name: 'Bring back Kettle', exact: true }).click()
     await page.getByRole('dialog', { name: 'Try Kettle', exact: true }).getByRole('button', { name: 'Discard preview', exact: true }).click()
-    await expect(editor).toContainText('1 object has unapplied changes.')
+    await expect(editor.locator('.room-editor-footer').getByRole('status')).toHaveText('1 object has unapplied changes.')
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-component-count', '19')
-    await editor.getByRole('button', { name: 'Preview restoring Kettle', exact: true }).click()
+    await editor.getByRole('button', { name: 'Bring back Kettle', exact: true }).click()
     await page.getByRole('dialog', { name: 'Try Kettle', exact: true }).getByRole('button', { name: 'Place object', exact: true }).click()
     await expect(editor.getByRole('button', { name: 'Apply for everyone', exact: true })).toBeDisabled()
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-component-count', '20')
@@ -219,8 +241,9 @@ test.describe('placement draft safety without WebGL', () => {
     await accounts.store.save(household)
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     const dialog = page.getByRole('dialog', { name: 'Try Dishwasher', exact: true })
-    await expect(dialog.getByRole('alert')).toContainText('now occupied')
+    await expect(dialog.getByRole('alert')).toContainText('now blocked')
     await expect(dialog.getByRole('button', { name: 'Place object', exact: true })).toBeDisabled()
+    await expect(dialog.getByRole('button', { name: 'Choose a swap or another position', exact: true })).toHaveCount(0)
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-component-count', '21')
     await dialog.getByRole('button', { name: 'Discard preview', exact: true }).click()
     await expect(editor.getByRole('article', { name: 'Dishwasher', exact: true })).toHaveAttribute('data-availability', 'occupied')
@@ -245,21 +268,22 @@ test.describe('placement draft safety without WebGL', () => {
     expect((await accounts.store.get(owner.household.id))?.roomComponents).toEqual(owner.household.roomComponents)
   })
 
-  test('placed-object details open the existing removal confirmation and retain the saved identity', async ({ page, accounts, emptyHousehold: owner }) => {
+  test('placed-object details stage Storage directly and retain the saved identity', async ({ page, accounts, emptyHousehold: owner }) => {
     await page.goto('/kitchen')
     const objects = await openRoomObjects(page)
     await objects.getByRole('button', { name: 'Open Kettle details', exact: true }).click()
-    await objects.getByRole('button', { name: 'Remove object', exact: true }).click()
+    await objects.getByRole('button', { name: 'Put in storage', exact: true }).click()
     const editor = page.locator('.room-editor')
-    await expect(editor.getByRole('group', { name: 'Remove Kettle', exact: true })).toBeVisible()
-    await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
+    await expect(editor.getByRole('button', { name: 'Storage', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(editor.getByRole('button', { name: 'Bring back Kettle', exact: true })).toBeVisible()
+    await expect(editor.getByRole('combobox', { name: 'Linked chores', exact: true })).toHaveCount(0)
     expect((await accounts.store.get(owner.household.id))?.roomComponents).toEqual(owner.household.roomComponents)
     await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
     await expect(editor).toHaveCount(0)
     expect((await accounts.store.get(owner.household.id))?.roomComponents?.find((component) => component.id === 'default-kitchen-kettle')?.installed).toBe(false)
     await openRoomObjects(page)
     await objects.getByRole('button', { name: 'Open Fridge details', exact: true }).click()
-    await expect(objects.getByRole('button', { name: 'Remove object', exact: true })).toHaveCount(0)
+    await expect(objects.getByRole('button', { name: 'Put in storage', exact: true })).toHaveCount(0)
   })
 
   test('losing admin access disables placement but still allows discarding the preview', async ({ page, accounts, request }) => {

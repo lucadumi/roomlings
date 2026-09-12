@@ -2,22 +2,26 @@ import { expect, test } from './account-fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
-test('the original Fraunces and DM Sans fonts load throughout while inputs remain responsive', async ({ page, populatedHousehold: _household }) => {
+test('Baloo 2 display text and DM Sans controls load throughout while inputs remain responsive', async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('font-family', /Fraunces Variable/)
+  await expect(page.getByText('Preview your kitchen, bathroom and living room, then step inside to share chores, shopping and household costs.', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('font-family', /Baloo 2 Variable/)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCSS('font-weight', '600')
   await expect(page.locator('.welcome-hero-copy > p').first()).toHaveCSS('font-family', /DM Sans Variable/)
-  await expect(page.locator('.welcome-feature h3').first()).toHaveCSS('font-family', /Fraunces Variable/)
+  await expect(page.locator('.welcome-feature h3').first()).toHaveCSS('font-family', /Baloo 2 Variable/)
   const loaded = await page.evaluate(async () => {
     await document.fonts.ready
     return [...document.fonts].filter((font) => font.status === 'loaded').map((font) => font.family.replaceAll('"', '').replaceAll("'", ''))
   })
-  expect(loaded).toEqual(expect.arrayContaining(['DM Sans Variable', 'Fraunces Variable']))
+  expect(loaded).toEqual(expect.arrayContaining(['DM Sans Variable', 'Baloo 2 Variable']))
+  expect(loaded).not.toContain('Fraunces Variable')
   await page.goto('/kitchen')
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await page.evaluate(() => document.fonts.ready)
   const heading = page.locator('.room-panel-header h2')
-  await expect(heading).toHaveCSS('font-family', /Fraunces Variable/)
+  await expect(heading).toHaveCSS('font-family', /Baloo 2 Variable/)
+  await expect(heading).toHaveCSS('font-weight', '600')
   await expect(heading).toHaveCSS('font-size', '27px')
   await expect(page.locator('.room-panel-subtitle')).toHaveCSS('font-size', '12px')
   await expect(page.locator('.expense-description strong').first()).toHaveCSS('font-size', '12px')
@@ -31,5 +35,5 @@ test('the original Fraunces and DM Sans fonts load throughout while inputs remai
   await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('font-size', '16px')
   const save = page.getByRole('button', { name: 'Save the house rules', exact: true })
   expect(await save.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44)
-  await expect(page.getByRole('dialog').getByRole('heading', { level: 2 })).toHaveCSS('font-family', /Fraunces Variable/)
+  await expect(page.getByRole('dialog').getByRole('heading', { level: 2 })).toHaveCSS('font-family', /Baloo 2 Variable/)
 })

@@ -10,8 +10,9 @@ import type { Box3, BufferGeometry, Material, MeshStandardMaterial, Object3D } f
 import type { RoomStyle } from '../shared/domain.ts'
 import type { ComponentKind, RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
+import { roomCatalog } from '../shared/rooms.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import { baseCameraOffset, cameraOrbitOffset, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomPitchLimits, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
@@ -25,6 +26,8 @@ import type { RoomWorldProps } from './roomViewTypes.ts'
 import { createRoomHologram } from './roomHologram.ts'
 import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from './placementArrow.ts'
 import { createRoomCutaway } from './roomCutaway.ts'
+import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from './roomEnvironment.ts'
+import type { RoomReflections } from './roomEnvironment.ts'
 import './bathroom.css'
 
 type ChoreRoomFocus<Target extends string> = Target | 'room'
@@ -175,9 +178,15 @@ export default function ChoreRoomWorld<Target extends string>({
     if (!element || !stageElement) return
     const container = element
     let renderer: WebGLRenderer
+    let reflections: RoomReflections
+    let candidate: WebGLRenderer | undefined
     try {
-      renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
+      candidate = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
+      reflections = createRoomReflections(candidate)
+      renderer = candidate
     } catch (error) {
+      candidate?.dispose()
+      candidate?.forceContextLoss()
       console.warn(`The 3D ${config.copy.name} could not start:`, error instanceof Error ? error.message : error)
       setUnavailable(true)
       setRenderingPaused(true)
@@ -196,6 +205,7 @@ export default function ChoreRoomWorld<Target extends string>({
     canvas.setAttribute('aria-hidden', 'true')
     element.appendChild(canvas)
     const scene = new Scene()
+    applyRoomReflections(scene, reflections)
     const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 100)
     const room = new Group()
     scene.add(room)
@@ -208,7 +218,7 @@ export default function ChoreRoomWorld<Target extends string>({
       state.current.editMode && state.current.selectedComponentId !== state.current.placementPreviewId ? state.current.selectedComponentId : null)
     batchStaticMeshes(room, model.preserved ?? new Set())
     const lightingBounds = componentScene.bounds.clone()
-    const { group: lighting, sunlight, skyLight, fill } = createRoomLights(lightingBounds)
+    const { group: lighting, sunlight, skyLight, fillLights } = createRoomLights(lightingBounds)
     const dayWindow = new Color(daylight.window)
     const nightWindow = new Color(eveningLight.window)
     const dayDisc = new Color(daylight.disc)
@@ -244,6 +254,7 @@ export default function ChoreRoomWorld<Target extends string>({
     let frame = 0
     let last = performance.now()
     let disposed = false
+    let shadersReady = false
     let contextLost = false
     let visible = true
     let drawing = false
@@ -252,6 +263,7 @@ export default function ChoreRoomWorld<Target extends string>({
     let needsResize = true
     let shadowsDirty = true
     let targetRotation = 0
+    let orbitRotation = 0
     let targetPitch = 0
     let pitch = 0
     let halfHeight = 1
@@ -271,7 +283,7 @@ export default function ChoreRoomWorld<Target extends string>({
 
     const wake = () => {
       dirty = true
-      if (disposed || contextLost || document.hidden || !visible || frame || drawing) return
+      if (disposed || contextLost || !shadersReady || document.hidden || !visible || frame || drawing) return
       last = performance.now()
       setRenderingPaused(false)
       frame = requestAnimationFrame(animate)
@@ -297,7 +309,7 @@ export default function ChoreRoomWorld<Target extends string>({
         currentControls.roomView = true
         const pendingId = state.current.editMode ? state.current.placementPreviewId : null
         const pendingActor = pendingId ? componentScene.actors.get(pendingId) : undefined
-        targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined))
+        targetRotation = nearestRoomRotation(orbitRotation, preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined))
         targetPitch = 0
         setFocused(focus)
         setRoomViewReset(true)
@@ -369,7 +381,7 @@ export default function ChoreRoomWorld<Target extends string>({
         if (selectedObject) {
           currentControls.roomView = false
           currentControls.zoom = 1
-          targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(selectedObject.slotId))
+          targetRotation = nearestRoomRotation(orbitRotation, preferredRoomRotation(selectedObject.slotId))
           setRoomViewReset(false)
           setZoom(currentControls.zoom)
         }
@@ -392,9 +404,7 @@ export default function ChoreRoomWorld<Target extends string>({
         displayedProgress = snap ? latest.tour.progress.current : dampTo(displayedProgress, latest.tour.progress.current, 9, delta, 0.0001)
         container.dataset.tourPosition = reduced ? 'static' : displayedProgress.toFixed(3)
       }
-      const rotation = snap ? targetRotation : dampTo(room.rotation.y, targetRotation, 9, delta)
-      shadowsDirty ||= rotation !== room.rotation.y
-      room.rotation.y = rotation
+      orbitRotation = snap ? targetRotation : dampTo(orbitRotation, targetRotation, 9, delta)
       room.updateMatrixWorld(true)
       pitch = snap ? targetPitch : dampTo(pitch, targetPitch, 9, delta)
       const framedFocus = placementCandidate || latest.overviewFocus || (preview && (latest.motionReduced ?? reducedMotion.matches)) ? 'room' : currentControls.focus
@@ -414,7 +424,7 @@ export default function ChoreRoomWorld<Target extends string>({
       const placementBounds = placementCandidate ? visibleRoomBounds(room, placementCandidate) : null
       const clearArea = placementBounds && measurements && !latest.overviewFocus
         ? roomFramingArea(measurements.canvas, measurements.stage, measurements.controls,
-          placementPreviewSize(placementBounds, viewport.width, viewport.height, desiredZoom, room.rotation.y, pitch))
+          placementPreviewSize(placementBounds, viewport.width, viewport.height, desiredZoom))
         : area
       const frameArea = closeRoom && !latest.panelOpen ? { x: 0, y: 0, width: viewport.width, height: viewport.height } : clearArea
       const tourBounds = latest.tour?.overviewBounds ?? componentScene.bounds
@@ -427,17 +437,19 @@ export default function ChoreRoomWorld<Target extends string>({
         tourBoundsDirty = false
       }
       const configuredEntry = closeRoom && atEntryFocus
-        ? config.framing(viewport.width, viewport.height, bounds, room.rotation.y, pitch) : null
+        ? config.framing(viewport.width, viewport.height, bounds, orbitRotation, pitch) : null
       if (configuredEntry) {
         configuredEntry.halfHeight = Math.max(config.minimumFocusHalfHeight ?? 0, configuredEntry.halfHeight) * frameArea.height / viewport.height
       }
-      const framing = selectedBounds
-        ? fitRoomBounds(frameArea.width, frameArea.height, selectedBounds, room.rotation.y, pitch)
+      const framing = latest.editMode && !preview && !latest.tour && !closeRoom
+        ? fitRoomOrbitBounds(frameArea.width, frameArea.height, selectedBounds ?? bounds)
+        : selectedBounds
+        ? fitRoomBounds(frameArea.width, frameArea.height, selectedBounds, orbitRotation, pitch)
         : preview && latest.tour
         ? reduced ? (config.reducedTourFraming ?? config.framing)(frameArea.width, frameArea.height, tourBounds)
           : config.tourFraming(frameArea.width, frameArea.height, displayedProgress, tourBounds, tourActorBounds, latest.tour.stops)
-        : closeRoom ? configuredEntry ?? roomEntryFraming(viewport.width, viewport.height, frameArea, room.rotation.y)
-          : config.framing(frameArea.width, frameArea.height, bounds, room.rotation.y, pitch)
+        : closeRoom ? configuredEntry ?? roomEntryFraming(viewport.width, viewport.height, frameArea, orbitRotation)
+          : config.framing(frameArea.width, frameArea.height, bounds, orbitRotation, pitch)
       if (selectedBounds) framing.halfHeight = Math.max(2.05, framing.halfHeight)
       else if (!preview && !closeRoom && framedFocus !== 'room') framing.halfHeight = Math.max(config.minimumFocusHalfHeight ?? 0, framing.halfHeight)
       if (preview) {
@@ -453,7 +465,7 @@ export default function ChoreRoomWorld<Target extends string>({
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
       halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
       camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
-      camera.position.copy(cameraCenter).add(offset.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
+      camera.position.copy(cameraCenter).add(cameraOrbitOffset(orbitRotation, pitch, offset))
       camera.lookAt(cameraCenter)
       const projection = cameraProjection(viewport.width, viewport.height, frameArea, halfHeight, camera.zoom)
       camera.left = projection.left
@@ -464,9 +476,10 @@ export default function ChoreRoomWorld<Target extends string>({
       camera.updateMatrixWorld(true)
       const desiredLight = currentControls.evening ? 1 : 0
       lightMix = snap ? desiredLight : dampTo(lightMix, desiredLight, 7, delta)
+      scene.environmentIntensity = roomReflectionIntensity(lightMix)
       sunlight.intensity = MathUtils.lerp(daylight.sun, eveningLight.sun, lightMix)
       skyLight.intensity = MathUtils.lerp(daylight.sky, eveningLight.sky, lightMix)
-      fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, lightMix)
+      for (const fill of fillLights) fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, lightMix)
       const lampInstalled = !config.lampSlot || !!componentScene.componentAtSlot(config.lampSlot)
       lamp.intensity = lampInstalled ? eveningLight.lamp * 0.45 * lightMix : 0
       model.lampMaterial.emissiveIntensity = 0.2 + lightMix * 0.8
@@ -479,12 +492,13 @@ export default function ChoreRoomWorld<Target extends string>({
       }
       const cutawayUpdate = cutaway.update(camera)
       shadowsDirty ||= cutawayUpdate.shadowsChanged
-      const rotationValue = normalizeRoomRotation(room.rotation.y).toFixed(5)
+      const rotationValue = normalizeRoomRotation(orbitRotation).toFixed(5)
       if (canvas.dataset.roomRotation !== rotationValue) canvas.dataset.roomRotation = rotationValue
+      if (canvas.dataset.cameraOrbit !== rotationValue) canvas.dataset.cameraOrbit = rotationValue
       if (canvas.dataset.hiddenWalls !== cutawayUpdate.hiddenSides) canvas.dataset.hiddenWalls = cutawayUpdate.hiddenSides
       const hologramUpdate = hologram.update(placementCandidate, componentScene.actors.values())
       shadowsDirty ||= hologramUpdate.shadowsChanged
-      const arrowAnimating = placementArrow.update(placementBounds, now, !reduced && !latest.paused)
+      const arrowAnimating = placementArrow.update(placementBounds, now, !reduced && !latest.paused, orbitRotation)
       const arrowVisible = String(placementArrow.object.visible)
       if (canvas.dataset.placementArrow !== arrowVisible) canvas.dataset.placementArrow = arrowVisible
       sunlight.shadow.needsUpdate = shadowsDirty
@@ -527,7 +541,7 @@ export default function ChoreRoomWorld<Target extends string>({
           && x > area.x + insetX && x < area.x + area.width - insetX
           && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
       }
-      const moving = room.rotation.y !== targetRotation || pitch !== targetPitch
+      const moving = orbitRotation !== targetRotation || pitch !== targetPitch
         || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom
         || !!latest.tour && !reduced && displayedProgress !== latest.tour.progress.current
       setCameraMoving(moving)
@@ -600,7 +614,7 @@ export default function ChoreRoomWorld<Target extends string>({
         }
         moved ||= Math.hypot(event.clientX - startX, event.clientY - startY) > 4
         targetRotation += (event.clientX - previousX) * 0.004
-        targetPitch = MathUtils.clamp(targetPitch + (event.clientY - previousY) * 0.015, -1.7, 3)
+        targetPitch = MathUtils.clamp(targetPitch + (event.clientY - previousY) * 0.015, roomPitchLimits.min, roomPitchLimits.max)
         setRoomViewReset(false)
         previousX = event.clientX
         previousY = event.clientY
@@ -648,14 +662,17 @@ export default function ChoreRoomWorld<Target extends string>({
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.height : 1
       updateZoom(currentControls.zoom * Math.exp(-event.deltaY * units * 0.0015))
     }
-    const onContextLost = (event: Event) => {
-      event.preventDefault()
+    const stopUnavailable = () => {
       contextLost = true
       stopDrawing()
       controls.current = null
       pointers.clear()
       setUnavailable(true)
       state.current.onStatus?.('unavailable')
+    }
+    const onContextLost = (event: Event) => {
+      event.preventDefault()
+      stopUnavailable()
     }
     canvas.addEventListener('pointerdown', down)
     canvas.addEventListener('pointermove', move)
@@ -674,7 +691,8 @@ export default function ChoreRoomWorld<Target extends string>({
     document.addEventListener('visibilitychange', visibilityChanged)
     reducedMotion.addEventListener('change', wake)
     resize()
-    return () => {
+    const cleanup = () => {
+      if (disposed) return
       disposed = true
       cancelAnimationFrame(frame)
       observer.disconnect()
@@ -706,12 +724,23 @@ export default function ChoreRoomWorld<Target extends string>({
       shadowMaterial.dispose()
       shadowTexture.dispose()
       sunlight.shadow.dispose()
+      reflections.dispose()
       renderer.dispose()
       renderer.forceContextLoss()
       canvas.remove()
       controls.current = null
       if (tour?.wake.current === wake) tour.wake.current = null
     }
+    try {
+      renderer.compile(scene, camera)
+      shadersReady = true
+      resize()
+    } catch (error) {
+      console.warn(`The ${config.copy.name} materials could not be prepared:`, error)
+      stopUnavailable()
+      cleanup()
+    }
+    return cleanup
   }, [])
 
   useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, selectedComponentId, placementPreviewId, overviewFocus])
@@ -786,8 +815,14 @@ export default function ChoreRoomWorld<Target extends string>({
           : hoveredTarget === config.suppliesTarget ? config.copy.restockHint : hoveredTarget ? hoveredTarget === config.choresTarget ? 'Open room chores' : config.labels[hoveredTarget]
             : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
       </>}
-      {!editMode && <button type="button" className="world-fridge-toggle" onClick={() => activate(config.choresTarget)}><ClipboardList size={15} />Room chores</button>}
-      {!editMode && <button type="button" className="world-kettle-toggle" onClick={() => activate(config.suppliesTarget)}><PackagePlus size={16} /><span>Restock supplies</span></button>}
+      {!editMode && <div className="world-quick-actions chore-room-quick-actions" role="group" aria-label={`${roomCatalog[config.roomId].name} quick actions`}>
+        <button type="button" className="world-fridge-toggle" aria-label="Room chores" onClick={() => activate(config.choresTarget)}>
+          <ClipboardList size={15} aria-hidden="true" /><span className="world-action-label">Room chores</span>
+        </button>
+        <button type="button" className="world-kettle-toggle" aria-label="Restock supplies" onClick={() => activate(config.suppliesTarget)}>
+          <PackagePlus size={16} aria-hidden="true" /><span className="world-action-label">Restock supplies</span>
+        </button>
+      </div>}
     </div>
   )
 }

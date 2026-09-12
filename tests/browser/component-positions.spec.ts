@@ -19,7 +19,7 @@ test('one plant menu item groups copies and moves the chosen plant in a private 
   const editor = page.locator('.room-editor')
   await expect(editor.getByRole('combobox', { name: 'Move object', exact: true })).toHaveAttribute('data-value', 'kitchen-plant-counter')
   await expect(editor.getByText('Original', { exact: true })).toHaveCount(0)
-  await expect(editor.getByRole('combobox', { name: 'Finish', exact: true })).toContainText('Match room colors')
+  await expect(editor.getByRole('combobox', { name: 'Finish', exact: true })).toContainText('Default materials')
   await chooseOption(editor.getByRole('combobox', { name: 'Move object', exact: true }), 'kitchen-windowsill')
   const world = page.locator('.kitchen-world')
   await expect(world).toHaveAttribute('data-selected-component', 'default-kitchen-plant-counter')

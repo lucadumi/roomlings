@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Store } from '../server/store.ts'
 import { applyRoomComponentPatch, setRoomComponentState } from '../shared/componentChanges.ts'
-import { componentAllowedInRoom, createRoomComponent, defaultRoomComponents, getRoomComponents } from '../shared/roomComponents.ts'
+import { componentAllowedInRoom, componentPositionOffered, createRoomComponent, defaultRoomComponents, getRoomComponents } from '../shared/roomComponents.ts'
 import { completeRoomLayout } from './room-layout-fixture.ts'
 
 it('keeps installed objects, settings, manual states and the original browser session across a database reopen', async (context) => {
@@ -63,7 +63,7 @@ it('keeps legacy household JSON and browser access intact while deriving the ori
   } finally { reader.close() }
 })
 
-it('persists the complete expanded home and independent laundry states without replacing its original session', async (context) => {
+it('persists a saved over-cap home and independent laundry states without replacing its original session', async (context) => {
   const filename = resolve('data', `test-room-layout-${randomUUID()}.sqlite`)
   let store = new Store(filename)
   context.after(async () => {
@@ -72,19 +72,13 @@ it('persists the complete expanded home and independent laundry states without r
   })
   const session = await store.create('A fully equipped home', 'Ada', 'EUR', 45000)
   const before = structuredClone(session.household)
-  const components = completeRoomLayout().filter((component) => componentAllowedInRoom(component.kind, component.roomId))
+  const components = completeRoomLayout().filter((component) => componentAllowedInRoom(component.kind, component.roomId)
+    && componentPositionOffered(component.kind, component.slotId))
     .map((component) => component.id.startsWith('default-') ? component : { ...component, id: randomUUID() })
   const now = new Date().toISOString()
-  for (const roomId of ['kitchen', 'bathroom', 'living-room'] as const) {
-    applyRoomComponentPatch(session.household, {
-      roomId,
-      changes: components.filter((component) => component.roomId === roomId).map((component) => {
-        const { version: _version, state: _state, stateChangedAt: _at, stateChangedBy: _by, ...fields } = component
-        return { ...fields, componentVersion: component.id.startsWith('default-') ? 0 : null }
-      }),
-    }, now)
-    session.household.version++
-  }
+  // Seed an older saved layout; new placements must now respect the zone budgets.
+  session.household.roomComponents = components
+  await store.save(session.household)
   const washer = components.find((component) => component.slotId === 'bathroom-laundry')!
   const dryer = components.find((component) => component.slotId === 'bathroom-dryer')!
   setRoomComponentState(session.household, washer.id, { componentVersion: 0, state: 'running' }, session.memberId, now)

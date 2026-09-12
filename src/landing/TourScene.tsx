@@ -16,6 +16,8 @@ import { baseCameraOffset, cameraProjection } from '../camera.ts'
 import { visibleRoomBounds } from '../roomComponentScene.ts'
 import { tourCameraFraming } from './tourCamera.ts'
 import { measureKitchenTourBounds, sharedTourOverviewBounds, tourDoorAngles } from './tourGeometry.ts'
+import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from '../roomEnvironment.ts'
+import type { RoomReflections } from '../roomEnvironment.ts'
 
 export type TourStatus = 'loading' | 'ready' | 'unavailable'
 
@@ -40,9 +42,15 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     const element = host.current
     if (!element) return
     let renderer: WebGLRenderer
+    let reflections: RoomReflections
+    let candidate: WebGLRenderer | undefined
     try {
-      renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
+      candidate = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
+      reflections = createRoomReflections(candidate)
+      renderer = candidate
     } catch (error) {
+      candidate?.dispose()
+      candidate?.forceContextLoss()
       console.warn('The welcome kitchen could not start WebGL:', error)
       state.current.onStatus('unavailable')
       return
@@ -60,6 +68,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     canvas.current = renderer.domElement
 
     const scene = new Scene()
+    applyRoomReflections(scene, reflections)
     const room = new Group()
     scene.add(room)
     const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 150)
@@ -72,7 +81,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     iceTray.visible = false
     const tourBounds = measureKitchenTourBounds(room, model)
     const cameraBounds = { ...tourBounds, room: sharedTourOverviewBounds() }
-    const { group: lighting, sunlight, skyLight, fill } = createRoomLights(tourBounds.room)
+    const { group: lighting, sunlight, skyLight, fillLights } = createRoomLights(tourBounds.room)
     sunlight.shadow.mapSize.setScalar(element.clientWidth < 760 ? 1024 : 2048)
     scene.add(lighting)
     batchStaticMeshes(room, scenery.preserved)
@@ -109,6 +118,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     let previousReduced = state.current.reducedMotion
     let lastShadow = -Infinity
     let shadowDirty = true
+    let shadersReady = false
     let ambientTime = 0
     const raycaster = new Raycaster()
     const pointer = new Vector2()
@@ -121,7 +131,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     } | null = null
 
     const requestFrame = () => {
-      if (!frame && available && !disposed && onScreen && !document.hidden) frame = requestAnimationFrame(render)
+      if (!frame && shadersReady && available && !disposed && onScreen && !document.hidden) frame = requestAnimationFrame(render)
     }
     const render = (now: number) => {
       frame = 0
@@ -197,9 +207,10 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
         puff.scale.setScalar(0.4 + fade * 1.3)
         puff.material.opacity = fade * fade * 0.18
       })
+      scene.environmentIntensity = roomReflectionIntensity(view.evening)
       sunlight.intensity = MathUtils.lerp(daylight.sun, eveningLight.sun, view.evening)
       skyLight.intensity = MathUtils.lerp(daylight.sky, eveningLight.sky, view.evening)
-      fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, view.evening)
+      for (const fill of fillLights) fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, view.evening)
       scenery.light.intensity = MathUtils.lerp(daylight.lamp, eveningLight.lamp, view.evening)
       scenery.bulb.emissiveIntensity = MathUtils.lerp(daylight.bulb, eveningLight.bulb, view.evening)
       scenery.sky.color.lerpColors(dayWindow, nightWindow, view.evening)
@@ -341,8 +352,8 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
     renderer.domElement.addEventListener('pointerleave', pointerLeft)
     renderer.domElement.addEventListener('webglcontextlost', contextLost)
     resize()
-
-    return () => {
+    const cleanup = () => {
+      if (disposed) return
       disposed = true
       gesture = null
       pickingUsable.current = false
@@ -371,11 +382,23 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
       floorMaterial.dispose()
       texture.dispose()
       sunlight.shadow.dispose()
+      reflections.dispose()
       renderer.dispose()
       renderer.forceContextLoss()
       renderer.domElement.remove()
       canvas.current = null
     }
+    try {
+      renderer.compile(scene, camera)
+      shadersReady = true
+      requestFrame()
+    } catch (error) {
+      available = false
+      console.warn('The welcome kitchen materials could not be prepared:', error)
+      state.current.onStatus('unavailable')
+      cleanup()
+    }
+    return cleanup
   }, [progress, layout, wake])
 
   useEffect(() => { wake.current?.() }, [reducedMotion])

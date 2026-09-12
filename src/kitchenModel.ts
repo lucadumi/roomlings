@@ -1,12 +1,15 @@
 import {
-  BoxGeometry, ConeGeometry, CylinderGeometry, DodecahedronGeometry, Group,
+  ConeGeometry, CylinderGeometry, DodecahedronGeometry, Group,
   Mesh, MeshStandardMaterial, PointLight, SphereGeometry,
 } from 'three'
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { Category, RoomStyle } from '../shared/domain.ts'
 import { buildRoom } from './room.ts'
 import { roomAccents, roomPresets } from './roomStyles.ts'
 import { kitchenLayout } from './roomLayout.ts'
+import { createRoomMaterial, prepareRoomSurfaceGeometry } from './surfaceMaterials.ts'
+import type { RoomSurface } from './surfaceMaterials.ts'
+import { createRoomBoxGeometry, roomRadialSegments } from './roomGeometry.ts'
+import { componentMaterialColors } from './componentMaterials.ts'
 
 export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const kitchen = new Group()
@@ -14,8 +17,8 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   kitchen.userData.action = 'fridge'
   room.add(kitchen)
   const materials: MeshStandardMaterial[] = []
-  const material = (color: string, roughness = 0.9) => {
-    const result = new MeshStandardMaterial({ color, roughness, flatShading: true })
+  const material = (color: string, roughness = 0.9, surface: RoomSurface = 'paint') => {
+    const result = createRoomMaterial(color, roughness, surface)
     materials.push(result)
     return result
   }
@@ -25,20 +28,22 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   const edge = material(palette.fridgeEdge)
   const porcelain = material(roomAccents.cream, 0.65)
   const inside = material('#dce3d0')
-  const dark = material(roomAccents.ink)
-  const silver = material(roomAccents.metal, 0.34)
-  silver.metalness = 0.18
-  const milk = material('#f8f3de')
+  const dark = material(roomAccents.ink, 0.9, 'rubber')
+  const silver = material(componentMaterialColors.steel, 0.34, 'metal')
+  const milk = material('#f8f3de', 0.98, 'paper')
+  const eggShell = material('#f8f3de', 0.9, 'food')
   const blue = material(roomAccents.blue)
   const red = material(roomAccents.tomato)
+  const produceRed = material(componentMaterialColors.apple, 0.8, 'food')
+  const produceGreen = material(componentMaterialColors.lime, 0.8, 'food')
   const orange = material(roomAccents.orange)
-  const green = material(roomAccents.leaf)
+  const green = material(componentMaterialColors.foliage, 0.9, 'foliage')
   const yellow = material(roomAccents.gold)
-  const bread = material('#c69150')
+  const bread = material('#c69150', 0.98, 'paper')
   const berry = material(roomAccents.berry)
 
   const box = (parent: Group, dimensions: [number, number, number], position: [number, number, number], mat: MeshStandardMaterial, radius = 0) => {
-    const geometry = radius ? new RoundedBoxGeometry(...dimensions, 1, radius) : new BoxGeometry(...dimensions)
+    const geometry = createRoomBoxGeometry(dimensions, radius)
     const mesh = new Mesh(geometry, mat)
     mesh.position.set(...position)
     mesh.castShadow = !mat.transparent && Math.min(...dimensions) > 0.018
@@ -47,7 +52,7 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
     return mesh
   }
   const cylinder = (parent: Group, radius: number, height: number, position: [number, number, number], mat: MeshStandardMaterial, top = radius) => {
-    const mesh = new Mesh(new CylinderGeometry(top, radius, height, 8), mat)
+    const mesh = new Mesh(new CylinderGeometry(top, radius, height, roomRadialSegments(Math.max(top, radius))), mat)
     mesh.position.set(...position)
     mesh.castShadow = !mat.transparent && radius >= 0.025 && height > 0.02
     mesh.receiveShadow = true
@@ -116,7 +121,7 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   kitchen.add(interiorLight)
   for (let i = 0; i < 6; i++) {
     food('produce', [-0.62 + (i % 3) * 0.55, 0.94, -0.26 + Math.floor(i / 3) * 0.51], Math.floor(i / 3), (group) => {
-      const tomato = new Mesh(new DodecahedronGeometry(i % 2 ? 0.21 : 0.24, 0), i % 2 ? green : red)
+      const tomato = new Mesh(new DodecahedronGeometry(i % 2 ? 0.21 : 0.24, 1), i % 2 ? produceGreen : produceRed)
       tomato.scale.y = 0.85
       tomato.castShadow = true
       group.add(tomato)
@@ -139,7 +144,7 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   food('dairy', [0.58, 1.43, 0.35], 0, (group) => {
     box(group, [0.49, 0.1, 0.43], [0, 0.05, 0], bread, 0.02)
     for (let i = 0; i < 4; i++) {
-      const egg = new Mesh(new SphereGeometry(0.075, 7, 5), milk)
+      const egg = new Mesh(new SphereGeometry(0.075, 16, 12), eggShell)
       egg.scale.y = 1.4
       egg.position.set(-0.12 + (i % 2) * 0.23, 0.13, -0.1 + Math.floor(i / 2) * 0.21)
       group.add(egg)
@@ -169,10 +174,11 @@ export function buildKitchenModel(room: Group, style: RoomStyle = 'original') {
   box(iceTray, [0.78, 0.12, 0.55], [0.2, 2.76, 0], blue, 0.015)
   for (let i = 0; i < 6; i++) box(iceTray, [0.18, 0.06, 0.18], [-0.04 + (i % 3) * 0.24, 2.84, -0.12 + Math.floor(i / 3) * 0.24], porcelain, 0.015)
   kitchen.add(iceTray)
-  const foodMaterials: Record<Category, MeshStandardMaterial> = { produce: red, dairy: milk, pantry: yellow, drinks: blue, other: berry }
+  const foodMaterials: Record<Category, MeshStandardMaterial> = { produce: produceRed, dairy: milk, pantry: yellow, drinks: blue, other: berry }
   scenery.componentBindings.set('kitchen-fridge', {
     root: kitchen, finishes: [sage, lightSage, edge], anchor: [kitchen.position.x, 3.95, kitchen.position.z + 0.15],
     contacts: [{ position: [kitchen.position.x, 0.007, kitchen.position.z], size: [2.55, 2.1] }],
   })
+  prepareRoomSurfaceGeometry(room)
   return { kitchen, scenery, materials, doors, foods, iceTray, interiorLight, foodMaterials, styleMaterials }
 }

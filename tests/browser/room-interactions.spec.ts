@@ -69,7 +69,7 @@ for (const roomId of roomIds) {
     await page.goto(roomPath(roomId))
     const editor = await openRoomEditor(page)
     await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Speaker'
+    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Record player'
     await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
     const canvas = page.locator('.world-canvas canvas')
     await expect(canvas).toHaveAttribute('data-placement-arrow', 'true')

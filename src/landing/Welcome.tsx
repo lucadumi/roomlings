@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowRight, ArrowUpRight, Check, Plus } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
@@ -93,12 +93,11 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       <section className="welcome-hero welcome-container" aria-labelledby="welcome-title">
         <div className="welcome-hero-copy">
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
-          <p>Preview your kitchen, bathroom and living room, then step inside to share chores, shopping and household costs.</p>
           <div className="welcome-actions">
             <a className="button primary welcome-enter" id="home-start" href={createPath}>Create our household <ArrowRight size={18} /></a>
             <a className="welcome-text-link" href="#tour">Explore rooms <ArrowUpRight size={16} /></a>
           </div>
-          <p className="welcome-small"><Check size={14} />Sign in to create or join your household.</p>
+          <p className="welcome-action-note">Less chasing. More time together.</p>
         </div>
         <div className="welcome-home-frame">
           <figure className="welcome-vignette" role="img" aria-label="Illustration of a shared home">
@@ -131,12 +130,14 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         </div>
       </section>
 
-      <section className="welcome-invitation welcome-container" id="get-started" aria-labelledby="invitation-title">
-        <img className="welcome-invitation-plant" src={invitationPlant} alt="" aria-hidden="true"
-          width={600} height={1000} loading="lazy" decoding="async" draggable={false} />
-        <div className="welcome-invitation-copy"><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
-        <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
-      </section>
+      <div className="welcome-invitation-shadow welcome-container">
+        <section className="welcome-invitation" id="get-started" aria-labelledby="invitation-title">
+          <img className="welcome-invitation-plant" src={invitationPlant} alt="" aria-hidden="true"
+            width={600} height={1000} loading="lazy" decoding="async" draggable={false} />
+          <div className="welcome-invitation-copy"><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
+          <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
+        </section>
+      </div>
     </main>
     <footer className="welcome-footer welcome-container" id="welcome-footer">
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning"><Brand decorative /></a>

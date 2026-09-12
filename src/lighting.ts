@@ -6,8 +6,8 @@ import { roomAccents } from './roomStyles.ts'
 import { roomShellBounds } from './roomLayout.ts'
 import { roomRotationPeriod } from './camera.ts'
 
-export const daylight = { sun: 2.45, sky: 1.3, fill: 0.65, lamp: 0, bulb: 0.12, window: roomAccents.sky, disc: roomAccents.gold }
-export const eveningLight = { sun: 0.45, sky: 0.65, fill: 0.3, lamp: 10, bulb: 1.7, window: '#697e98', disc: '#e6edf0' }
+export const daylight = { sun: 2.7, sky: 0.8, fill: 0.3, lamp: 0, bulb: 0.12, window: roomAccents.sky, disc: roomAccents.gold }
+export const eveningLight = { sun: 0.35, sky: 0.5, fill: 0.2, lamp: 10, bulb: 1.7, window: '#697e98', disc: '#e6edf0' }
 
 export function fitRoomShadowBounds(sunlight: DirectionalLight, bounds: Box3): void {
   if (bounds.isEmpty() || ![...bounds.min.toArray(), ...bounds.max.toArray()].every(Number.isFinite)) {
@@ -67,9 +67,16 @@ export function createRoomLights(bounds?: Box3) {
   sunlight.shadow.needsUpdate = true
   const fill = new DirectionalLight('#e5ecdf', daylight.fill)
   fill.position.set(5, 2, -3)
-  group.add(skyLight, sunlight, sunlight.target, fill, new AmbientLight('#fff7e8', 0.24))
+  const frontFill = new DirectionalLight('#fff7e8', daylight.fill)
+  frontFill.name = 'Soft front fill'
+  frontFill.position.set(4, 6, 5)
+  const overheadFill = new DirectionalLight('#f8f9ee', daylight.fill)
+  overheadFill.name = 'Soft overhead fill'
+  overheadFill.position.set(-2, 8, -1)
+  const fillLights = [fill, frontFill, overheadFill]
+  group.add(skyLight, sunlight, sunlight.target, ...fillLights, new AmbientLight('#fff7e8', 0.08))
   fitRoomShadowBounds(sunlight, bounds ?? roomShellBounds('kitchen').union(roomShellBounds('bathroom')))
-  return { group, sunlight, skyLight, fill }
+  return { group, sunlight, skyLight, fill, fillLights }
 }
 
 export type ContactShadow = { position: [number, number, number]; size: [number, number] }

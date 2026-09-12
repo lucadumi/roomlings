@@ -251,6 +251,38 @@ test.describe('room controls', { tag: '@room' }, () => {
     await expect(page.locator('.world-hotspots')).toBeVisible()
   })
 
+  test('fridge and kettle shortcuts stay compact as labels and viewports change', async ({ page }) => {
+    const actions = page.getByRole('group', { name: 'Kitchen quick actions', exact: true })
+    const fridge = actions.locator('.world-fridge-toggle')
+    const kettle = actions.getByRole('button', { name: 'Put the kettle on', exact: true })
+    for (const width of [1440, 1251, 390, 320]) {
+      await page.setViewportSize({ width, height: 960 })
+      for (let state = 0; state < 2; state++) {
+        const layout = await actions.evaluate((element) => {
+          const buttons = [...element.querySelectorAll('button')].map((button) => button.getBoundingClientRect())
+          const [first, second] = buttons
+          const sameRow = Math.abs(first.top - second.top) < 1
+          return {
+            gap: sameRow ? second.left - first.right : second.top - first.bottom,
+            sizes: buttons.map((bounds) => [bounds.width, bounds.height]),
+          }
+        })
+        expect(layout.gap).toBeCloseTo(8, 1)
+        for (const [buttonWidth, buttonHeight] of layout.sizes) {
+          expect(buttonWidth).toBeGreaterThanOrEqual(width <= 560 ? 44 : 40)
+          expect(buttonHeight).toBeGreaterThanOrEqual(width <= 560 ? 44 : 40)
+        }
+        const open = await fridge.getAttribute('aria-pressed')
+        await fridge.click()
+        await expect(fridge).toHaveAttribute('aria-pressed', open === 'true' ? 'false' : 'true')
+        if (!state) {
+          await kettle.click()
+          await expect(kettle).toHaveAttribute('aria-pressed', 'true')
+        }
+      }
+    }
+  })
+
   const hotspots = [
     { action: 'stock', role: 'region', title: 'The shopping bag.' },
     { action: 'ledger', role: 'region', title: 'The receipt book.' },

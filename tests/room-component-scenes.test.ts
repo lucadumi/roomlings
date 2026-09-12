@@ -15,6 +15,7 @@ import { createContactShadowTexture } from '../src/lighting.ts'
 import { componentAccessibleName, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible, visibleRoomBounds } from '../src/roomComponentScene.ts'
 import { roomAccents, roomPresets } from '../src/roomStyles.ts'
 import { kitchenLayout, roomShellBounds } from '../src/roomLayout.ts'
+import { assertRoomSurface, meshSurfaceMaterials } from './surface-fixture.ts'
 
 function meshes(root: Object3D) {
   const result: Mesh[] = []
@@ -62,10 +63,11 @@ for (const roomId of roomIds) {
     const model = roomModels[roomId](room)
     const componentModel = 'scenery' in model ? model.scenery : model
     room.updateMatrixWorld(true)
-    const before: { mesh: Mesh; geometry: BufferGeometry; transform: number[]; color: string }[] = []
+    const before: { mesh: Mesh; geometry: BufferGeometry; transform: number[]; colors: string[] }[] = []
     room.traverseVisible((object) => {
-      if (object instanceof Mesh && object.material instanceof MeshStandardMaterial) before.push({
-        mesh: object, geometry: object.geometry, transform: object.matrixWorld.toArray(), color: object.material.color.getHexString(),
+      if (object instanceof Mesh) before.push({
+        mesh: object, geometry: object.geometry, transform: object.matrixWorld.toArray(),
+        colors: meshSurfaceMaterials(object).map((material) => material.color.getHexString()),
       })
     })
     const scene = createRoomComponentScene(room, roomId, {
@@ -81,11 +83,10 @@ for (const roomId of roomIds) {
     const visible: Mesh[] = []
     room.traverseVisible((object) => { if (object instanceof Mesh) visible.push(object) })
     assert.deepEqual(visible, before.map(({ mesh }) => mesh))
-    for (const { mesh, geometry, transform, color } of before) {
+    for (const { mesh, geometry, transform, colors } of before) {
       assert.equal(mesh.geometry, geometry)
       assert.deepEqual(mesh.matrixWorld.toArray(), transform)
-      assert.ok(mesh.material instanceof MeshStandardMaterial)
-      assert.equal(mesh.material.color.getHexString(), color)
+      assert.deepEqual(meshSurfaceMaterials(mesh).map((material) => material.color.getHexString()), colors)
     }
     const defaults = installedRoomComponents(undefined, roomId)
     assert.equal(scene.actors.size, defaults.length)
@@ -122,7 +123,7 @@ for (const roomId of roomIds) {
           assert.ok(positions.count < 10_000, `${kind} must keep its low-poly mesh budget`)
           for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
             assert.ok(material instanceof MeshStandardMaterial)
-            assert.equal(material.flatShading, true)
+            assertRoomSurface(material)
           }
         }
       }

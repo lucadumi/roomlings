@@ -13,7 +13,7 @@ import { categoryLabels } from '../shared/domain.ts'
 import { kitchenUtilities } from './room.ts'
 import type { KitchenUtility, SceneAction } from './room.ts'
 import { buildKitchenModel } from './kitchenModel.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds, focusLabels, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import { cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, focusLabels, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomPitchLimits, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
@@ -26,6 +26,8 @@ import type { RoomWorldProps } from './roomViewTypes.ts'
 import { createRoomHologram } from './roomHologram.ts'
 import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from './placementArrow.ts'
 import { createRoomCutaway } from './roomCutaway.ts'
+import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from './roomEnvironment.ts'
+import type { RoomReflections } from './roomEnvironment.ts'
 
 type Target = { category: Category } | { action: SceneAction } | { utility: KitchenUtility } | { componentId: string }
 const targetLabels: Record<SceneAction, string> = {
@@ -87,9 +89,15 @@ export default function KitchenWorld({
     const stageElement = stage.current
     if (!element || !stageElement) return
     let renderer: WebGLRenderer
+    let reflections: RoomReflections
+    let candidate: WebGLRenderer | undefined
     try {
-      renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
+      candidate = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
+      reflections = createRoomReflections(candidate)
+      renderer = candidate
     } catch (error) {
+      candidate?.dispose()
+      candidate?.forceContextLoss()
       console.warn('The 3D fridge could not start:', error instanceof Error ? error.message : error)
       setUnavailable(true)
       setRenderingPaused(true)
@@ -105,6 +113,7 @@ export default function KitchenWorld({
     renderer.domElement.setAttribute('aria-hidden', 'true')
     element.appendChild(renderer.domElement)
     const scene = new Scene()
+    applyRoomReflections(scene, reflections)
     const camera = new OrthographicCamera(-7, 7, 5, -5, 0.1, 100)
     camera.position.set(9, 9.5, 13)
     camera.lookAt(-0.1, 1.65, -0.05)
@@ -122,7 +131,7 @@ export default function KitchenWorld({
     componentScene.update(state.current.components, state.current.roomStyle,
       state.current.editMode && state.current.selectedComponentId !== state.current.placementPreviewId ? state.current.selectedComponentId : null)
     const lightingBounds = componentScene.bounds.clone()
-    const { group: lighting, sunlight, skyLight, fill } = createRoomLights(lightingBounds)
+    const { group: lighting, sunlight, skyLight, fillLights } = createRoomLights(lightingBounds)
     scene.add(lighting)
     // These meshes change individually; animated groups keep their own transforms.
     batchStaticMeshes(room, scenery.preserved)
@@ -157,6 +166,7 @@ export default function KitchenWorld({
     const cutaway = createRoomCutaway(room)
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let targetRotation = 0
+    let orbitRotation = 0
     let moved = false
     let startX = 0
     let startY = 0
@@ -168,6 +178,8 @@ export default function KitchenWorld({
     let pinchZoom = 1
     let visible = true
     let contextLost = false
+    let disposed = false
+    let shadersReady = false
     let initialized = false
     let needsFrame = true
     let needsResize = true
@@ -204,7 +216,6 @@ export default function KitchenWorld({
     const projected = new Vector3()
     const cameraCenter = new Vector3(-0.1, 1.65, -0.05)
     const desiredCenter = new Vector3()
-    const desiredCamera = new Vector3()
     const actorsY = new Map([...scenery.actors].map(([action, actor]) => [action, actor.position.y]))
     const wake = (duration = 900) => {
       if (contextLost) return
@@ -227,7 +238,7 @@ export default function KitchenWorld({
       reset: () => {
         const pendingId = state.current.editMode ? state.current.placementPreviewId : null
         const pendingActor = pendingId ? componentScene.actors.get(pendingId) : undefined
-        targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined))
+        targetRotation = nearestRoomRotation(orbitRotation, preferredRoomRotation(pendingActor ? componentScene.componentForObject(pendingActor)?.slotId : undefined))
         targetPitch = 0
         focusOn('room')
         currentControls.roomView = true
@@ -332,7 +343,7 @@ export default function KitchenWorld({
         const dy = event.clientY - previousY
         moved ||= Math.hypot(event.clientX - startX, event.clientY - startY) > 4
         targetRotation += dx * 0.004
-        targetPitch = MathUtils.clamp(targetPitch + dy * 0.015, -1.7, 3)
+        targetPitch = MathUtils.clamp(targetPitch + dy * 0.015, roomPitchLimits.min, roomPitchLimits.max)
         setRoomViewReset(false)
         previousX = event.clientX
         previousY = event.clientY
@@ -399,8 +410,7 @@ export default function KitchenWorld({
     renderer.domElement.addEventListener('pointercancel', cancel)
     renderer.domElement.addEventListener('lostpointercapture', cancel)
     renderer.domElement.addEventListener('wheel', wheel, { passive: false })
-    const onContextLost = (event: Event) => {
-      event.preventDefault()
+    const stopUnavailable = () => {
       contextLost = true
       cancelAnimationFrame(frame)
       controls.current = null
@@ -411,10 +421,15 @@ export default function KitchenWorld({
       setRenderingPaused(true)
       setUnavailable(true)
     }
+    const onContextLost = (event: Event) => {
+      event.preventDefault()
+      stopUnavailable()
+    }
     renderer.domElement.addEventListener('webglcontextlost', onContextLost)
     const animate = (now: number) => {
-      if (contextLost) return
+      if (contextLost || disposed) return
       frame = requestAnimationFrame(animate)
+      if (!shadersReady) return
       const delta = frameSeconds(last, now)
       last = now
       const latest = state.current
@@ -438,7 +453,7 @@ export default function KitchenWorld({
         if (selectedObject) {
           currentControls.roomView = false
           currentControls.zoom = 1
-          targetRotation = nearestRoomRotation(room.rotation.y, preferredRoomRotation(selectedObject.slotId))
+          targetRotation = nearestRoomRotation(orbitRotation, preferredRoomRotation(selectedObject.slotId))
           setRoomViewReset(false)
           setZoom(currentControls.zoom)
         }
@@ -487,9 +502,7 @@ export default function KitchenWorld({
         transitioning ||= rotation !== target
         door.rotation.y = rotation
       }
-      const rotation = reducedMotion.matches ? targetRotation : dampTo(room.rotation.y, targetRotation, 9, delta)
-      shadowsMoving ||= room.rotation.y !== rotation
-      room.rotation.y = rotation
+      orbitRotation = reducedMotion.matches ? targetRotation : dampTo(orbitRotation, targetRotation, 9, delta)
       room.updateMatrixWorld(true)
       cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
       const focus = currentControls.focus
@@ -501,7 +514,7 @@ export default function KitchenWorld({
       const placementBounds = placementCandidate ? visibleRoomBounds(room, placementCandidate) : null
       const clearArea = placementBounds && measurements && !latest.overviewFocus
         ? roomFramingArea(measurements.canvas, measurements.stage, measurements.controls,
-          placementPreviewSize(placementBounds, viewport.width, viewport.height, desiredZoom, room.rotation.y, cameraPitch))
+          placementPreviewSize(placementBounds, viewport.width, viewport.height, desiredZoom))
         : framingArea
       const area = closeRoom && !latest.panelOpen ? { x: 0, y: 0, width: viewport.width, height: viewport.height } : clearArea
       const selectedBounds = !placementCandidate && !latest.overviewFocus && !currentControls.roomView && latest.selectedComponentId ? componentScene.getBounds(latest.selectedComponentId) : undefined
@@ -512,11 +525,13 @@ export default function KitchenWorld({
         : focusedObject ? componentScene.getBounds(focusedObject.id)
           : focus === 'floor' ? visibleRoomBounds(room, scenery.utilityActors.get('floor')!) : undefined
       const objectBounds = selectedBounds ?? focusedBounds
-      const framing = objectBounds
-        ? fitRoomBounds(area.width, area.height, objectBounds, room.rotation.y, cameraPitch)
+      const framing = latest.editMode && !closeRoom
+        ? fitRoomOrbitBounds(area.width, area.height, objectBounds ?? roomBounds)
+        : objectBounds
+        ? fitRoomBounds(area.width, area.height, objectBounds, orbitRotation, cameraPitch)
         : closeRoom ? roomEntryFraming(viewport.width, viewport.height, area)
         : cameraFraming(area.width, area.height, 'room', true, {
-          bounds: roomBounds, rotation: room.rotation.y, pitch: cameraPitch,
+          bounds: roomBounds, rotation: orbitRotation, pitch: cameraPitch,
         })
       if (objectBounds) framing.halfHeight = Math.max(2.05, framing.halfHeight)
       desiredCenter.set(...framing.center)
@@ -527,8 +542,7 @@ export default function KitchenWorld({
       if (reducedMotion.matches) cameraCenter.copy(desiredCenter)
       else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
       if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
-      desiredCamera.copy(cameraCenter).add(vector.set(baseCameraOffset[0], baseCameraOffset[1] + cameraPitch, baseCameraOffset[2]))
-      camera.position.copy(desiredCamera)
+      camera.position.copy(cameraCenter).add(cameraOrbitOffset(orbitRotation, cameraPitch, vector))
       camera.lookAt(cameraCenter)
       halfHeight = reducedMotion.matches ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
       camera.zoom = reducedMotion.matches ? desiredZoom : dampTo(camera.zoom, desiredZoom, 8, delta, 0.002)
@@ -539,7 +553,7 @@ export default function KitchenWorld({
       camera.bottom = projection.bottom
       camera.updateProjectionMatrix()
       const moving = cameraCenter.distanceTo(desiredCenter) > 0.002 || cameraPitch !== targetPitch
-        || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom || room.rotation.y !== targetRotation
+        || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom || orbitRotation !== targetRotation
       if (moving !== wasMoving) { wasMoving = moving; setCameraMoving(moving) }
       if (moving) activeUntil = Math.max(activeUntil, now + 120)
       for (const item of foods) {
@@ -622,9 +636,10 @@ export default function KitchenWorld({
       const targetLighting = currentControls.evening ? 1 : 0
       lightingMix = reducedMotion.matches ? targetLighting : dampTo(lightingMix, targetLighting, 4, delta)
       transitioning ||= lightingMix !== targetLighting
+      scene.environmentIntensity = roomReflectionIntensity(lightingMix)
       sunlight.intensity = MathUtils.lerp(daylight.sun, eveningLight.sun, lightingMix)
       skyLight.intensity = MathUtils.lerp(daylight.sky, eveningLight.sky, lightingMix)
-      fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, lightingMix)
+      for (const fill of fillLights) fill.intensity = MathUtils.lerp(daylight.fill, eveningLight.fill, lightingMix)
       scenery.light.intensity = MathUtils.lerp(daylight.lamp, eveningLight.lamp, lightingMix)
       scenery.bulb.emissiveIntensity = MathUtils.lerp(daylight.bulb, eveningLight.bulb, lightingMix)
       scenery.sky.color.lerpColors(dayWindow, eveningWindow, lightingMix)
@@ -640,12 +655,13 @@ export default function KitchenWorld({
       transitioning ||= interiorLight.intensity !== fridgeLight
       const cutawayUpdate = cutaway.update(camera)
       shadowsDirty ||= cutawayUpdate.shadowsChanged
-      const rotationValue = normalizeRoomRotation(room.rotation.y).toFixed(5)
+      const rotationValue = normalizeRoomRotation(orbitRotation).toFixed(5)
       if (renderer.domElement.dataset.roomRotation !== rotationValue) renderer.domElement.dataset.roomRotation = rotationValue
+      if (renderer.domElement.dataset.cameraOrbit !== rotationValue) renderer.domElement.dataset.cameraOrbit = rotationValue
       if (renderer.domElement.dataset.hiddenWalls !== cutawayUpdate.hiddenSides) renderer.domElement.dataset.hiddenWalls = cutawayUpdate.hiddenSides
       const hologramUpdate = hologram.update(placementCandidate, componentScene.actors.values())
       shadowsDirty ||= hologramUpdate.shadowsChanged
-      const arrowAnimating = placementArrow.update(placementBounds, now, !reducedMotion.matches && !latest.paused)
+      const arrowAnimating = placementArrow.update(placementBounds, now, !reducedMotion.matches && !latest.paused, orbitRotation)
       wasAnimating = transitioning || arrowAnimating
       const arrowVisible = String(placementArrow.object.visible)
       if (renderer.domElement.dataset.placementArrow !== arrowVisible) renderer.domElement.dataset.placementArrow = arrowVisible
@@ -669,8 +685,9 @@ export default function KitchenWorld({
       }
     }
     resize()
-    frame = requestAnimationFrame(animate)
-    return () => {
+    const cleanup = () => {
+      if (disposed) return
+      disposed = true
       cancelAnimationFrame(frame)
       observer.disconnect()
       visibility.disconnect()
@@ -693,11 +710,23 @@ export default function KitchenWorld({
       shadowMaterial.dispose()
       shadowTexture.dispose()
       sunlight.shadow.dispose()
+      reflections.dispose()
       renderer.dispose()
       renderer.forceContextLoss()
       renderer.domElement.remove()
       controls.current = null
     }
+    try {
+      renderer.compile(scene, camera)
+      shadersReady = true
+      wake(0)
+    } catch (error) {
+      console.warn('The kitchen materials could not be prepared:', error)
+      stopUnavailable()
+      cleanup()
+    }
+    if (!disposed) frame = requestAnimationFrame(animate)
+    return cleanup
   }, [])
 
   // The loop detects component content changes; refreshed copies must not wake a paused scene.
@@ -746,8 +775,10 @@ export default function KitchenWorld({
         <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={placementLabelsHidden} aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'} aria-pressed={labelsShown} title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
         <div className="world-interaction-hint"><Move size={13} />{hovered ? ('componentId' in hovered ? hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores' : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
-        {!editMode && componentAtSlot(components, 'kitchen-fridge') && <button className="world-fridge-toggle" onClick={toggle} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size={15} />{open ? 'Close the fridge' : 'Peek inside'}<span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>}
-        {!editMode && componentAtSlot(components, 'kitchen-kettle') && <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size={16} /><span>{brewing ? 'Kettle is on' : 'Tea break'}</span></button>}
+        {!editMode && <div className="world-quick-actions" role="group" aria-label="Kitchen quick actions">
+          {componentAtSlot(components, 'kitchen-fridge') && <button className="world-fridge-toggle" onClick={toggle} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size={15} />{open ? 'Close the fridge' : 'Peek inside'}<span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>}
+          {componentAtSlot(components, 'kitchen-kettle') && <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size={16} /><span>{brewing ? 'Kettle is on' : 'Tea break'}</span></button>}
+        </div>}
       </>}
     </div>
   )

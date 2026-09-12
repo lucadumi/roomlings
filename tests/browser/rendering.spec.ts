@@ -64,7 +64,8 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   const drawing = await trackDrawing(page)
   await page.goto('/kitchen')
   const room = page.locator('.kitchen-world')
-  await expect(room).toHaveAttribute('data-rendering', 'paused')
+  // Cold reflected-material shaders take longer on the software WebGL renderer.
+  await expect(room).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
   const idle = await drawing()
   expect(idle.draws).toBeGreaterThan(0)
   expect(idle.shadows).toBeGreaterThan(0)

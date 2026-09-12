@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowRight, Check } from 'lucide-react'
+import { ArrowRight, Check, LoaderCircle } from 'lucide-react'
 import type { RoomStyle } from '../shared/domain.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../shared/rooms.ts'
@@ -168,7 +168,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
       }).catch((error: unknown) => {
         if (cancelled || request !== version) return
         console.warn('Saved room previews could not render:', error instanceof Error ? error.message : error)
-        if (!initialImages) setImages({})
+        setImages({})
         setStatus('unavailable')
       })
     }
@@ -208,10 +208,10 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
         <span ref={(area) => { if (area) areas.current.set(roomId, area); else areas.current.delete(roomId) }}
           className="room-menu-preview" data-room-preview={roomId}>
           <img src={images[roomId]} alt="" width={560} height={384} draggable={false}
-            hidden={!images[roomId]} style={{ visibility: images[roomId] ? 'visible' : 'hidden' }} />
-          {!images[roomId] && <small className="room-menu-preview-status">
-            {status === 'unavailable' ? '3D preview unavailable' : 'Loading preview'}
-          </small>}
+            hidden={!images[roomId] || status === 'loading'} style={{ visibility: images[roomId] && status !== 'loading' ? 'visible' : 'hidden' }} />
+          {status === 'loading' ? <span className="room-menu-preview-status" role="status" aria-label={`Loading ${roomCatalog[roomId].name} preview`}>
+            <LoaderCircle size={23} className="spin" aria-hidden="true" />
+          </span> : status === 'unavailable' && <small className="room-menu-preview-status">3D is unavailable.</small>}
         </span>
         <span className="room-preview-label"><strong>{roomCatalog[roomId].name}</strong><small>{roomId === currentRoom ? 'Current room' : 'Open room'}</small></span>
         {roomId === currentRoom ? <Check size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}

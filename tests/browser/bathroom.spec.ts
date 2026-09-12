@@ -95,7 +95,8 @@ test('bathroom rendering settles, recolors existing geometry and releases the sc
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('bathroom'))
   const world = page.locator('.bathroom-world')
-  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  // This first frame includes reflected-material shader preparation in software WebGL.
+  await expect(world).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
   await expect(world.locator('canvas')).toBeVisible()
   const idle = await drawing()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))

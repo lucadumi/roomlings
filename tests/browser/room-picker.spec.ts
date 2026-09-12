@@ -5,6 +5,46 @@ import { roomIds } from '../../shared/rooms.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
+test('room-selector spinners stay visible while renders load and stop when the saved previews are ready', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  let release: (() => void) | undefined
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  await page.route(/\/src\/householdRoomPreview\.ts(?:\?.*)?$/, async (route) => {
+    await pending
+    await route.continue()
+  })
+  const before = await accounts.store.get(owner.household.id)
+  try {
+    await page.goto(roomPath())
+    const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+    await trigger.click()
+    const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
+    const previews = picker.getByRole('group', { name: 'Choose a room', exact: true })
+    await expect(previews).toHaveAttribute('aria-busy', 'true')
+    await expect(picker.getByRole('status')).toHaveCount(roomIds.length)
+    await expect(picker.locator('.room-menu-preview img:visible')).toHaveCount(0)
+    for (const spinner of await picker.locator('.room-menu-preview-status .spin').all()) {
+      await expect(spinner).toBeVisible()
+      await expect(spinner).toHaveCSS('animation-name', 'spin')
+    }
+    await expect(picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true })).toBeEnabled()
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    for (const spinner of await picker.locator('.room-menu-preview-status .spin').all()) {
+      await expect(spinner).toHaveCSS('animation-name', 'none')
+    }
+    release?.()
+    await expect(previews).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 })
+    await expect(picker.locator('.room-menu-preview-status')).toHaveCount(0)
+    await expect.poll(() => picker.locator('img').evaluateAll((images) =>
+      images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true)
+    await page.keyboard.press('Escape')
+    await trigger.click()
+    await expect(previews).toHaveAttribute('aria-busy', 'false')
+    await expect(picker.getByRole('status')).toHaveCount(0)
+    expect(await accounts.store.get(owner.household.id)).toEqual(before)
+  } finally { release?.() }
+})
+
 test('saved room images are warmed before opening and reused without illustration backgrounds', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.addInitScript(() => {
     let renders = 0
@@ -19,7 +59,7 @@ test('saved room images are warmed before opening and reused without illustratio
   })
   await page.goto(roomPath())
   const renders = () => page.evaluate(() => Number(Reflect.get(window, 'savedRoomPreviewRenders')))
-  await expect.poll(renders).toBe(1)
+  await expect.poll(renders, { timeout: 20_000 }).toBe(1)
   const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
   await trigger.click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })

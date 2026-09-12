@@ -59,7 +59,7 @@ test('Back leaves either editor section for the live object list without saving 
     const objects = page.getByRole('region', { name: 'Kitchen objects', exact: true })
     await expect(objects.getByRole('button', { name: 'Open Dining table details', exact: true })).toBeVisible()
     await expect(objects.getByRole('button', { name: 'Edit room', exact: true })).toBeVisible()
-    await expect(page.locator('.room-panel-mode')).toHaveText('Live room')
+    await expect(page.locator('.room-panel-mode')).toHaveCount(0)
     const saved = await accounts.store.get(owner.household.id)
     expect(saved?.version).toBe(owner.household.version)
     expect(saved?.roomComponents).toEqual(owner.household.roomComponents)

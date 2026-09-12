@@ -1,8 +1,14 @@
 import {
-  ConeGeometry, Group, IcosahedronGeometry, LatheGeometry, Mesh, MeshStandardMaterial,
-  TorusGeometry, Vector2, Vector3,
+  ConeGeometry, ExtrudeGeometry, Group, IcosahedronGeometry, LatheGeometry, Mesh, MeshStandardMaterial, RingGeometry,
+  Shape, Vector2, Vector3,
 } from 'three'
+import type { ColorRepresentation } from 'three'
 import type { RoomComponent } from '../shared/roomComponents.ts'
+import type { RoomSurface } from './surfaceMaterials.ts'
+import { prepareRoomSurfaceGeometry } from './surfaceMaterials.ts'
+import { createRoomCupGeometry, createRoomLoafGeometry, createRoomTorusGeometry, roomRadialSegments } from './roomGeometry.ts'
+import { componentMaterialColors } from './componentMaterials.ts'
+import { setComponentThumbnailRepresentative } from './componentPresentation.ts'
 
 type Position = [number, number, number]
 
@@ -10,7 +16,9 @@ export interface AdditionalModelTools {
   root: Group
   box: (size: Position, position: Position, material?: MeshStandardMaterial, radius?: number, parent?: Group) => Mesh
   cylinder: (radius: number, height: number, position: Position, material?: MeshStandardMaterial, top?: number, parent?: Group) => Mesh
-  material: (name: string, color: string, roughness?: number) => MeshStandardMaterial
+  material: (name: string, color: ColorRepresentation, roughness?: number, surface?: RoomSurface) => MeshStandardMaterial
+  surface: (material: MeshStandardMaterial, surface: RoomSurface) => void
+  variant: (material: MeshStandardMaterial, surface: RoomSurface) => MeshStandardMaterial
   finishes: MeshStandardMaterial[]
   palette: {
     paint: MeshStandardMaterial
@@ -29,8 +37,32 @@ export interface AdditionalModelTools {
 
 type BuildResult = { contactSize?: [number, number] }
 
+export function buildBoxSpeaker(
+  parent: Group,
+  { box }: Pick<AdditionalModelTools, 'box'>,
+  { paint, linen, dark }: Pick<AdditionalModelTools['palette'], 'paint' | 'linen' | 'dark'>,
+): void {
+  const body = box([0.32, 0.5, 0.26], [0, 0.25, 0], paint, 0, parent)
+  body.name = 'Single-piece speaker enclosure'
+  body.material = [paint, paint, paint, paint, linen, paint]
+  // Keep the grille flush on the cuboid's front face, without extra geometry.
+  prepareRoomSurfaceGeometry(body)
+  body.geometry.clearGroups()
+  body.geometry.addGroup(0, 24, 0)
+  body.geometry.addGroup(24, 6, 1)
+  body.geometry.addGroup(30, 6, 0)
+  body.material = [paint, linen]
+  for (const [radius, width, y] of [[0.09, 0.012, 0.36], [0.06, 0.01, 0.16]]) {
+    const driver = new Mesh(new RingGeometry(radius - width, radius + width, 24), dark)
+    driver.name = 'Flush speaker driver circle'
+    driver.position.set(0, y, 0.131)
+    driver.receiveShadow = true
+    parent.add(driver)
+  }
+}
+
 export function buildAdditionalComponentModel(component: RoomComponent, tools: AdditionalModelTools): BuildResult | null {
-  const { root, box, cylinder, material, finishes } = tools
+  const { root, box, cylinder, material, surface, variant, finishes } = tools
   const { paint, edge, wood, lightWood, cream, linen, dark, silver, tomato, leaf, glass } = tools.palette
   const repaint = (...mats: MeshStandardMaterial[]) => finishes.splice(0, finishes.length, ...mats)
 
@@ -39,8 +71,8 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     mesh.rotation.x = Math.PI / 2
     return mesh
   }
-  const ring = (radius: number, tube: number, position: Position, mat = silver, parent = root) => {
-    const mesh = new Mesh(new TorusGeometry(radius, tube, 5, 16), mat)
+  const ring = (radius: number, tube: number, position: Position, mat = silver, parent = root, arc = Math.PI * 2) => {
+    const mesh = new Mesh(createRoomTorusGeometry(radius, tube, arc), mat)
     mesh.position.set(...position)
     mesh.castShadow = tube > 0.018
     mesh.receiveShadow = true
@@ -56,15 +88,15 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     return mesh
   }
   const cone = (radius: number, height: number, position: Position, mat = paint, parent = root) => {
-    const mesh = new Mesh(new ConeGeometry(radius, height, 8), mat)
+    const mesh = new Mesh(new ConeGeometry(radius, height, roomRadialSegments(radius)), mat)
     mesh.position.set(...position)
-    mesh.castShadow = true
+    mesh.castShadow = !mat.transparent
     mesh.receiveShadow = true
     parent.add(mesh)
     return mesh
   }
   const blob = (radius: number, position: Position, mat = tomato, parent = root) => {
-    const mesh = new Mesh(new IcosahedronGeometry(radius, 0), mat)
+    const mesh = new Mesh(new IcosahedronGeometry(radius, 1), mat)
     mesh.position.set(...position)
     mesh.castShadow = true
     mesh.receiveShadow = true
@@ -72,9 +104,10 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     return mesh
   }
   const lathe = (profile: readonly [number, number][], position: Position, mat = cream, parent = root) => {
-    const mesh = new Mesh(new LatheGeometry(profile.map(([x, y]) => new Vector2(x, y)), 12), mat)
+    const mesh = new Mesh(new LatheGeometry(profile.map(([x, y]) => new Vector2(x, y)),
+      roomRadialSegments(Math.max(...profile.map(([radius]) => radius)))), mat)
     mesh.position.set(...position)
-    mesh.castShadow = true
+    mesh.castShadow = !mat.transparent
     mesh.receiveShadow = true
     parent.add(mesh)
     return mesh
@@ -85,27 +118,28 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     }
   }
   const cup = (position: Position, mat = cream, handleMat = mat) => {
-    const [x, y, z] = position
-    cylinder(0.055, 0.09, [x, y + 0.045, z], mat, 0.048)
-    cylinder(0.052, 0.007, [x, y + 0.092, z], dark)
-    const handle = ring(0.038, 0.011, [x + 0.075, y + 0.05, z], handleMat)
-    handle.rotation.y = Math.PI / 2
+    const group = new Group()
+    group.name = 'Cup'
+    group.position.set(...position)
+    root.add(group)
+    const vessel = new Mesh(createRoomCupGeometry(0.055, 0.048, 0.09, 0.007), mat)
+    vessel.name = 'Cup bowl'
+    vessel.castShadow = vessel.receiveShadow = true
+    group.add(vessel)
+    cylinder(0.04, 0.006, [0, 0.068, 0], variant(dark, 'glass'), 0.04, group).name = 'Cup contents'
+    const handle = ring(0.038, 0.011, [0.052, 0.05, 0], handleMat, group, Math.PI)
+    handle.name = 'Cup handle'
+    handle.rotation.z = -Math.PI / 2
+    return group
   }
-  const tint = (name: string, base: MeshStandardMaterial, hueShift: number, satBoost = 0, lightShift = 0) => {
-    const hsl = { h: 0, s: 0, l: 0 }
-    base.color.getHSL(hsl)
-    const color = base.color.clone().setHSL(
-      (hsl.h + hueShift + 1) % 1,
-      Math.min(1, Math.max(0, hsl.s + satBoost)),
-      Math.min(0.85, Math.max(0.15, hsl.l + lightShift)),
-    )
-    return material(name, `#${color.getHexString()}`)
-  }
-
-  const apple = tint('Apple red', tomato, -0.02, 0.08, -0.05)
-  const banana = tint('Banana yellow', lightWood, 0.05, 0.12, 0.1)
-  const citrus = tint('Citrus orange', tomato, 0.05, 0.05, 0.06)
-  const lime = tint('Lime green', leaf, 0.03, 0.05, 0.12)
+  // These tint names also color ceramic mugs, book covers and game pieces.
+  const tintSurface: RoomSurface = component.kind === 'fruit-bowl' ? 'food'
+    : component.kind === 'mug-tree' ? 'ceramic'
+      : component.kind === 'wall-shelf' ? 'paper' : 'paint'
+  const apple = material('Apple red', componentMaterialColors.apple, 0.85, tintSurface)
+  const banana = material('Banana yellow', componentMaterialColors.banana, 0.9, tintSurface)
+  const citrus = material('Citrus orange', componentMaterialColors.citrus, 0.9, tintSurface)
+  const lime = material('Lime green', componentMaterialColors.lime, 0.85, tintSurface)
   let contactSize: [number, number] | undefined
 
   switch (component.kind) {
@@ -113,120 +147,193 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       feet(1.1, 1.0, 0.035)
       box([1.25, 1.5, 1.2], [0, 0.75, 0], paint, 0.04)
       box([1.2, 0.16, 0.05], [0, 1.42, 0.615], silver, 0.02)
-      for (const x of [-0.42, -0.14, 0.14, 0.42]) disc(0.032, 0.016, [x, 1.42, 0.633], dark)
-      box([1.14, 1.02, 0.05], [0, 0.66, 0.615], dark, 0.035)
-      box([0.98, 0.84, 0.02], [0, 0.66, 0.645], glass, 0.03)
+      for (const x of [-0.42, -0.14, 0.14, 0.42]) disc(0.032, 0.016, [x, 1.42, 0.633], variant(dark, 'paint'))
+      box([1.14, 1.02, 0.05], [0, 0.66, 0.615], variant(dark, 'paint'), 0.035)
+      box([0.98, 0.84, 0.02], [0, 0.66, 0.645], variant(dark, 'glass'), 0.03)
       box([0.9, 0.05, 0.06], [0, 1.15, 0.665], silver, 0.02)
       rod([-0.4, 0.42, 0.62], [0.4, 0.42, 0.62], 0.014, silver)
       rod([-0.4, 0.72, 0.62], [0.4, 0.72, 0.62], 0.014, silver)
       break
     }
     case 'blender': {
-      repaint(dark)
-      box([0.28, 0.16, 0.28], [0, 0.08, 0], dark, 0.04)
+      repaint(paint)
+      box([0.28, 0.16, 0.28], [0, 0.08, 0], paint, 0.04)
       for (let i = 0; i < 3; i++) box([0.045, 0.02, 0.012], [-0.08 + i * 0.08, 0.1, 0.141], silver, 0.005)
       cylinder(0.16, 0.5, [0, 0.41, 0], glass, 0.2)
-      const handle = ring(0.09, 0.017, [0.21, 0.44, 0], dark)
-      handle.rotation.y = Math.PI / 2
-      cylinder(0.185, 0.04, [0, 0.68, 0], dark, 0.155)
+      ring(0.09, 0.017, [0.175, 0.44, 0], paint, root, Math.PI).rotation.z = -Math.PI / 2
+      cylinder(0.185, 0.04, [0, 0.68, 0], paint, 0.155)
       box([0.05, 0.05, 0.012], [0, 0.16, 0.145], silver, 0.01)
       break
     }
     case 'rice-cooker': {
+      surface(cream, 'paint')
       cylinder(0.24, 0.32, [0, 0.16, 0], paint, 0.27)
       cylinder(0.28, 0.09, [0, 0.365, 0], cream, 0.16)
-      box([0.13, 0.035, 0.05], [0, 0.42, 0.14], dark, 0.02)
+      box([0.13, 0.035, 0.05], [0, 0.42, 0.14], variant(dark, 'paint'), 0.02)
       for (const x of [-0.29, 0.29]) {
-        const handle = ring(0.04, 0.014, [x, 0.2, 0], dark)
-        handle.rotation.y = Math.PI / 2
+        const handle = ring(0.04, 0.014, [x, 0.2, 0], variant(dark, 'paint'), root, Math.PI)
+        handle.rotation.z = x > 0 ? -Math.PI / 2 : Math.PI / 2
       }
-      box([0.1, 0.055, 0.018], [0, 0.28, 0.265], dark, 0.008)
+      box([0.1, 0.055, 0.018], [0, 0.28, 0.265], variant(dark, 'glass'), 0.008)
       cylinder(0.018, 0.03, [0.11, 0.4, 0], silver)
       break
     }
     case 'fruit-bowl': {
+      surface(tomato, 'ceramic')
       repaint(tomato)
-      const bowl = [[0, 0], [0.18, 0], [0.4, 0.14], [0.42, 0.17], [0.38, 0.18], [0, 0.18]] as [number, number][]
-      lathe(bowl, [0, 0, 0], tomato)
+      const bowl = [[0, 0], [0.18, 0], [0.4, 0.14], [0.42, 0.17], [0.395, 0.18],
+        [0.37, 0.15], [0.16, 0.025], [0, 0.025]] as [number, number][]
+      const bowlMesh = lathe(bowl, [0, 0, 0], tomato)
+      bowlMesh.name = 'Open fruit bowl'
       cylinder(0.14, 0.03, [0, 0.015, 0], tomato, 0.1)
-      blob(0.11, [-0.12, 0.24, 0.06], apple)
-      blob(0.12, [0.13, 0.23, -0.05], citrus)
-      blob(0.09, [0, 0.27, 0.12], lime)
-      const bananaMesh = new Mesh(new TorusGeometry(0.15, 0.045, 5, 12, Math.PI * 0.65), banana)
-      bananaMesh.position.set(0.03, 0.24, -0.14)
-      bananaMesh.rotation.set(Math.PI / 2, 0.3, 0.4)
+      const appleFruit = blob(0.11, [-0.12, 0.145, 0.045], apple)
+      appleFruit.name = 'Fruit nestled in bowl'
+      appleFruit.scale.set(1.05, 0.95, 1)
+      const orangeFruit = blob(0.115, [0.115, 0.155, -0.045], citrus)
+      orangeFruit.name = 'Fruit nestled in bowl'
+      orangeFruit.scale.set(1, 0.94, 1.04)
+      const limeFruit = blob(0.09, [0.005, 0.185, 0.105], lime)
+      limeFruit.name = 'Fruit nestled in bowl'
+      limeFruit.scale.set(1, 0.92, 1)
+      const bananaMesh = new Mesh(createRoomTorusGeometry(0.15, 0.045, Math.PI * 0.65), banana)
+      bananaMesh.name = 'Fruit nestled in bowl'
+      bananaMesh.position.set(-0.025, 0.175, -0.08)
+      bananaMesh.rotation.set(Math.PI / 2, 0.32, -0.75)
       bananaMesh.castShadow = true
       bananaMesh.receiveShadow = true
       root.add(bananaMesh)
       break
     }
     case 'spice-rack': {
+      surface(cream, 'paint')
       repaint(wood)
-      box([0.5, 0.3, 0.03], [0, 0.16, -0.1], wood, 0.02)
-      box([0.5, 0.03, 0.1], [0, 0.06, -0.06], wood, 0.01)
-      for (const x of [-0.18, -0.09, 0, 0.09, 0.18]) {
-        cylinder(0.033, 0.09, [x, 0.145, 0], glass, 0.031)
-        disc(0.031, 0.013, [x, 0.194, 0], cream)
+      const back = box([0.64, 0.42, 0.035], [0, 0.215, -0.035], wood, 0.018)
+      back.name = 'Wall mounting back panel'
+      box([0.58, 0.03, 0.018], [0, 0.02, -0.014], wood, 0.008).name = 'Wall cleat'
+      box([0.58, 0.03, 0.018], [0, 0.41, -0.014], wood, 0.008).name = 'Wall cleat'
+      for (const x of [-0.29, 0.29]) box([0.028, 0.34, 0.025], [x, 0.215, -0.004], wood, 0.008)
+      const shelfRows: [number, number[]][] = [
+        [0.095, [-0.225, -0.075, 0.075, 0.225]],
+        [0.25, [-0.17, 0, 0.17]],
+      ]
+      for (const [shelfY, jars] of shelfRows) {
+        const shelf = box([0.58, 0.032, 0.16], [0, shelfY, 0.055], wood, 0.012)
+        shelf.name = 'Spice shelf'
+        box([0.56, 0.026, 0.018], [0, shelfY + 0.032, 0.13], wood, 0.006).name = 'Spice shelf front lip'
+        for (const x of jars) {
+          const jarHeight = 0.078
+          const jar = cylinder(0.03, jarHeight, [x, shelfY + 0.016 + jarHeight / 2, 0.05], glass, 0.028)
+          jar.name = 'Spice jar seated on shelf'
+          cylinder(0.028, 0.013, [x, shelfY + 0.016 + jarHeight + 0.0065, 0.05], cream).name = 'Spice jar lid'
+        }
       }
       break
     }
     case 'bread-box': {
+      surface(edge, 'wood')
       repaint(wood)
-      box([0.5, 0.28, 0.32], [0, 0.14, 0], wood, 0.03)
-      const lid = cylinder(0.16, 0.48, [0, 0.29, -0.005], wood, 0.16)
-      lid.rotation.z = Math.PI / 2
-      for (const offset of [-0.18, -0.06, 0.06, 0.18]) box([0.018, 0.02, 0.3], [offset, 0.4, 0], edge, 0)
-      box([0.12, 0.03, 0.04], [0, 0.44, 0.145], dark, 0.015)
+      const crust = material('Bread loaf crust', componentMaterialColors.grain, 0.92, 'food')
+      const crumb = material('Bread loaf scoring', componentMaterialColors.rice, 0.94, 'food')
+      box([0.54, 0.04, 0.34], [0, 0.02, 0], wood, 0.02).name = 'Bread box open base'
+      box([0.52, 0.05, 0.035], [0, 0.065, -0.152], wood, 0.012).name = 'Bread box back'
+      const sideProfile = new Shape()
+      sideProfile.absarc(0, 0, 0.16, 0, Math.PI, false)
+      sideProfile.closePath()
+      for (const x of [-0.255, 0.255]) {
+        const sideGeometry = new ExtrudeGeometry(sideProfile, {
+          depth: 0.029, bevelEnabled: true, bevelSize: 0.003, bevelThickness: 0.003,
+          bevelOffset: -0.003, bevelSegments: 2, steps: 1, curveSegments: 8,
+        })
+        sideGeometry.translate(0, 0, -0.0145)
+        sideGeometry.rotateY(Math.PI / 2)
+        const side = new Mesh(sideGeometry, wood)
+        side.name = 'Bread box semicircular side'
+        side.position.set(x, 0.04, -0.005)
+        side.castShadow = side.receiveShadow = true
+        root.add(side)
+      }
+      const interior = box([0.44, 0.036, 0.012], [0, 0.059, -0.128], variant(dark, 'paint'), 0.006)
+      interior.name = 'Bread box visible interior'
+      const loaf = new Mesh(createRoomLoafGeometry([0.36, 0.12, 0.2]), crust)
+      loaf.name = 'Bread loaf visible through opening'
+      loaf.position.set(0, 0.04, 0.035)
+      loaf.castShadow = loaf.receiveShadow = true
+      root.add(loaf)
+      for (const x of [-0.08, 0, 0.08]) {
+        const score = box([0.018, 0.004, 0.08], [x, 0.159, 0.035], crumb, 0)
+        score.name = 'Bread loaf scoring'
+        score.rotation.y = 0.35
+      }
+      for (const tilt of [-1.15, -0.83, -0.51, -0.19]) {
+        const slat = box([0.5, 0.018, 0.047],
+          [0, 0.04 + Math.cos(tilt) * 0.169, -0.005 + Math.sin(tilt) * 0.169], edge, 0.006)
+        slat.name = 'Open roll-top bread-box slat'
+        slat.rotation.x = tilt
+      }
+      box([0.12, 0.026, 0.032], [0, 0.214, -0.033], variant(dark, 'paint'), 0.012).name = 'Raised bread box handle'
       break
     }
     case 'knife-block': {
+      surface(tomato, 'rubber')
       repaint(wood)
       box([0.24, 0.34, 0.22], [0, 0.17, 0], wood, 0.03)
       const knives: [number, number, MeshStandardMaterial][] = [[-0.08, -0.06, dark], [-0.04, 0.05, tomato],
         [0, -0.03, silver], [0.04, 0.06, dark], [0.08, -0.05, tomato]]
       for (const [x, tilt, handleMat] of knives) {
-        const blade = box([0.026, 0.2, 0.045], [x, 0.34 + 0.09, 0], silver, 0.006)
+        const position = (height: number): Position => [x - Math.sin(tilt) * height, 0.34 + Math.cos(tilt) * height, 0]
+        const blade = box([0.026, 0.18, 0.045], position(-0.05), silver, 0.006)
+        blade.name = 'Knife blade seated in block'
         blade.rotation.z = tilt
-        const handle = box([0.03, 0.09, 0.05], [x - tilt * 0.09, 0.34 + 0.005, 0], handleMat, 0.01)
+        const handle = box([0.035, 0.16, 0.05], position(0.105), handleMat, 0.01)
+        handle.name = 'Knife handle'
         handle.rotation.z = tilt
       }
       break
     }
     case 'cookbook-stand': {
+      surface(cream, 'paper')
+      surface(edge, 'paper')
       repaint(wood)
       box([0.34, 0.02, 0.22], [0, 0.01, 0], wood, 0.01)
       const support = box([0.3, 0.26, 0.02], [0, 0.15, -0.08], wood, 0.02)
       support.rotation.x = -0.4
-      const left = box([0.14, 0.02, 0.18], [-0.07, 0.14, 0.02], cream, 0.01)
-      left.rotation.x = -0.42
-      left.rotation.z = 0.03
-      const right = box([0.14, 0.02, 0.18], [0.07, 0.14, 0.02], cream, 0.01)
-      right.rotation.x = -0.42
-      right.rotation.z = -0.03
-      box([0.012, 0.02, 0.19], [0, 0.145, 0.015], edge, 0)
-      for (let i = 0; i < 3; i++) box([0.1, 0.006, 0.002], [-0.07, 0.19 - i * 0.04, 0.1], edge, 0)
+      const book = new Group()
+      book.name = 'Book resting on its stand'
+      book.position.set(0, 0.12, -0.06)
+      book.rotation.x = -0.4
+      root.add(book)
+      box([0.14, 0.22, 0.012], [-0.071, 0, 0.012], cream, 0.003, book)
+      box([0.14, 0.22, 0.012], [0.071, 0, 0.012], cream, 0.003, book)
+      box([0.012, 0.22, 0.008], [0, 0, 0.016], edge, 0, book)
+      for (let i = 0; i < 3; i++) box([0.1, 0.003, 0.002], [-0.071, 0.06 - i * 0.04, 0.019], edge, 0, book)
       break
     }
     case 'paper-towel-holder': {
+      surface(cream, 'paper')
       repaint(wood)
-      cylinder(0.1, 0.03, [0, 0.015, 0], wood, 0.1)
-      cylinder(0.014, 0.32, [0, 0.19, 0], wood)
-      cylinder(0.085, 0.26, [0, 0.19, 0], cream, 0.085)
-      const sheet = box([0.16, 0.14, 0.006], [0, 0.06, 0.09], cream, 0.01)
-      sheet.rotation.x = 0.35
+      cylinder(0.075, 0.022, [0, 0.011, 0], wood, 0.075).name = 'Paper towel round foot'
+      cylinder(0.014, 0.34, [0, 0.19, 0], wood)
+      cylinder(0.085, 0.27, [0, 0.18, 0], cream, 0.085).name = 'Paper towel roll'
+      cylinder(0.022, 0.018, [0, 0.365, 0], wood, 0.022).name = 'Paper towel top cap'
       break
     }
     case 'storage-jars': {
+      surface(lightWood, 'food')
       repaint(wood)
       box([0.5, 0.02, 0.22], [0, 0.01, 0], wood, 0.02)
-      const jars: [number, number, number, MeshStandardMaterial][] = [
-        [-0.16, 0.075, 0.2, wood], [0, 0.09, 0.24, lightWood], [0.16, 0.065, 0.17, cream],
-      ]
-      for (const [x, radius, height, fill] of jars) {
-        cylinder(radius, height, [x, 0.02 + height / 2, 0], glass, radius * 0.96)
-        disc(radius * 0.75, height * 0.22, [x, 0.02 + height * 0.24, 0], fill)
-        cylinder(radius * 0.9, 0.025, [x, 0.02 + height + 0.012, 0], cream, radius * 0.9)
-        box([radius * 0.4, 0.03, radius * 0.4], [x, 0.02 + height + 0.038, 0], wood, 0.01)
+      const coffee = material('Coffee beans', componentMaterialColors.coffee, 0.9, 'food')
+      const grain = material('Oats', componentMaterialColors.grain, 0.95, 'food')
+      const rice = material('Rice', componentMaterialColors.rice, 0.95, 'food')
+      const jars = [
+        ['coffee', -0.16, 0.075, 0.2, coffee], ['oats', 0, 0.09, 0.24, grain], ['rice', 0.16, 0.065, 0.17, rice],
+      ] as const
+      for (const [jar, x, radius, height, fill] of jars) {
+        const body = cylinder(radius, height, [x, 0.02 + height / 2, 0], glass, radius * 0.96)
+        const contents = cylinder(radius * 0.75, height * 0.22, [x, 0.02 + height * 0.24, 0], fill)
+        contents.name = 'Jar contents'
+        const lid = cylinder(radius * 0.9, 0.025, [x, 0.02 + height + 0.012, 0], cream, radius * 0.9)
+        const handle = box([radius * 0.4, 0.03, radius * 0.4], [x, 0.02 + height + 0.038, 0], wood, 0.01)
+        if (jar === 'oats') setComponentThumbnailRepresentative(root, body, contents, lid, handle)
       }
       break
     }
@@ -244,24 +351,30 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       break
     }
     case 'pet-bowls': {
+      surface(linen, 'rubber')
       repaint(silver)
       box([0.6, 0.015, 0.35], [0, 0.0075, 0], linen, 0.05)
-      for (const x of [-0.15, 0.15]) {
-        cylinder(0.1, 0.06, [x, 0.03, 0], silver, 0.13)
-        cylinder(0.09, 0.014, [x, 0.062, 0], dark)
+      const food = material('Pet food', componentMaterialColors.coffee, 0.95, 'food')
+      const water = material('Fresh water', componentMaterialColors.water, 0.18, 'glass')
+      for (const [item, x, filling] of [['food', -0.15, food], ['water', 0.15, water]] as const) {
+        const bowl = new Mesh(createRoomCupGeometry(0.1, 0.13, 0.06, 0.008), silver)
+        bowl.name = 'Pet bowl'
+        bowl.position.set(x, 0.015, 0)
+        bowl.castShadow = bowl.receiveShadow = true
+        root.add(bowl)
+        const contents = cylinder(0.095, 0.008, [x, 0.055, 0], filling)
+        contents.name = 'Pet bowl contents'
+        if (item === 'food') setComponentThumbnailRepresentative(root, bowl, contents)
       }
       contactSize = [0.66, 0.4]
       break
     }
     case 'speaker': {
-      box([0.32, 0.5, 0.26], [0, 0.25, 0], paint, 0.06)
-      box([0.27, 0.4, 0.02], [0, 0.27, 0.135], linen, 0.03)
-      ring(0.09, 0.012, [0, 0.36, 0.15], dark)
-      ring(0.06, 0.01, [0, 0.16, 0.15], dark)
-      disc(0.028, 0.011, [0.1, 0.51, 0], silver)
+      buildBoxSpeaker(root, tools, tools.palette)
       break
     }
     case 'air-purifier': {
+      surface(dark, 'paint')
       cylinder(0.22, 0.85, [0, 0.425, 0], paint, 0.24)
       cylinder(0.25, 0.05, [0, 0.87, 0], dark, 0.2)
       for (let i = 0; i < 8; i++) {
@@ -274,58 +387,74 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       break
     }
     case 'watering-can': {
-      cylinder(0.14, 0.28, [0, 0.14, 0], paint, 0.16)
-      cylinder(0.09, 0.02, [0, 0.29, 0], dark, 0.09)
-      const spout = cylinder(0.028, 0.32, [0.24, 0.24, 0], paint, 0.02)
-      spout.rotation.z = Math.PI / 2.6
-      const rose = disc(0.045, 0.015, [0.38, 0.31, 0], dark)
-      rose.rotation.y = Math.PI / 2.6 - Math.PI / 2
-      const handle = ring(0.14, 0.02, [0, 0.3, 0], paint)
-      handle.scale.set(1, 1.3, 0.6)
-      handle.rotation.x = Math.PI / 2
+      const body = new Mesh(createRoomCupGeometry(0.14, 0.16, 0.28, 0.014), paint)
+      body.name = 'Watering can body'
+      body.castShadow = body.receiveShadow = true
+      root.add(body)
+      lathe([[0.09, 0.27], [0.16, 0.27], [0.16, 0.28], [0.09, 0.28], [0.09, 0.27]], [0, 0, 0], paint)
+      cylinder(0.12, 0.006, [0, 0.2, 0], variant(dark, 'glass'))
+      const start = new Vector3(0.13, 0.12, 0)
+      const end = new Vector3(0.385, 0.31, 0)
+      const direction = end.clone().sub(start)
+      const spout = cylinder(0.028, direction.length(), start.clone().add(end).multiplyScalar(0.5).toArray(), paint, 0.02)
+      spout.name = 'Watering can spout'
+      spout.quaternion.setFromUnitVectors(new Vector3(0, 1, 0), direction.normalize())
+      const rose = cylinder(0.045, 0.015, end.addScaledVector(direction, 0.0065).toArray(), variant(dark, 'paint'))
+      rose.name = 'Watering can rose'
+      rose.quaternion.copy(spout.quaternion)
+      ring(0.14, 0.02, [0, 0.27, 0], paint, root, Math.PI).name = 'Watering can handle'
       break
     }
     case 'tea-set': {
+      surface(paint, 'ceramic')
       repaint(paint, wood)
       box([0.85, 0.03, 0.5], [0, 0.015, 0], wood, 0.03)
       const pot = [[0, 0], [0.14, 0], [0.17, 0.06], [0.16, 0.16], [0.1, 0.2], [0, 0.2]] as [number, number][]
       lathe(pot, [-0.2, 0.03, 0], paint)
       cylinder(0.05, 0.03, [-0.2, 0.24, 0], paint, 0.03)
-      box([0.04, 0.025, 0.04], [-0.2, 0.263, 0], dark, 0.01)
+      box([0.04, 0.025, 0.04], [-0.2, 0.263, 0], variant(dark, 'paint'), 0.01)
       const spout = cylinder(0.022, 0.16, [-0.34, 0.16, 0], paint, 0.014)
       spout.rotation.z = Math.PI / 2.8
-      const handle = ring(0.075, 0.016, [-0.05, 0.14, 0], paint)
-      handle.rotation.y = Math.PI / 2
+      ring(0.075, 0.016, [-0.05, 0.14, 0], paint, root, Math.PI).rotation.z = -Math.PI / 2
       cup([0.1, 0.045, 0.08], cream, cream)
       cup([0.28, 0.045, -0.08], cream, cream)
       break
     }
     case 'bathroom-scales': {
+      surface(dark, 'glass')
       box([0.65, 0.05, 0.65], [0, 0.025, 0], paint, 0.06)
       box([0.16, 0.01, 0.12], [0, 0.052, 0.18], silver, 0.01)
       box([0.14, 0.008, 0.1], [0, 0.056, 0.18], dark, 0.01)
-      for (const x of [-0.26, 0.26]) for (const z of [-0.26, 0.26]) disc(0.02, 0.006, [x, 0.052, z], silver)
+      for (const x of [-0.26, 0.26]) for (const z of [-0.26, 0.26]) cylinder(0.02, 0.006, [x, 0.052, z], silver)
       contactSize = [0.7, 0.7]
       break
     }
     case 'hair-dryer': {
+      surface(dark, 'paint')
       box([0.09, 0.24, 0.1], [0, 0.12, -0.05], paint, 0.035)
       const barrel = cylinder(0.075, 0.34, [0, 0.24, 0.12], paint, 0.07)
+      barrel.name = 'Hair dryer barrel'
       barrel.rotation.x = Math.PI / 2
-      cone(0.075, 0.14, [0, 0.24, 0.36], dark)
+      const nozzle = cylinder(0.07, 0.14, [0, 0.24, 0.36], dark, 0.035)
+      nozzle.name = 'Hair dryer nozzle'
+      nozzle.rotation.x = Math.PI / 2
       disc(0.07, 0.02, [0, 0.24, -0.05], dark)
       box([0.03, 0.05, 0.04], [0.06, 0.24, -0.02], silver, 0.01)
       break
     }
     case 'toothbrush-holder': {
+      surface(leaf, 'paint')
+      surface(silver, 'paint')
       repaint(cream)
       cylinder(0.055, 0.11, [0, 0.055, 0], cream, 0.05)
       const brushes: [number, number, MeshStandardMaterial][] = [
         [-0.02, 0.03, tomato], [0.02, -0.03, leaf], [0.045, 0.015, silver],
       ]
       for (const [x, z, color] of brushes) {
-        rod([x * 0.5, 0.09, z * 0.5], [x * 1.6, 0.25, z * 1.6], 0.011, color)
-        box([0.028, 0.05, 0.017], [x * 1.7, 0.28, z * 1.7], cream, 0.006)
+        const body = rod([x * 0.5, 0.09, z * 0.5], [x * 1.75, 0.285, z * 1.75], 0.011, color)
+        body.name = 'Continuous toothbrush body'
+        const bristles = box([0.028, 0.046, 0.017], [x * 1.82, 0.286, z * 1.82], variant(cream, 'fabric'), 0.006)
+        bristles.name = 'Toothbrush bristles attached to body'
       }
       break
     }
@@ -342,13 +471,15 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       break
     }
     case 'wall-calendar': {
+      surface(cream, 'paper')
+      surface(edge, 'paper')
       repaint(wood)
       box([0.62, 0.62, 0.03], [0, 0, -0.015], wood, 0.02)
       box([0.54, 0.54, 0.01], [0, 0, 0.006], cream, 0.01)
       for (let i = -2; i <= 2; i++) box([0.5, 0.006, 0.004], [0, i * 0.09, 0.012], edge, 0)
       for (let i = -2; i <= 2; i++) box([0.006, 0.5, 0.004], [i * 0.1, 0, 0.012], edge, 0)
       const loop = ring(0.03, 0.008, [0, 0.32, -0.01], silver)
-      loop.rotation.x = Math.PI / 2
+      loop.name = 'Calendar hanging loop'
       break
     }
     case 'key-hooks': {
@@ -360,12 +491,14 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       }
       for (const [x, color] of [[-0.2, tomato], [0.067, edge]] as [number, MeshStandardMaterial][]) {
         const head = ring(0.022, 0.008, [x, -0.11, 0.02], color)
-        head.rotation.y = Math.PI / 2
+        head.name = 'Hanging key ring'
         box([0.008, 0.06, 0.01], [x, -0.16, 0.02], silver, 0.003)
       }
       break
     }
     case 'bath-tray': {
+      surface(tomato, 'paper')
+      surface(cream, 'paper')
       repaint(wood)
       box([2.1, 0.045, 0.28], [0, 0.0225, 0], wood, 0.02)
       box([2.1, 0.05, 0.02], [0, 0.047, 0.12], wood, 0.01)
@@ -385,31 +518,35 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       break
     }
     case 'stand-mixer': {
+      surface(dark, 'paint')
       box([0.46, 0.16, 0.46], [0, 0.08, 0], paint, 0.045)
-      const bowl = [[0, 0], [0.16, 0], [0.19, 0.05], [0.18, 0.2], [0.14, 0.22], [0, 0.22]] as [number, number][]
+      const bowl = [[0, 0], [0.16, 0], [0.19, 0.05], [0.18, 0.2], [0.14, 0.22],
+        [0.125, 0.22], [0.165, 0.18], [0.175, 0.06], [0.14, 0.02], [0, 0.02]] as [number, number][]
       lathe(bowl, [0.02, 0.16, 0], silver)
       box([0.14, 0.5, 0.14], [-0.26, 0.33, 0], paint, 0.03)
       box([0.42, 0.13, 0.16], [-0.02, 0.615, 0], paint, 0.03)
-      box([0.16, 0.24, 0.16], [0.19, 0.48, 0], paint, 0.03)
-      disc(0.05, 0.02, [0.19, 0.36, 0], silver)
-      rod([0.19, 0.36, 0], [0.19, 0.22, 0], 0.012, silver)
+      box([0.16, 0.24, 0.16], [0.1, 0.52, 0], paint, 0.03)
+      cylinder(0.03, 0.025, [0.07, 0.388, 0], silver).name = 'Mixer attachment collar'
+      rod([0.07, 0.39, 0], [0.07, 0.225, 0], 0.012, silver).name = 'Mixer shaft'
       box([0.05, 0.05, 0.03], [-0.02, 0.53, 0.1], dark, 0.01)
       break
     }
     case 'waffle-maker': {
+      surface(tomato, 'glass')
       box([0.34, 0.09, 0.28], [0, 0.045, 0], paint, 0.02)
-      box([0.26, 0.02, 0.2], [0, 0.095, 0.02], dark, 0.01)
+      box([0.26, 0.02, 0.2], [0, 0.095, 0.02], variant(dark, 'metal'), 0.01)
       for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
         box([0.02, 0.008, 0.02], [ix * 0.08, 0.105, 0.02 + iz * 0.06], silver, 0.003)
       }
       const lid = box([0.34, 0.06, 0.28], [0.01, 0.14, -0.03], paint, 0.02)
       lid.rotation.x = -0.32
-      rod([-0.14, 0.155, -0.15], [0.14, 0.155, -0.15], 0.012, silver)
+      rod([-0.14, 0.096, -0.15], [0.14, 0.096, -0.15], 0.012, silver).name = 'Waffle maker hinge'
       box([0.1, 0.03, 0.05], [0, 0.2, 0.06], dark, 0.01)
       disc(0.014, 0.008, [0.14, 0.09, 0.13], tomato)
       break
     }
     case 'kitchen-scale': {
+      surface(dark, 'glass')
       box([0.3, 0.04, 0.24], [0, 0.02, 0], paint, 0.02)
       box([0.08, 0.006, 0.05], [0, 0.043, 0.075], dark, 0.008)
       cylinder(0.1, 0.02, [0, 0.05, -0.02], silver, 0.11)
@@ -418,21 +555,28 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       break
     }
     case 'cutting-boards': {
-      repaint(wood, lightWood)
+      const darkWood = material('Walnut cutting board', componentMaterialColors.coffee, 0.9, 'wood')
+      repaint(wood, lightWood, darkWood)
       box([0.5, 0.03, 0.16], [0, 0.015, 0], wood, 0.02)
       box([0.03, 0.14, 0.16], [-0.22, 0.09, 0], wood, 0.01)
       box([0.03, 0.14, 0.16], [0.22, 0.09, 0], wood, 0.01)
-      const board1 = box([0.4, 0.34, 0.02], [-0.09, 0.19, 0], wood, 0.015)
+      const board1 = box([0.4, 0.34, 0.02], [-0.09, 0.19, 0], darkWood, 0.015)
+      board1.name = 'Left cutting board'
       board1.rotation.z = 0.12
       const board2 = box([0.38, 0.3, 0.02], [0.1, 0.17, 0.005], lightWood, 0.015)
+      board2.name = 'Right cutting board'
       board2.rotation.z = -0.12
-      const hole1 = ring(0.025, 0.006, [-0.09, 0.33, 0.011], wood)
-      hole1.rotation.x = Math.PI / 2
+      const hole1 = ring(0.025, 0.006, [-0.09, 0.33, 0.011], darkWood)
+      hole1.position.copy(new Vector3(0, 0.12, 0.011).applyQuaternion(board1.quaternion).add(board1.position))
+      hole1.rotation.z = board1.rotation.z
       const hole2 = ring(0.025, 0.006, [0.1, 0.3, 0.016], lightWood)
-      hole2.rotation.x = Math.PI / 2
+      hole2.position.copy(new Vector3(0, 0.1, 0.011).applyQuaternion(board2.quaternion).add(board2.position))
+      hole2.rotation.z = board2.rotation.z
+      setComponentThumbnailRepresentative(root, board1, hole1)
       break
     }
     case 'mug-tree': {
+      surface(dark, 'glass')
       repaint(wood)
       cylinder(0.14, 0.03, [0, 0.015, 0], wood, 0.13)
       cylinder(0.02, 0.5, [0, 0.28, 0], wood)
@@ -442,37 +586,42 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
         const dx = Math.sin(angle) * 0.1
         const dz = Math.cos(angle) * 0.1
         rod([0.02 * Math.sin(angle), 0.42, 0.02 * Math.cos(angle)], [dx, 0.42, dz], 0.013, wood)
-        cup([dx * 1.2, 0.34, dz * 1.2], mugColors[i], mugColors[i])
+        cup([dx * 1.2, 0.34, dz * 1.2], mugColors[i], mugColors[i]).rotation.y = angle + Math.PI / 2
       }
       break
     }
     case 'cereal-dispenser': {
+      surface(dark, 'paint')
       repaint(wood)
+      const cereal = material('Breakfast cereal', componentMaterialColors.grain, 0.95, 'food')
       box([0.22, 0.05, 0.18], [0, 0.025, 0], wood, 0.02)
       const hopper = [[0, 0], [0.03, 0], [0.03, 0.05], [0.12, 0.05], [0.12, 0.31], [0.1, 0.33], [0, 0.33]] as [number, number][]
       lathe(hopper, [0, 0.05, 0], glass)
-      cylinder(0.09, 0.14, [0, 0.24, 0], lightWood, 0.08)
-      disc(0.1, 0.02, [0, 0.38, 0], wood)
+      cylinder(0.09, 0.14, [0, 0.24, 0], cereal, 0.08)
+      cylinder(0.1, 0.02, [0, 0.39, 0], wood).name = 'Cereal dispenser lid'
       cylinder(0.025, 0.03, [0, 0.06, 0.1], dark, 0.02)
       break
     }
     case 'egg-basket': {
+      surface(cream, 'food')
       repaint(wood, lightWood)
-      const basket = [[0, 0], [0.12, 0], [0.16, 0.05], [0.17, 0.1], [0.15, 0.14], [0, 0.14]] as [number, number][]
-      lathe(basket, [0, 0, 0], wood)
+      const basket = [[0, 0], [0.12, 0], [0.16, 0.05], [0.17, 0.1], [0.15, 0.14],
+        [0.138, 0.14], [0.152, 0.095], [0.143, 0.052], [0.11, 0.018], [0, 0.018]] as [number, number][]
+      lathe(basket, [0, 0, 0], variant(wood, 'fabric'))
       const weave = ring(0.15, 0.006, [0, 0.06, 0], lightWood)
       weave.rotation.x = Math.PI / 2
-      const handle = ring(0.13, 0.012, [0, 0.14, 0], wood)
-      handle.rotation.x = Math.PI / 2
-      handle.scale.set(1, 1.4, 0.5)
+      ring(0.13, 0.012, [0, 0.14, 0], wood, root, Math.PI).name = 'Basket handle'
       const eggPositions: [number, number][] = [[-0.05, 0.02], [0.05, -0.01], [0, 0.06], [-0.03, -0.05], [0.06, 0.04]]
       for (const [x, z] of eggPositions) {
-        const egg = blob(0.042, [x, 0.1, z], cream)
+        const egg = blob(0.042, [x, 0.11, z], cream)
         egg.scale.set(1, 1.3, 1)
       }
       break
     }
     case 'wall-shelf': {
+      surface(tomato, 'paper')
+      surface(dark, 'paper')
+      surface(leaf, 'paper')
       repaint(wood)
       box([0.9, 0.04, 0.22], [0, 0, 0.1], wood, 0.02)
       box([0.9, 0.05, 0.03], [0, 0, -0.01], wood, 0.015)
@@ -507,16 +656,19 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       const ironNose = cone(0.05, 0.16, [0.13, boardHeight + 0.085, 0.15], paint)
       ironNose.rotation.z = -Math.PI / 2
       box([0.22, 0.02, 0.11], [0, boardHeight + 0.03, 0.15], silver, 0.02)
-      const ironHandle = ring(0.06, 0.012, [0, boardHeight + 0.15, 0.15], dark)
+      const ironHandle = ring(0.06, 0.012, [0, boardHeight + 0.15, 0.15], variant(dark, 'paint'))
       ironHandle.scale.set(1, 0.6, 1.3)
       ironHandle.rotation.x = Math.PI / 2
       contactSize = [1.8, 0.6]
       break
     }
     case 'toilet-brush': {
+      surface(paint, 'ceramic')
+      surface(dark, 'paint')
+      surface(leaf, 'fabric')
       const holder = [[0, 0], [0.06, 0], [0.065, 0.02], [0.05, 0.28], [0.045, 0.3], [0, 0.3]] as [number, number][]
       lathe(holder, [0, 0, 0], paint)
-      disc(0.062, 0.012, [0, 0.3, 0], dark)
+      cylinder(0.052, 0.012, [0, 0.306, 0], dark).name = 'Toilet brush holder lid'
       rod([0, 0.28, 0], [0, 0.7, 0], 0.014, silver)
       cylinder(0.022, 0.05, [0, 0.73, 0], dark, 0.018)
       for (let i = 0; i < 6; i++) {
@@ -529,27 +681,30 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       box([0.08, 0.03, 0.04], [0, 0.36, 0.015], silver, 0.01)
       rod([0, 0.36, 0.03], [0, 0.36, 0.06], 0.012, silver)
       const handleRing = ring(0.025, 0.008, [0, 0.35, 0.02], silver)
-      handleRing.rotation.x = Math.PI / 2
+      handleRing.name = 'Squeegee hanging loop'
       box([0.035, 0.55, 0.035], [0, 0.08, 0.05], paint, 0.012)
-      box([0.55, 0.05, 0.02], [0, -0.22, 0.07], dark, 0.015)
+      box([0.55, 0.05, 0.02], [0, -0.22, 0.07], variant(dark, 'paint'), 0.015)
       box([0.55, 0.09, 0.012], [0, -0.29, 0.075], dark, 0.008)
       break
     }
     case 'tissue-box': {
+      const paper = variant(cream, 'paper')
       box([0.24, 0.11, 0.14], [0, 0.055, 0], paint, 0.015)
-      const rim = ring(0.06, 0.01, [0, 0.111, 0], cream)
+      const rim = ring(0.06, 0.01, [0, 0.111, 0], variant(cream, 'paint'))
       rim.rotation.x = Math.PI / 2
       rim.scale.set(1.4, 1, 0.6)
-      const sheetA = box([0.05, 0.05, 0.008], [0, 0.135, 0], cream, 0.01)
+      const sheetA = box([0.05, 0.05, 0.008], [0, 0.135, 0], paper, 0.01)
       sheetA.rotation.z = 0.3
-      const sheetB = box([0.045, 0.045, 0.008], [0.01, 0.14, 0.01], cream, 0.01)
+      const sheetB = box([0.045, 0.045, 0.008], [0.01, 0.14, 0.01], paper, 0.01)
       sheetB.rotation.z = -0.25
       sheetB.rotation.x = 0.2
       break
     }
     case 'first-aid-kit': {
+      surface(leaf, 'paint')
+      leaf.color.set(componentMaterialColors.medical)
       box([0.26, 0.16, 0.18], [0, 0.08, 0], paint, 0.02)
-      box([0.27, 0.01, 0.19], [0, 0.16, 0], dark, 0.01)
+      box([0.27, 0.01, 0.19], [0, 0.16, 0], variant(dark, 'paint'), 0.01)
       box([0.14, 0.02, 0.005], [0, 0.09, 0.091], leaf, 0.005)
       box([0.02, 0.14, 0.005], [0, 0.09, 0.091], leaf, 0.005)
       const handle = ring(0.05, 0.012, [0, 0.17, 0], dark)
@@ -561,10 +716,11 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
     }
     case 'reed-diffuser': {
       repaint(wood, lightWood)
+      const oil = material('Diffuser oil', '#c5a062', 0.18, 'glass')
       cylinder(0.09, 0.015, [0, 0.0075, 0], wood)
       const bottle = [[0, 0], [0.055, 0], [0.06, 0.09], [0.045, 0.12], [0.02, 0.13], [0.02, 0.16], [0, 0.16]] as [number, number][]
       lathe(bottle, [0, 0.015, 0], glass)
-      cylinder(0.045, 0.07, [0, 0.05, 0], lightWood, 0.045)
+      cylinder(0.045, 0.07, [0, 0.05, 0], oil, 0.045)
       for (let i = 0; i < 5; i++) {
         const angle = (i / 5) * Math.PI * 2
         const dx = Math.sin(angle) * 0.015
@@ -574,35 +730,40 @@ export function buildAdditionalComponentModel(component: RoomComponent, tools: A
       break
     }
     case 'board-game': {
+      const darkSquare = variant(dark, 'paper')
+      const lightSquare = variant(cream, 'paper')
+      const dice = variant(cream, 'paint')
+      const pips = variant(dark, 'paint')
       repaint(wood)
       box([0.5, 0.03, 0.5], [0, 0.015, 0], wood, 0.02)
       for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) {
         const isDark = (r + c) % 2 === 0
-        box([0.065, 0.01, 0.065], [-0.175 + c * 0.07, 0.036, -0.175 + r * 0.07], isDark ? dark : cream, 0.004)
+        box([0.065, 0.01, 0.065], [-0.175 + c * 0.07, 0.036, -0.175 + r * 0.07], isDark ? darkSquare : lightSquare, 0.004)
       }
-      const dieA = box([0.045, 0.045, 0.045], [0.15, 0.0525, 0.15], cream, 0.006)
+      const dieA = box([0.045, 0.045, 0.045], [0.15, 0.0525, 0.15], dice, 0.006)
       dieA.rotation.y = 0.4
-      const dieB = box([0.04, 0.04, 0.04], [0.18, 0.05, -0.13], cream, 0.006)
+      const dieB = box([0.04, 0.04, 0.04], [0.18, 0.05, -0.13], dice, 0.006)
       dieB.rotation.y = -0.25
       for (const [x, z] of [[0.14, 0.13], [0.16, 0.17], [0.18, 0.15]] as [number, number][]) {
-        cylinder(0.006, 0.006, [x, 0.078, z], dark, 0.006)
+        cylinder(0.006, 0.006, [x, 0.078, z], pips, 0.006)
       }
       const tokens: [number, number, MeshStandardMaterial][] = [[-0.18, -0.18, apple], [0.18, -0.18, lime], [-0.18, 0.05, silver]]
       for (const [x, z, color] of tokens) cylinder(0.022, 0.03, [x, 0.05, z], color, 0.014)
       break
     }
     case 'record-player': {
+      surface(tomato, 'paper')
       repaint(wood)
       box([0.42, 0.06, 0.32], [0, 0.03, 0], wood, 0.02)
       cylinder(0.15, 0.015, [-0.02, 0.068, 0.02], dark, 0.15)
-      cylinder(0.14, 0.006, [-0.02, 0.077, 0.02], dark, 0.14)
-      disc(0.04, 0.008, [-0.02, 0.081, 0.02], tomato)
-      const groove = ring(0.1, 0.003, [-0.02, 0.081, 0.02], silver)
+      cylinder(0.14, 0.006, [-0.02, 0.077, 0.02], variant(dark, 'paint'), 0.14)
+      cylinder(0.04, 0.002, [-0.02, 0.081, 0.02], tomato).name = 'Record label'
+      const groove = ring(0.1, 0.003, [-0.02, 0.081, 0.02], variant(silver, 'paint'))
       groove.rotation.x = Math.PI / 2
       cylinder(0.006, 0.02, [-0.02, 0.088, 0.02], silver)
       cylinder(0.02, 0.03, [0.16, 0.075, -0.1], silver, 0.02)
       rod([0.16, 0.09, -0.1], [0.02, 0.085, 0.06], 0.008, silver)
-      box([0.03, 0.012, 0.02], [0.02, 0.083, 0.06], dark, 0.004)
+      box([0.03, 0.012, 0.02], [0.02, 0.083, 0.06], variant(dark, 'paint'), 0.004)
       cylinder(0.014, 0.01, [0.15, 0.062, 0.13], silver, 0.014)
       cylinder(0.014, 0.01, [0.19, 0.062, 0.13], silver, 0.014)
       break

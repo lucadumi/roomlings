@@ -10,13 +10,30 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 - Track the monthly grocery budget and record roommate repayments.
 - Share a household through verified-email accounts, invitations and saved access.
 - Customize all three rooms with optional appliances, furniture and decorations across compatible, live-previewed positions.
+- Keep rooms clear with zone filters, placement limits and reversible object storage.
 - Give room admins editing access while everyone uses the same supplies, chores and manually recorded object states.
 
 The room's objects open these tools, and a toolbar keeps them available without 3D. **Room objects** groups each kind into one preview card, with position choices for repeated objects. Its **Edit room** action lets admins preview and apply a shared layout. Installing or moving an object never creates a purchase, debt or chore. Every balance comes from the same shared ledger.
 
-The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, mug tree, record player, board game and reed diffuser. **Rooms** opens a compact preview menu directly beneath its button.
+The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, fruit bowl, wall-mounted spice rack, tea set and board game. Retired extras are no longer offered for new placements; existing saved objects and their linked history remain editable. **Rooms** opens a compact preview menu directly beneath its button.
 
-The living room includes a corner sofa, coffee table, TV and media unit, bookshelf, reading lamp, rug and curtained window. All three rooms use the same starting camera scale. Their objects share the same chores, shopping list and ledger. Existing saved layouts gain the living room without resetting their furniture or browser access.
+Zone limits affect new placements, not whether an existing home can open. Stored
+objects retain their settings and history while linked care and supply shortcuts
+pause. New households start with essential bathroom objects; older homes keep
+their saved rooms.
+
+The living room includes a corner sofa, coffee table, wall-mounted TV above a media unit with two compact, sharp-edged speakers, bookshelf, reading lamp, rug and curtained window, without a default garbage bin. The kitchen has matching back and left-wall windows with the same landscape view, plus a slim extractor hood over the hob. All three rooms share the same chores, shopping list and ledger. Existing saved layouts gain the living room without resetting their furniture or browser access.
+
+Matte material textures, soft reflected lighting and naturally rounded edges soften the
+existing room models without changing their layouts or proportions. Front-wall
+entry doors follow the room cutaways. The interface retains its original sage,
+honey and clay theme, independently of room colors.
+View navigation moves only the camera; room geometry keeps its authored transform.
+
+The flat Patchwork logo uses outlined Baloo 2 lettering. Baloo 2 also carries
+headings and display text, while DM Sans remains the body and control font.
+Request and scene loading states use a static Patchwork icon; branding has no 3D
+variant. Object thumbnails and room-selector renders use the same reduced-motion-aware spinner.
 
 ## Run locally
 
@@ -39,6 +56,17 @@ Email sign-in needs [Supabase setup](docs/accounts.md). Existing real browser ac
 ## Development
 
 TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. All rooms share household access, chores, shopping and financial history.
+
+`src/surfaceMaterials.ts` shares deterministic, DOM-free room textures and releases
+them when their last material owner is disposed. Use its material/clone helpers
+for textured room surfaces, and keep physical finish roles separate from palette
+color bindings. Surface preparation changes texture coordinates, not model shapes.
+`src/roomGeometry.ts` controls bounded bevels and circular detail while preserving
+dimensions and crisp thin details. Static batches index identical vertices without
+merging distinct normals or texture coordinates.
+`src/roomEnvironment.ts` owns each renderer's reusable reflection map. Preview
+rendering yields between offscreen images, and material warmup does not leave
+uncancellable shader polling behind when a room unmounts.
 
 | Command | Purpose |
 | --- | --- |

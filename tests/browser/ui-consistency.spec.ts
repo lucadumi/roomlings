@@ -38,6 +38,82 @@ async function expectSeparateTitleAndClose(container: Locator) {
 test.describe('UI consistency', () => {
   test.use({ reducedMotion: 'reduce' })
 
+  test('YOUR SHARE stays compact and still opens the shared settlement view', async ({ page, accounts, emptyHousehold: owner }) => {
+    await page.setViewportSize({ width: 1440, height: 960 })
+    const before = await accounts.store.get(owner.household.id)
+    await page.goto('/kitchen')
+    const balance = page.getByRole('button', { name: 'Your household balance', exact: true })
+    await expect(balance).toBeVisible()
+    await expect(balance).toHaveCSS('padding', '9px 12px')
+    await expect(balance.locator('strong')).toHaveCSS('font-size', '24px')
+    const bounds = await balance.boundingBox()
+    expect(bounds?.height).toBeGreaterThanOrEqual(44)
+    expect(bounds?.height).toBeLessThan(80)
+    expect(bounds?.width).toBeLessThan(200)
+    await balance.click()
+    await expect(page.locator('.room-panel')).toBeVisible()
+    await expect(page.locator('.game-dock').getByRole('button', { name: 'Settle up', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(balance).toHaveAttribute('aria-pressed', 'true')
+    expect(await accounts.store.get(owner.household.id)).toEqual(before)
+  })
+
+  for (const roomId of ['bathroom', 'living-room'] as const) {
+    test(`${roomId} quick actions stay together inside the available room area`, { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
+      for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }, { width: 320, height: 568 }, { width: 568, height: 400 }]) {
+        await page.setViewportSize(viewport)
+        await page.goto(`/rooms/${roomId}`)
+        const world = page.locator('.chore-room-world')
+        await expect(world).toBeVisible({ timeout: 30_000 })
+        const actions = world.locator('.chore-room-quick-actions')
+        const chores = actions.getByRole('button', { name: 'Room chores', exact: true })
+        const supplies = actions.getByRole('button', { name: 'Restock supplies', exact: true })
+        await expect(chores).toBeVisible()
+        const checkBounds = async () => {
+          await expect(chores).toBeInViewport({ ratio: 1 })
+          await expect(supplies).toBeInViewport({ ratio: 1 })
+          for (const button of [chores, supplies]) {
+            await expect(button).toHaveCSS('opacity', '1')
+            expect(await button.evaluate((element) => {
+              const canvas = document.createElement('canvas')
+              canvas.width = canvas.height = 1
+              const context = canvas.getContext('2d')!
+              context.fillStyle = getComputedStyle(element).backgroundColor
+              context.fillRect(0, 0, 1, 1)
+              return context.getImageData(0, 0, 1, 1).data[3]
+            })).toBe(255)
+          }
+          await expect.poll(() => actions.evaluate((element) => {
+            const room = element.closest('.chore-room-world')!.getBoundingClientRect()
+            const buttons = [...element.querySelectorAll('button')]
+            const [first, second] = buttons.map((button) => button.getBoundingClientRect())
+            const camera = element.closest('.chore-room-world')!.querySelector('.world-camera-controls')?.getBoundingClientRect()
+            const overlaps = (box: DOMRect) => camera
+              && Math.min(box.right, camera.right) > Math.max(box.left, camera.left)
+              && Math.min(box.bottom, camera.bottom) > Math.max(box.top, camera.top)
+            return {
+              inside: [first, second].every((box) => box.left >= room.left && box.right <= room.right + 1
+                && box.top >= room.top && box.bottom <= room.bottom + 1),
+              separate: first.right + 6 <= second.left,
+              clearOfCamera: !overlaps(first) && !overlaps(second),
+              clickable: buttons.every((button) => {
+                const box = button.getBoundingClientRect()
+                const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+                return top !== null && button.contains(top)
+              }),
+            }
+          })).toEqual({ inside: true, separate: true, clearOfCamera: true, clickable: true })
+        }
+        await checkBounds()
+        await chores.click()
+        await expect(page.locator('.room-panel')).toBeVisible()
+        await checkBounds()
+        await supplies.click()
+        await expect(page.locator('.room-panel h2')).toContainText('supplies')
+        await checkBounds()
+      }
+    })
+  }
+
   for (const viewport of [{ width: 1440, height: 960 }, { width: 1024, height: 900 }, { width: 850, height: 900 }, { width: 801, height: 900 }, { width: 390, height: 844 }]) {
     test(`focus labels stay centered while panels change at ${viewport.width}px`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
       await page.setViewportSize(viewport)

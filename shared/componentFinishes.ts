@@ -6,7 +6,7 @@ export const componentFinishSchema = z.enum([
 ])
 export type ComponentFinish = z.infer<typeof componentFinishSchema>
 export const componentFinishes: Record<ComponentFinish, { name: string; color: string | null }> = {
-  room: { name: 'Match room colors', color: null },
+  room: { name: 'Default materials', color: null },
   cream: { name: 'Warm cream', color: '#fcf9f1' },
   sage: { name: 'Sage green', color: '#81b29a' },
   tomato: { name: 'Tomato red', color: '#e07a5f' },

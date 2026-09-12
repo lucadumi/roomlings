@@ -6,7 +6,7 @@
   --palette-clay: #e07a5f;
   --palette-red: #b8533b;
   --font-body: 'DM Sans Variable', sans-serif;
-  --font-heading: 'Fraunces Variable', Georgia, serif;
+  --font-heading: 'Baloo 2 Variable', sans-serif;
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--paper);
@@ -64,7 +64,10 @@
   --control-hover: var(--leaf-soft);
   --control-ink: var(--ink);
   --control-shadow: 0 2px 0 #3d405b1a;
-  --modal-shadow: 0 5px 0 #809b5947, 0 24px 65px #334b2733;
+  --raised-shadow-color: #809b5947;
+  --ambient-shadow-color: #334b2733;
+  --modal-shadow: 0 5px 0 var(--raised-shadow-color), 0 24px 65px var(--ambient-shadow-color);
+  --paper-shadow: drop-shadow(0 5px 0 var(--raised-shadow-color));
   --action-fill: var(--palette-red);
   --action-hover: #9f4533;
   --action-ink: #ffffff;
@@ -90,7 +93,7 @@ h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { font-weight: 500; }
 h1, h2, .brand, .sidebar-note p, .fridge-headline, .spend-amount, .handwritten-note, .grocery-summary > div > strong {
   font-family: var(--font-heading);
-  font-variation-settings: 'SOFT' 15, 'WONK' 1;
+  font-weight: 600;
 }
 em { font-weight: inherit; }
 .app-shell { display: flex; min-height: 100vh; }
@@ -200,7 +203,7 @@ h1 em { color: var(--muted); }
 .card-topline { display: flex; align-items: center; justify-content: space-between; }
 .card-topline .eyebrow { font-size: 8px; letter-spacing: 1.2px; }
 .card-topline > .icon-button { padding: 0; }
-.spend-amount { font-size: 39px; color: var(--leaf-ink); letter-spacing: -1.5px; font-weight: 430; margin: 12px 0 17px; display: flex; align-items: baseline; gap: 12px; }
+.spend-amount { font-size: 39px; color: var(--leaf-ink); letter-spacing: -1.5px; font-weight: 600; margin: 12px 0 17px; display: flex; align-items: baseline; gap: 12px; }
 .spend-amount > span { font-family: var(--font-body); font-size: 10px; letter-spacing: 0; color: var(--muted); font-weight: 400; }
 .budget-track { height: 7px; background: var(--surface-muted); border-radius: 3px; overflow: hidden; }
 .budget-track > div { height: 100%; background: var(--sage); border-radius: 3px; transition: width 600ms; background-image: repeating-linear-gradient(110deg, transparent 0, transparent 5px, #ffffff20 5px, #ffffff20 6px); }
@@ -280,7 +283,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
 .grocery-summary { padding: 25px; display: flex; gap: 38px; border-radius: 11px; background: var(--control-surface); border: 0; align-items: center; flex-wrap: wrap; }
 .grocery-summary > div:not(.category-breakdown) { display: flex; flex-direction: column; gap: 8px; }
 .grocery-summary .eyebrow { font-size: 8px; }
-.grocery-summary > div > strong { font-size: 33px; font-weight: 450; letter-spacing: -1px; color: var(--muted); }
+.grocery-summary > div > strong { font-size: 33px; font-weight: 600; letter-spacing: -1px; color: var(--muted); }
 .category-breakdown { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; max-width: 370px; }
 .breakdown-item { display: flex; align-items: center; gap: 6px; font-size: 9px; border-radius: 5px; padding: 9px; }
 .breakdown-item strong { font-weight: 600; }
@@ -300,7 +303,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
 .settle-balances { align-self: start; padding-top: 25px; }
 .settle-balances .balance-row { padding: 16px 0; }
 .settle-balances .balance-list { margin-top: 22px; }
-.handwritten-note { text-align: center; font-style: italic; font-size: 34px; color: var(--muted); line-height: 1.15; padding: 37px 0 25px; transform: rotate(-7deg); }
+.handwritten-note { text-align: center; font-size: 34px; color: var(--muted); line-height: 1.15; padding: 37px 0 25px; transform: rotate(-7deg); }
 .payment-history { margin-top: 32px; }
 .payment-history .section-heading h2 { font-size: 23px; }
 .history-row { display: flex; align-items: center; gap: 10px; padding: 18px 0; border-bottom: 1px solid var(--line); }
@@ -336,7 +339,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
 .saved-kitchens small { font-size: 9px; color: var(--muted); }
 .kitchen-settings hr { height: 1px; background: var(--control-border); border: 0; margin: 27px 0 23px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 46px 15px; }
-.empty-state h3 { font-family: var(--font-heading); color: var(--muted); font-size: 23px; letter-spacing: -0.5px; margin: 20px 0 8px; }
+.empty-state h3 { font-family: var(--font-heading); font-weight: 600; color: var(--muted); font-size: 23px; letter-spacing: -0.5px; margin: 20px 0 8px; }
 .empty-state p { font-size: 11px; color: var(--muted); line-height: 1.6; margin: 0 0 17px; }
 .empty-bag { position: relative; color: var(--muted); transform: rotate(-9deg); }
 .empty-bag > svg:last-child { position: absolute; right: -12px; top: -2px; transform: rotate(25deg); }
@@ -387,7 +390,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
 .form-footnote { text-align: center; color: var(--muted); font-size: 9px; margin: 13px 0 0; }
 .payment-summary { padding: 22px; background: var(--disabled-surface); border: 1px solid var(--control-border); border-radius: 9px; text-align: center; color: var(--muted); margin-bottom: 25px; }
 .payment-summary > span { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: center; font-size: 12px; }
-.payment-summary strong { font-family: var(--font-heading); display: block; font-weight: 450; font-size: 42px; letter-spacing: -1px; color: var(--muted); margin-top: 17px; }
+.payment-summary strong { font-family: var(--font-heading); display: block; font-weight: 600; font-size: 42px; letter-spacing: -1px; color: var(--muted); margin-top: 17px; }
 .invite-content .field input { font-size: inherit; }
 .invite-content > .field-hint { margin-top: 16px; }
 .invite-rotate { margin-top: 28px; border-top: 1px solid var(--leaf-soft); padding-top: 17px; }
@@ -578,7 +581,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
   .nav-item.active { background: #e9eddf; }
   .nav-count { top: 3px; right: calc(50% - 21px); font-size: 7px; }
   .topbar { height: 60px; padding: 0 19px; }
-  .breadcrumb > strong { font-family: var(--font-heading); color: #647257; font-size: 17px; letter-spacing: -0.4px; }
+  .breadcrumb > strong { font-family: var(--font-heading); font-weight: 600; color: #647257; font-size: 17px; letter-spacing: -0.4px; }
   .topbar-right { gap: 8px; }
   .sync-status { font-size: 0; gap: 0; }
   .sync-status > span { width: 6px; height: 6px; }

@@ -1,13 +1,6 @@
-import type { RoomId } from '../shared/rooms.ts'
 import { roomIds } from '../shared/rooms.ts'
 import { createRoomPreviewCache } from './roomPreviewCache.ts'
 import type { RoomPreviewOptions } from './roomPreviewCache.ts'
-import kitchen from './assets/rooms/kitchen.png'
-import bathroom from './assets/rooms/bathroom.png'
-import livingRoom from './assets/rooms/living-room.png'
-
-export const roomPreviewImages: Record<RoomId, string> = { kitchen, bathroom, 'living-room': livingRoom }
-
 const savedPreviews = createRoomPreviewCache(async (options) => {
   const { renderHouseholdRoomPreviews } = await import('./householdRoomPreview.ts')
   return renderHouseholdRoomPreviews(options)

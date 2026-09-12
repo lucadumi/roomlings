@@ -1,12 +1,28 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { Box3, Group, Mesh, Raycaster, Vector3 } from 'three'
-import { addContactShadows, createContactShadowTexture, createRoomLights, fitRoomShadowBounds } from '../src/lighting.ts'
+import { Box3, DirectionalLight, Group, Mesh, Raycaster, Vector3 } from 'three'
+import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, fitRoomShadowBounds } from '../src/lighting.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { completeRoomLayout } from './room-layout-fixture.ts'
 import { roomRotationPeriod } from '../src/camera.ts'
 
 describe('room lighting', () => {
+  it('adds front and overhead fill without creating more shadow maps', () => {
+    const lights = createRoomLights()
+    assert.equal(lights.fillLights.length, 3)
+    assert.ok(lights.fillLights.includes(lights.fill))
+    assert.equal(new Set(lights.fillLights.map((light) => light.position.toArray().join(','))).size, 3)
+    for (const fill of lights.fillLights) {
+      assert.equal(fill.parent, lights.group)
+      assert.equal(fill.intensity, daylight.fill)
+      assert.equal(fill.castShadow, false)
+      assert.equal(fill.shadow.map, null)
+    }
+    assert.deepEqual(lights.group.children.filter((light) => light instanceof DirectionalLight && light.castShadow), [lights.sunlight])
+    assert.equal(lights.sunlight.shadow.autoUpdate, false)
+    lights.sunlight.shadow.dispose()
+  })
+
   it('keeps the entire room inside its shadow volume throughout a drag', () => {
     const { group, sunlight } = createRoomLights()
     group.updateMatrixWorld(true)

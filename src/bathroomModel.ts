@@ -1,8 +1,7 @@
 import {
-  Box3, BoxGeometry, CylinderGeometry, Group, LatheGeometry, Mesh,
+  Box3, CylinderGeometry, Group, LatheGeometry, Mesh,
   MeshStandardMaterial, Object3D, Vector2, Vector3,
 } from 'three'
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 import type { RoomStyle } from '../shared/domain.ts'
 import { cameraFraming, fitRoomBounds } from './camera.ts'
 import type { SceneFocus } from './camera.ts'
@@ -12,6 +11,10 @@ import type { RoomStyleMaterials } from './roomStyles.ts'
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
 import { bathroomCaddyShelf, bathroomLayout, bathroomMat, componentPlacements, roomFootprints, roomShellLayout } from './roomLayout.ts'
 import { buildRoomWalls } from './roomShell.ts'
+import { createRoomMaterial, createRoomMaterialVariant, prepareRoomSurfaceGeometry, roomMaterialSurface } from './surfaceMaterials.ts'
+import type { RoomSurface } from './surfaceMaterials.ts'
+import { createRoomBoxGeometry, roomRadialSegments } from './roomGeometry.ts'
+import { componentMaterialColors } from './componentMaterials.ts'
 
 export const bathroomTargets = ['sink', 'mirror', 'toilet', 'bath', 'floor', 'chores', 'supplies'] as const
 export type BathroomTarget = typeof bathroomTargets[number]
@@ -29,29 +32,39 @@ export function bathroomFocusForRequest(target: SceneFocus | BathroomFocus): Bat
 
 export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const materials: MeshStandardMaterial[] = []
-  const material = (name: string, color: string, roughness = 0.85) => {
-    const result = new MeshStandardMaterial({ color, roughness, flatShading: true })
-    result.name = name
+  const material = (name: string, color: string, roughness = 0.85, finish: RoomSurface = 'paint') => {
+    const result = createRoomMaterial(color, roughness, finish, name)
     materials.push(result)
     return result
   }
-  const surface = (name: keyof RoomStyleMaterials) => material(name, roomPresets[style].colors[name])
-  const styleMaterials: RoomStyleMaterials = {
-    wall: surface('wall'), trim: surface('trim'), floor: surface('floor'), floorAlternate: surface('floorAlternate'),
-    fridge: surface('fridge'), fridgeDoor: surface('fridgeDoor'), fridgeEdge: surface('fridgeEdge'),
-    cabinet: surface('cabinet'), cabinetPanel: surface('cabinetPanel'), counter: surface('counter'),
-    wood: surface('wood'), lightWood: surface('lightWood'), woodGrain: surface('woodGrain'),
+  const variants = new Map<MeshStandardMaterial, Map<RoomSurface, MeshStandardMaterial>>()
+  const variant = (source: MeshStandardMaterial, finish: RoomSurface) => {
+    if (roomMaterialSurface(source) === finish) return source
+    const cached = variants.get(source)?.get(finish)
+    if (cached) return cached
+    const result = createRoomMaterialVariant(source, finish)
+    materials.push(result)
+    const choices = variants.get(source) ?? new Map<RoomSurface, MeshStandardMaterial>()
+    choices.set(finish, result)
+    variants.set(source, choices)
+    return result
   }
-  const porcelain = material('Warm porcelain', roomAccents.cream, 0.55)
-  const water = material('Bath water', roomAccents.water, 0.48)
-  const silver = material('Brushed fittings', roomAccents.metal, 0.36)
-  silver.metalness = 0.25
-  const mirrorGlass = material('Opaque mirror', roomAccents.sky, 0.38)
-  mirrorGlass.metalness = 0.2
+  const surface = (name: keyof RoomStyleMaterials, finish: RoomSurface = 'paint') => material(name, roomPresets[style].colors[name], 0.85, finish)
+  const styleMaterials: RoomStyleMaterials = {
+    wall: surface('wall', 'plaster'), trim: surface('trim'), floor: surface('floor', 'tile'), floorAlternate: surface('floorAlternate', 'tile'),
+    fridge: surface('fridge'), fridgeDoor: surface('fridgeDoor', 'fabric'), fridgeEdge: surface('fridgeEdge'),
+    cabinet: surface('cabinet'), cabinetPanel: surface('cabinetPanel'), counter: surface('counter', 'ceramic'),
+    wood: surface('wood', 'wood'), lightWood: surface('lightWood', 'wood'), woodGrain: surface('woodGrain', 'wood'),
+  }
+  const porcelain = material('Warm porcelain', roomAccents.cream, 0.55, 'ceramic')
+  const water = material('Bath water', componentMaterialColors.water, 0.18, 'glass')
+  const silver = material('Brushed fittings', componentMaterialColors.steel, 0.36, 'metal')
+  const mirrorGlass = material('Opaque mirror', roomAccents.sky, 0.22, 'metal')
   const tomato = material('Tomato accessories', roomAccents.tomato, 0.75)
-  const linen = material('Folded linen', roomAccents.linen)
-  const dark = material('Fitting recesses', roomAccents.ink)
-  const lampMaterial = material('Mirror light', '#fff1ce', 0.65)
+  const linen = material('Folded linen', roomAccents.linen, 0.98, 'fabric')
+  const paper = material('Paper rolls and labels', roomAccents.linen, 0.98, 'paper')
+  const dark = material('Fitting recesses', roomAccents.ink, 0.9, 'rubber')
+  const lampMaterial = material('Mirror light', '#fff1ce', 0.65, 'light')
   lampMaterial.emissive.set('#ffe5b0')
   lampMaterial.emissiveIntensity = 0.2
   const actors = new Map<BathroomTarget, Group>()
@@ -72,7 +85,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     return group
   }
   const box = (parent: Group, dimensions: Position, position: Position, mat: MeshStandardMaterial, radius = 0) => {
-    const geometry = radius ? new RoundedBoxGeometry(...dimensions, 1, radius) : new BoxGeometry(...dimensions)
+    const geometry = createRoomBoxGeometry(dimensions, radius)
     const mesh = new Mesh(geometry, mat)
     mesh.position.set(...position)
     mesh.castShadow = Math.min(...dimensions) > 0.025
@@ -81,7 +94,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     return mesh
   }
   const cylinder = (parent: Group, radius: number, height: number, position: Position, mat: MeshStandardMaterial, top = radius, segments = 10) => {
-    const mesh = new Mesh(new CylinderGeometry(top, radius, height, segments), mat)
+    const mesh = new Mesh(new CylinderGeometry(top, radius, height, Math.max(segments, roomRadialSegments(Math.max(top, radius)))), mat)
     mesh.position.set(...position)
     mesh.castShadow = radius > 0.025 && height > 0.025
     mesh.receiveShadow = true
@@ -89,7 +102,8 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     return mesh
   }
   const basin = (parent: Group, profile: [number, number][], scale: Position, position: Position, mat = porcelain) => {
-    const mesh = new Mesh(new LatheGeometry(profile.map(([radius, y]) => new Vector2(radius, y)), 16), mat)
+    const mesh = new Mesh(new LatheGeometry(profile.map(([radius, y]) => new Vector2(radius, y)),
+      roomRadialSegments(Math.max(...profile.map(([radius]) => radius)))), mat)
     mesh.scale.set(...scale)
     mesh.position.set(...position)
     mesh.castShadow = true
@@ -97,14 +111,14 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     parent.add(mesh)
     return mesh
   }
-  const bottle = (parent: Group, position: Position, mat: MeshStandardMaterial, height = 0.38) => {
+  const bottle = (parent: Group, position: Position, mat: MeshStandardMaterial, height = 0.38, withLabel = true) => {
     const group = new Group()
     group.position.set(...position)
     parent.add(group)
-    cylinder(group, 0.12, height, [0, height / 2, 0], mat, 0.095, 8)
-    cylinder(group, 0.045, 0.11, [0, height + 0.055, 0], porcelain, 0.045, 8)
+    cylinder(group, 0.12, height, [0, height / 2, 0], variant(mat, 'paint'), 0.095, 8)
+    cylinder(group, 0.045, 0.11, [0, height + 0.055, 0], variant(porcelain, 'paint'), 0.045, 8)
     box(group, [0.17, 0.045, 0.055], [0.05, height + 0.11, 0], dark, 0.012)
-    box(group, [0.12, height * 0.38, 0.016], [0, height * 0.47, 0.117], linen)
+    if (withLabel) box(group, [0.12, height * 0.38, 0.016], [0, height * 0.47, 0.117], paper)
     return group
   }
 
@@ -114,7 +128,10 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const floorBase = box(room, [outer.right - outer.left, 0.24, outer.front - outer.back],
     [(outer.left + outer.right) / 2, -0.145, (outer.back + outer.front) / 2], styleMaterials.lightWood, 0.1)
   floorBase.name = 'Bathroom floor base'
-  buildRoomWalls(room, 'bathroom', { name: 'Bathroom', centerY: 2.15, wall: styleMaterials.wall, trim: styleMaterials.trim, lowerPanel: styleMaterials.floor })
+  buildRoomWalls(room, 'bathroom', {
+    name: 'Bathroom', centerY: 2.15, wall: styleMaterials.wall, trim: styleMaterials.trim, lowerPanel: styleMaterials.floor,
+    entryDoor: { panel: styleMaterials.trim, frame: styleMaterials.trim, hardware: silver },
+  })
   const floor = actor('floor', [0, 0, 0], [bathroomMat.position[0], 0.16, bathroomMat.position[2]])
   const tileWidth = (footprint.width - 0.26) / 10
   const tileDepth = (footprint.depth - 0.25) / 6
@@ -130,7 +147,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   mat.name = 'Vanity bath mat'
   for (const side of [-1, 1]) {
     box(floor, [0.055, 0.012, bathroomMat.depth - 0.09],
-      [bathroomMat.position[0] + side * (bathroomMat.width / 2 - 0.18), 0.07, bathroomMat.position[2]], styleMaterials.fridgeEdge)
+      [bathroomMat.position[0] + side * (bathroomMat.width / 2 - 0.18), 0.07, bathroomMat.position[2]], variant(styleMaterials.fridgeEdge, 'fabric'))
     for (let i = 0; i < 10; i++) {
       box(floor, [0.16, 0.025, 0.035],
         [bathroomMat.position[0] + side * (bathroomMat.width / 2 + 0.035), 0.035, bathroomMat.position[2] - 0.7 + i * 0.155], linen)
@@ -163,14 +180,20 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     box(sink, [1.08, 1.19, 0.055], [x, 0.86, 0.625], styleMaterials.cabinetPanel, 0.025)
     box(sink, [0.24, 0.045, 0.075], [x, 1.27, 0.675], silver, 0.014)
   }
-  box(sink, [2.45, 0.13, 1.34], [0, 1.59, 0], styleMaterials.counter, 0.035)
-  basin(sink, [[0, 0], [0.55, 0], [0.83, 0.13], [1, 0.38], [1, 0.44],
+  box(sink, [2.45, 0.13, 1.34], [0, 1.59, 0], styleMaterials.counter, 0.035).name = 'Bathroom vanity worktop'
+  const vanityBasin = basin(sink, [[0, 0], [0.55, 0], [0.83, 0.13], [1, 0.38], [1, 0.44],
     [0.89, 0.44], [0.71, 0.14], [0, 0.12]], [0.68, 1, 0.49], [0, 1.66, 0.04])
+  vanityBasin.name = 'Bathroom sink open basin'
+  const sinkWater = cylinder(sink, 0.38, 0.016, [0, 1.802, 0.04], water, 0.38, 16)
+  sinkWater.name = 'Bathroom sink visible basin depth'
+  sinkWater.scale.z = 0.55
+  sinkWater.castShadow = false
   cylinder(sink, 0.048, 0.024, [0, 1.796, 0.04], silver, 0.048, 8)
   cylinder(sink, 0.036, 0.62, [0, 1.97, -0.53], silver)
   box(sink, [0.075, 0.065, 0.4], [0, 2.27, -0.36], silver, 0.02)
   cylinder(sink, 0.035, 0.11, [0, 2.22, -0.18], silver)
-  const sinkSoap = bottle(sink, [-0.85, 1.66, 0.09], tomato, 0.26)
+  const sinkSoap = bottle(sink, [-0.85, 1.66, 0.09], tomato, 0.26, false)
+  sinkSoap.name = 'Bathroom sink soap dispenser'
   contacts.push({ position: [sink.position.x, 0.014, sink.position.z], size: [2.7, 1.65] })
 
   const mirror = actor('mirror', bathroomLayout.mirror, [0, 0.92, 0.11])
@@ -179,7 +202,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   const glass = cylinder(mirror, 0.735, 0.035, [0, 0, 0.073], mirrorGlass, 0.735, 16)
   glass.rotation.x = Math.PI / 2
   for (const [x, height] of [[-0.16, 0.76], [0.06, 0.47]]) {
-    const gleam = box(mirror, [0.045, height, 0.008], [x, 0.06, 0.097], linen)
+    const gleam = box(mirror, [0.045, height, 0.008], [x, 0.06, 0.097], variant(linen, 'light'))
     gleam.rotation.z = -0.48
   }
   box(mirror, [0.98, 0.09, 0.2], [0, 0.98, 0.075], styleMaterials.cabinet, 0.025)
@@ -200,9 +223,9 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   box(toilet, [1.2, 0.1, 0.6], [0, 1.855, -0.62], porcelain, 0.04)
   box(toilet, [0.18, 0.045, 0.11], [0, 1.925, -0.62], silver, 0.015)
   box(toilet, [0.4, 0.045, 0.07], [0.73, 1.37, -0.52], silver)
-  const paperRoll = cylinder(toilet, 0.15, 0.25, [0.88, 1.34, -0.52], linen, 0.15, 10)
+  const paperRoll = cylinder(toilet, 0.15, 0.25, [0.88, 1.34, -0.52], paper, 0.15, 10)
   paperRoll.rotation.z = Math.PI / 2
-  box(toilet, [0.24, 0.22, 0.025], [0.88, 1.18, -0.365], linen)
+  box(toilet, [0.24, 0.22, 0.025], [0.88, 1.18, -0.365], paper)
   contacts.push({ position: [toilet.position.x, 0.014, toilet.position.z + 0.17], size: [1.55, 1.9] })
 
   const supplies = actor('supplies', bathroomLayout.supplies, [0, 3.46, 0.03])
@@ -215,10 +238,10 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
   }
   for (let i = 0; i < 3; i++) {
     box(supplies, [0.8, 0.12, 0.64], [0, 0.365 + i * 0.135, 0.02], i === 1 ? linen : styleMaterials.fridgeDoor, 0.045)
-    box(supplies, [0.66, 0.018, 0.015], [0, 0.35 + i * 0.135, 0.348], styleMaterials.fridgeEdge)
+    box(supplies, [0.66, 0.018, 0.015], [0, 0.35 + i * 0.135, 0.348], variant(styleMaterials.fridgeEdge, 'fabric'))
   }
   for (const [x, y] of [[-0.23, 1.23], [0.23, 1.23], [0, 1.51]]) {
-    cylinder(supplies, 0.18, 0.26, [x, y, 0], linen, 0.18, 10)
+    cylinder(supplies, 0.18, 0.26, [x, y, 0], paper, 0.18, 10)
     cylinder(supplies, 0.046, 0.008, [x, y + 0.134, 0], dark, 0.046, 8)
   }
   bottle(supplies, [-0.24, 1.97, 0], styleMaterials.fridge, 0.41)
@@ -301,6 +324,7 @@ export function buildBathroomModel(room: Group, style: RoomStyle = 'original') {
     ['bathroom-storage-jars', { vacant: [], occupied: [careShelves[0]], occupiedBy: ['bathroom-storage-jars', 'bathroom-tissue-box'] }],
     ['bathroom-first-aid', { vacant: [], occupied: [careShelves[1]], occupiedBy: ['bathroom-first-aid', 'bathroom-diffuser'] }],
   ])
+  prepareRoomSurfaceGeometry(room)
   return { materials, styleMaterials, actors, anchors, bounds, actorBounds, contacts, lampMaterial, componentBindings, componentFixtures }
 }
 
@@ -314,9 +338,7 @@ export function bathroomFraming(width: number, height: number, bounds: Box3, rot
   }
 
   if (options.closeRoom) {
-    const view = cameraFraming(width, height, 'room', false)
-    const center = new Vector3(...view.center).applyAxisAngle(new Vector3(0, 1, 0), rotation)
-    return { center: center.toArray(), halfHeight: view.halfHeight }
+    return cameraFraming(width, height, 'room', false)
   }
   return fitRoomBounds(width, height, bounds, rotation, pitch)
 }

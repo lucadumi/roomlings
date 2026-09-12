@@ -6,7 +6,7 @@ import type { Box3 } from 'three'
 import type { Session } from '../../shared/domain.ts'
 import { componentPositionSupported, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { cameraOrbitOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomIds } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
@@ -87,7 +87,9 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
 async function configureDesignedSlots(accounts: AccountHarness, session: Session, alternateModels = true) {
   const household = await accounts.store.get(session.household.id)
   if (!household) throw new Error('The isolated household was not created.')
-  const components = [...getRoomComponents(household), ...completeRoomLayout().filter((component) => !component.id.startsWith('default-'))]
+  const existing = getRoomComponents(household)
+  const occupied = new Set(existing.filter((component) => component.installed).map((component) => component.slotId))
+  const components = [...existing, ...completeRoomLayout().filter((component) => !occupied.has(component.slotId))]
     .map((component): RoomComponent => {
       const variant = !alternateModels ? component.variant : component.slotId === 'bathroom-bath' ? 'shower'
         : component.slotId === 'kitchen-table' ? 'round'
@@ -128,12 +130,11 @@ async function roomPoint(page: Page, roomId: RoomId, position: [number, number, 
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
   camera.zoom = zoom
   camera.updateProjectionMatrix()
-  const axis = new Vector3(0, 1, 0)
   const center = new Vector3(...framing.center)
-  camera.position.copy(center).add(new Vector3(...baseCameraOffset))
+  camera.position.copy(center).add(cameraOrbitOffset(rotation))
   camera.lookAt(center)
   camera.updateMatrixWorld(true)
-  const projected = new Vector3(...position).applyAxisAngle(axis, rotation).project(camera)
+  const projected = new Vector3(...position).project(camera)
   return { x: layout.x + (projected.x * 0.5 + 0.5) * layout.width, y: layout.y + (-projected.y * 0.5 + 0.5) * layout.height }
 }
 
@@ -221,7 +222,8 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
   await page.goto(roomPath())
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
-  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  // Allow cold reflected-material shader preparation before checking idle behavior.
+  await expect(world).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
   await canvas.evaluate((element) => element.setAttribute('data-original-renderer', 'kept'))
   const originalComponents = getRoomComponents(populatedHousehold.household)
   await openRoomEditor(page)
@@ -249,8 +251,8 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
 
   await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
   await editor.getByRole('button', { name: 'Edit Kettle', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
+  await editor.getByRole('button', { name: 'Put in storage', exact: true }).click()
+  await editor.getByRole('button', { name: 'Edit stored Kettle', exact: true }).click()
   await expect(world.locator('[data-component-id="default-kitchen-kettle"]')).toHaveCount(0)
   await expect(world).toHaveAttribute('data-component-count', String(originalComponents.filter((component) => component.roomId === 'kitchen').length - 1))
 

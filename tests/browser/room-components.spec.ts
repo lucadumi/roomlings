@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { APIRequestContext, Page } from '@playwright/test'
 import { billingDate, householdSchema } from '../../shared/domain.ts'
 import type { Household, Session } from '../../shared/domain.ts'
-import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
+import { createRoomComponent, defaultRoomComponents, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { ComponentKind, RoomComponent, RoomComponentChange, RoomSlotId } from '../../shared/roomComponents.ts'
 import { roomCatalog } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
@@ -69,6 +69,7 @@ async function openObject(page: Page, name: string, roomId: RoomId = 'kitchen') 
 }
 
 test('supply cards use compact adaptive columns and preserve their shopping sources', { tag: '@room' }, async ({ page, accounts, request, emptyHousehold: owner }) => {
+  await accounts.store.save({ ...await current(accounts, owner), roomComponents: defaultRoomComponents() })
   const machine = await install(request, accounts, owner, 'washing-machine', 'bathroom-laundry')
   const basin = getRoomComponents(await current(accounts, owner)).find((component) => component.slotId === 'bathroom-sink')!
   await change(request, accounts, owner, '/household/room-components', {
@@ -291,12 +292,13 @@ test('a room conflict keeps edited fields, includes unedited remote settings, an
   expect(getRoomComponents(household).find((component) => component.id === plant.id)?.name).toBe('Fresh herbs')
 })
 
-test('shared slots require removal choices and restoring an object reuses its saved identity', async ({ page, accounts, request, emptyHousehold: owner }) => {
+test('Storage pauses linked care and Bring back reuses the saved object identity', { tag: '@room' }, async ({ page, accounts, request, emptyHousehold: owner }) => {
   const dishwasher = await install(request, accounts, owner, 'dishwasher', 'kitchen-undercounter')
   await change(request, accounts, owner, '/chores', {
     title: 'Empty the dishwasher', notes: '', roomId: 'kitchen', area: null, componentId: dishwasher.id,
     dueDate: billingDate('UTC'), repeatDays: 1, rotation: [owner.memberId], turn: 0,
   }, 'POST')
+  const care = (await current(accounts, owner)).chores
   await page.goto('/kitchen')
   const editor = await openEditor(page)
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
@@ -307,38 +309,34 @@ test('shared slots require removal choices and restoring an object reuses its sa
   await editor.getByLabel('Find an object', { exact: true }).fill('')
   await editor.getByRole('button', { name: /^In this room/ }).click()
   await editor.getByRole('button', { name: 'Edit Dishwasher', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
-  await expect(editor.getByRole('button', { name: 'Remove from preview', exact: true })).toBeDisabled()
-  await chooseOption(editor.getByRole('combobox', { name: 'Linked chores', exact: true }), 'archive')
-  await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
+  await editor.getByRole('button', { name: 'Put in storage', exact: true }).click()
+  await expect(editor.getByRole('combobox', { name: 'Linked chores', exact: true })).toHaveCount(0)
+  await expect(editor.getByRole('button', { name: 'Bring back Dishwasher', exact: true })).toBeVisible()
   await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
   await placeRoomObject(editor, 'Oven')
   await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
   await expect(editor).toHaveCount(0)
   let household = await current(accounts, owner)
   expect(getRoomComponents(household).find((component) => component.id === dishwasher.id)?.installed).toBe(false)
-  expect(household.chores.items[0].archived).toBe(true)
+  expect(household.chores).toEqual(care)
   const replacement = getRoomComponents(household).find((component) => component.kind === 'oven')!
   expect(replacement.installed).toBe(true)
-  await page.getByRole('button', { name: 'Chores', exact: true }).click()
-  await page.getByRole('button', { name: 'Archived', exact: true }).click()
-  await expect(page.getByRole('article', { name: 'Empty the dishwasher', exact: true })).toContainText('This object has been removed')
-  await expect(page.getByRole('button', { name: 'Restore chore', exact: true })).toBeDisabled()
+  await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
+  await expect(page.getByRole('article', { name: 'Empty the dishwasher', exact: true })).toContainText('Paused in Storage')
+  await expect(page.getByRole('button', { name: 'Mark done', exact: true })).toBeDisabled()
 
   await openEditor(page)
   await editor.getByRole('button', { name: 'Edit Oven', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
-  await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-  await editor.getByLabel('Find an object', { exact: true }).fill('Dishwasher')
-  await placeRoomObject(editor, 'Dishwasher', true)
+  await editor.getByRole('button', { name: 'Put in storage', exact: true }).click()
+  await editor.getByRole('button', { name: 'Bring back Dishwasher', exact: true }).click()
+  await editor.getByRole('button', { name: 'Place object', exact: true }).click()
   await editor.getByRole('button', { name: 'Apply for everyone', exact: true }).click()
   await expect(editor).toHaveCount(0)
   household = await current(accounts, owner)
   expect(getRoomComponents(household).filter((component) => component.kind === 'dishwasher')).toHaveLength(1)
   expect(getRoomComponents(household).find((component) => component.id === dishwasher.id)?.installed).toBe(true)
   expect(getRoomComponents(household).find((component) => component.id === replacement.id)?.installed).toBe(false)
-  expect(household.chores.items[0].archived).toBe(true)
+  expect(household.chores).toEqual(care)
   expect(household.expenses).toEqual([])
   expect(household.shopping.items).toEqual([])
 })
