@@ -1,6 +1,6 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator } from '@playwright/test'
-import { openGroceryForm } from './fixtures.ts'
+import { openGroceryForm, waitForRoomReady } from './fixtures.ts'
 
 async function surface(control: Locator) {
   return control.evaluate((element) => {
@@ -26,6 +26,7 @@ test.describe('UI polish', () => {
 
   test('the room backdrop blends lighting changes and honors reduced motion', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
+    await waitForRoomReady(page)
     const home = page.locator('.game-home')
     const world = page.locator('.kitchen-world')
     const opacity = () => home.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
@@ -112,6 +113,7 @@ test.describe('UI polish', () => {
   test('the enlarged share summary stays clear of the dock and opens settlements', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/kitchen')
+    await waitForRoomReady(page)
     const share = page.getByRole('button', { name: 'Your household balance', exact: true })
     await expect(share.locator('.balance-caption')).toHaveCSS('font-size', '11px')
     await expect(share.locator('strong')).toHaveText('\u20ac0.00')

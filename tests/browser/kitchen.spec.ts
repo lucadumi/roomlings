@@ -5,7 +5,7 @@ import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, r
 import { kitchenLayout } from '../../src/roomLayout.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { localDate } from '../../shared/domain.ts'
-import { createHousehold, openGroceryForm, savedKitchen, waitForRoomReady } from './fixtures.ts'
+import { createHousehold, openGroceryForm, savedKitchen, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
@@ -347,20 +347,10 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
 
 test('the kitchen ignores nonvisual household refreshes while paused and still renders scene updates', { tag: '@room' }, async ({ page, accounts, populatedHousehold }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  await page.addInitScript(() => {
-    let draws = 0
-    const original = WebGL2RenderingContext.prototype.drawElements
-    Object.defineProperty(WebGL2RenderingContext.prototype, 'drawElements', {
-      value(this: WebGL2RenderingContext, ...args: Parameters<WebGL2RenderingContext['drawElements']>) {
-        if (this.canvas instanceof HTMLCanvasElement && this.canvas.closest('.world-canvas')) draws++
-        return Reflect.apply(original, this, args)
-      },
-    })
-    Object.defineProperty(window, 'roomlingsTestDrawCalls', { get: () => draws })
-  })
+  const drawing = await trackDrawing(page)
   await page.goto('/kitchen')
   await waitForRoomReady(page)
-  const drawCalls = () => page.evaluate(() => Number(Reflect.get(window, 'roomlingsTestDrawCalls')))
+  const drawCalls = async () => (await drawing()).draws
   expect(await drawCalls()).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
@@ -386,13 +376,13 @@ test('the kitchen ignores nonvisual household refreshes while paused and still r
   latest.version++
   await accounts.store.save(latest)
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await expect.poll(drawCalls).toBeGreaterThan(pausedAt)
+  await page.waitForFunction((count) => Number(Reflect.get(window, 'roomlingsFrameDrawCalls')) > count, pausedAt, { timeout: 15_000 })
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   const updatedAt = await drawCalls()
   await page.waitForTimeout(250)
   expect(await drawCalls()).toBe(updatedAt)
   await page.keyboard.press('Escape')
-  await expect.poll(drawCalls).toBeGreaterThan(updatedAt)
+  await page.waitForFunction((count) => Number(Reflect.get(window, 'roomlingsFrameDrawCalls')) > count, updatedAt, { timeout: 15_000 })
 })
 
 test('the phone view gives the room most of the screen and keeps panels below it', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {

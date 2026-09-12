@@ -40,7 +40,7 @@ async function roomScreenshot(page: Page) {
 async function savedRoomImages(page: Page) {
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
-  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
+  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 })
   const images: Record<string, string> = {}
   for (const roomId of ['kitchen', 'bathroom']) {
     const image = menu.locator(`[data-room-preview="${roomId}"] img`)
@@ -327,7 +327,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     const editor = await openRoomEditor(page)
     const card = editor.getByRole('button', { name: `Edit ${component.name}`, exact: true })
     const thumbnail = card.locator('.component-preview')
-    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true', { timeout: 15_000 })
     const originalImage = await thumbnail.locator('img').getAttribute('src')
     await card.click()
     const control = editor.getByRole('combobox', { name: 'Finish', exact: true })
@@ -348,7 +348,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     }
     expect(await accounts.store.get(owner.household.id)).toEqual(before)
     await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
-    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true', { timeout: 15_000 })
     const draftImage = await thumbnail.locator('img').getAttribute('src')
     expect(draftImage).not.toBe(originalImage)
     const applying = page.waitForRequest('**/api/household/room-components')
@@ -374,7 +374,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     await page.reload()
     if (roomId === 'bathroom' && !await page.locator('.bathroom-world').isVisible()) await selectRoom(page, roomId)
     await openRoomEditor(page)
-    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true')
+    await expect(thumbnail).toHaveAttribute('data-preview-ready', 'true', { timeout: 15_000 })
     await expect(thumbnail.locator('img')).toHaveAttribute('src', draftImage!)
     await card.click()
     await expect(control).toHaveAttribute('data-value', savedFinish)

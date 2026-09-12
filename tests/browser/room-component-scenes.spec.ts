@@ -13,12 +13,13 @@ import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { componentPlacements, kitchenLayout } from '../../src/roomLayout.ts'
 import { completeRoomLayout } from '../room-layout-fixture.ts'
-import { chooseOption, openRoomEditor, openRoomObjects, trackDrawing } from './fixtures.ts'
+import { chooseOption, openRoomEditor, openRoomObjects, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
 test('switching menus releases object focus and frames the newly selected menu', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   const objects = await openRoomObjects(page)
   await objects.getByRole('button', { name: 'Open Plant details', exact: true }).click()
@@ -46,6 +47,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     const installed = getRoomComponents(before).filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -58,6 +60,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
   test(`opening the palette from the ${roomId} editor frames the room and restores the draft focus`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const editor = await openRoomEditor(page)
     const name = roomId === 'kitchen' ? 'Plant' : 'Bathroom sink'
     const id = roomId === 'kitchen' ? 'default-kitchen-plant-floor' : 'default-bathroom-sink'
@@ -152,6 +155,7 @@ test('the inward-facing dishwasher stays reachable after turning the connected r
   }
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -181,6 +185,7 @@ test('the kettle on the relocated stove keeps its physical tea-break action', { 
   const before = await accounts.store.get(emptyHousehold.household.id)
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -197,6 +202,7 @@ test('the kettle on the relocated stove keeps its physical tea-break action', { 
 test('the live kitchen connects the sink counter to the right return and leaves the former island space open', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('kitchen'))
+  await waitForRoomReady(page)
   const editor = await openRoomEditor(page)
   const world = page.locator('.kitchen-world')
   const model = createConfiguredRoomPreview('kitchen', 'original')
@@ -222,6 +228,7 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
   // Allow cold reflected-material shader preparation before checking idle behavior.
@@ -286,6 +293,7 @@ for (const roomId of roomIds) {
     const installed = components.filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -302,6 +310,7 @@ for (const roomId of roomIds) {
     const installed = components.filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
@@ -350,6 +359,7 @@ for (const roomId of roomIds) {
       .add(new Vector3(...placement.position)).toArray()
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
