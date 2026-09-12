@@ -13,28 +13,6 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 - Keep rooms clear with zone filters, placement limits and reversible object storage.
 - Give room admins editing access while everyone uses the same supplies, chores and manually recorded object states.
 
-The room's objects open these tools, and a toolbar keeps them available without 3D. **Room objects** groups each kind into one preview card, with position choices for repeated objects. Its **Edit room** action lets admins preview and apply a shared layout. Installing or moving an object never creates a purchase, debt or chore. Every balance comes from the same shared ledger.
-
-The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, fruit bowl, wall-mounted spice rack, tea set and board game. Retired extras are no longer offered for new placements; existing saved objects and their linked history remain editable. **Rooms** opens a compact preview menu directly beneath its button.
-
-Zone limits affect new placements, not whether an existing home can open. Stored
-objects retain their settings and history while linked care and supply shortcuts
-pause. New households start with essential bathroom objects; older homes keep
-their saved rooms.
-
-The living room includes a corner sofa, coffee table, wall-mounted TV above a media unit with two compact, sharp-edged speakers, bookshelf, reading lamp, rug and curtained window, without a default garbage bin. The kitchen has matching back and left-wall windows with the same landscape view, plus a slim extractor hood over the hob. All three rooms share the same chores, shopping list and ledger. Existing saved layouts gain the living room without resetting their furniture or browser access.
-
-Matte material textures, soft reflected lighting and naturally rounded edges soften the
-existing room models without changing their layouts or proportions. Front-wall
-entry doors follow the room cutaways. The interface retains its original sage,
-honey and clay theme, independently of room colors.
-View navigation moves only the camera; room geometry keeps its authored transform.
-
-The flat Patchwork logo uses outlined Baloo 2 lettering. Baloo 2 also carries
-headings and display text, while DM Sans remains the body and control font.
-Request and scene loading states use a static Patchwork icon; branding has no 3D
-variant. Object thumbnails and room-selector renders use the same reduced-motion-aware spinner.
-
 ## Run locally
 
 Requires Node.js 22.18+.
