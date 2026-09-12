@@ -170,11 +170,10 @@ describe('room-first camera framing', () => {
   it('resets both rooms to exactly their entry magnification at 100%, even after focusing an object or opening a panel', () => {
     const bounds = new Box3(new Vector3(-5, 0, -4), new Vector3(5, 5, 4))
     const initialClose = usesRoomEntryFraming({ focus: 'room' })
-    const resetClose = usesRoomEntryFraming({ focus: 'room', selectedComponentId: 'selected-object', panelOpen: true, resetView: true })
+    const resetClose = usesRoomEntryFraming({ focus: 'room', selectedComponentId: 'selected-object', resetView: true })
     assert.equal(initialClose, true)
     assert.equal(resetClose, initialClose)
     assert.equal(usesRoomEntryFraming({ focus: 'room', selectedComponentId: 'selected-object' }), false)
-    assert.equal(usesRoomEntryFraming({ focus: 'room', panelOpen: true }), false)
     assert.equal(usesRoomEntryFraming({ focus: 'sink' }), false)
     for (const [width, height] of [[320, 630], [390, 636], [844, 390], [1440, 778]]) {
       const area = { x: 0, y: 0, width, height }
@@ -191,12 +190,25 @@ describe('room-first camera framing', () => {
       }
     }
   })
-  it('uses the entry scale for placement previews even with a selected object and compact panel', () => {
+  it('uses the entry scale for placement previews even with a selected object', () => {
     for (const resetView of [false, true]) {
       assert.equal(usesRoomEntryFraming({
-        focus: 'room', selectedComponentId: 'candidate', panelOpen: true, placementPreview: true, resetView,
+        focus: 'room', selectedComponentId: 'candidate', placementPreview: true, resetView,
       }), true)
     }
+  })
+  it('pans the entry view into the space beside an open panel instead of shrinking the room', () => {
+    const viewport = { width: 1600, height: 1000 }
+    const beside = { x: 824, y: 78, width: 776, height: 813 }
+    const whole = { x: 0, y: 0, width: viewport.width, height: viewport.height }
+    const zoom = roomCameraZoom(1, true, 'kitchen')
+    const projection = (area: typeof whole) => cameraProjection(viewport.width, viewport.height, area,
+      roomEntryFraming(viewport.width, viewport.height, area).halfHeight, zoom)
+    const open = projection(beside)
+    const closed = projection(whole)
+    assert.ok(Math.abs((open.right - open.left) - (closed.right - closed.left)) < 1e-9)
+    assert.ok(Math.abs((open.top - open.bottom) - (closed.top - closed.bottom)) < 1e-9)
+    assert.ok(open.left < closed.left)
   })
   it('keeps reset framing measured for editor overviews and public tours', () => {
     for (const context of [{ overviewFocus: true }, { publicPreview: true }]) {

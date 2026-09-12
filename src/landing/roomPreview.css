@@ -11,7 +11,7 @@
 .welcome-home-frame .welcome-vignette::before { display: none; }
 .welcome-home-frame .welcome-home-illustration { width: 100%; height: 100%; margin: 0; }
 .welcome-stage-shell { position: relative; min-width: 0; border-right: 1px solid var(--control-border); }
-.welcome-explore-loading { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; background: color-mix(in srgb, var(--control-surface) 96%, transparent); color: var(--control-ink); font-size: 14px; line-height: 1.6; text-align: center; }
+.welcome-explore-loading { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; background: var(--control-surface); color: var(--control-ink); font-size: 14px; line-height: 1.6; text-align: center; }
 .welcome-room-anchor { position: absolute; top: 0; width: 1px; height: 1px; pointer-events: none; scroll-margin-top: var(--welcome-anchor-offset); }
 .welcome-preview-unavailable { position: absolute; inset: 0; display: grid; justify-items: center; align-content: center; padding: 28px; background: var(--control-surface); color: var(--muted); text-align: center; }
 .welcome-preview-unavailable p { max-width: 28ch; margin: 0; font-size: 14px; line-height: 1.7; }

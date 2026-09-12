@@ -419,7 +419,7 @@ export default function ChoreRoomWorld<Target extends string>({
       const atEntryFocus = !!config.entryFocus && framedFocus === config.entryFocus
       const closeRoom = usesRoomEntryFraming({
         focus: atEntryFocus ? 'room' : framedFocus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
-        panelOpen: latest.panelOpen, overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, publicPreview: preview,
+        overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, publicPreview: preview,
       })
       const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
       const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom, config.roomId) : displayedZoom

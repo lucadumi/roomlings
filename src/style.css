@@ -59,7 +59,6 @@
   --control-compact-height: 36px;
   --control-radius: 8px;
   --control-surface: #ffffff;
-  --control-glass: color-mix(in srgb, var(--control-surface) 90%, transparent);
   --control-border: #d6d8e0;
   --control-hover: var(--leaf-soft);
   --control-ink: var(--ink);
@@ -187,7 +186,7 @@ h1 em { color: var(--muted); }
 .fridge-tag-top { right: 17px; top: 45px; transform: rotate(8deg); }
 .mini-spark { font-size: 19px; font-weight: 200; }
 .fridge-tip { position: absolute; bottom: 43px; width: 100%; text-align: center; pointer-events: none; font-size: 8px; color: var(--muted); letter-spacing: 0.2px; }
-.fridge-controls { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 4px; border: 1px solid var(--control-border); border-radius: 7px; background: #f5f6ea99; backdrop-filter: blur(8px); }
+.fridge-controls { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; padding: 4px; border: 1px solid var(--control-border); border-radius: 7px; background: #f5f6ea; }
 .fridge-toggle { white-space: nowrap; display: flex; align-items: center; gap: 7px; background: none; padding: 5px 8px; font-size: 9px; color: var(--muted); border-radius: 4px; }
 .fridge-toggle:hover { background: var(--leaf-soft); }
 .fridge-controls > .icon-button { border-left: 1px solid var(--control-border); border-radius: 0; padding-left: 9px; }
@@ -206,7 +205,7 @@ h1 em { color: var(--muted); }
 .spend-amount { font-size: 39px; color: var(--leaf-ink); letter-spacing: -1.5px; font-weight: 600; margin: 12px 0 17px; display: flex; align-items: baseline; gap: 12px; }
 .spend-amount > span { font-family: var(--font-body); font-size: 10px; letter-spacing: 0; color: var(--muted); font-weight: 400; }
 .budget-track { height: 7px; background: var(--surface-muted); border-radius: 3px; overflow: hidden; }
-.budget-track > div { height: 100%; background: var(--sage); border-radius: 3px; transition: width 600ms; background-image: repeating-linear-gradient(110deg, transparent 0, transparent 5px, #ffffff20 5px, #ffffff20 6px); }
+.budget-track > div { height: 100%; background: var(--sage); border-radius: 3px; transition: width 600ms; background-image: repeating-linear-gradient(110deg, transparent 0, transparent 5px, color-mix(in srgb, #ffffff 12.5%, var(--sage)) 5px, color-mix(in srgb, #ffffff 12.5%, var(--sage)) 6px); }
 .budget-track > div.over-budget { background-color: var(--red); }
 .budget-labels { margin-top: 9px; display: flex; justify-content: space-between; gap: 8px; font-size: 9px; color: var(--muted); }
 .budget-labels strong { font-weight: 500; color: var(--muted); }
@@ -354,8 +353,8 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
 .feedback-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; max-width: 100%; }
 .feedback .feedback-actions .feedback-action { flex: 0 1 auto; max-width: 100%; white-space: normal; overflow-wrap: anywhere; font-size: .75rem; }
 .feedback .feedback-dismiss { color: inherit; margin-block: -4px; }
-.feedback:is(.feedback-error, .feedback-success) .feedback-dismiss:hover:not(:disabled) { color: inherit; background: #ffffff1f; }
-.app-feedback { position: fixed; z-index: 100; top: 80px; left: 50%; transform: translateX(-50%); display: grid; gap: 10px; width: min(calc(100vw - 24px), 560px); max-height: calc(100dvh - 100px); overflow-y: auto; pointer-events: none; }
+.feedback:is(.feedback-error, .feedback-success) .feedback-dismiss:hover:not(:disabled) { color: inherit; background: color-mix(in srgb, #ffffff 12%, var(--feedback-surface)); }
+.app-feedback { position: fixed; z-index: 100; top: 80px; left: 50%; transform: translateX(-50%); display: grid; gap: 10px; width: min(calc(100vw - 24px), 420px); max-height: calc(100dvh - 100px); overflow-y: auto; pointer-events: none; }
 .app-feedback > .feedback { margin: 0; pointer-events: auto; box-shadow: 0 4px 18px #3544251c; }
 .modal-backdrop { position: fixed; inset: 0; z-index: 70; background: #303d2d63; backdrop-filter: blur(5px); padding: 24px; display: flex; justify-content: center; align-items: center; overflow-y: auto; animation: fade-in 150ms ease-out; }
 .modal { --control-height: 44px; position: relative; background: var(--control-surface); box-shadow: 0 30px 100px #23331835; border: 1px solid var(--control-border); border-radius: 15px; width: min(100%, 475px); max-height: calc(100dvh - 48px); overflow-y: auto; overflow-wrap: anywhere; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--leaf-border) transparent; padding: 32px; container: dialog / inline-size; }
@@ -573,7 +572,7 @@ h2 { font-size: 24px; letter-spacing: -0.75px; line-height: 1.2; color: var(--le
 @media (max-width: 500px) {
   body { min-width: 320px; }
   .app-shell { padding-bottom: 63px; }
-  .sidebar { position: fixed; top: auto; bottom: 0; height: 62px; width: 100%; z-index: 40; border-right: 0; border-top: 1px solid var(--line); background: #f5f6edee; backdrop-filter: blur(16px); padding: 5px 8px 7px; display: block; }
+  .sidebar { position: fixed; top: auto; bottom: 0; height: 62px; width: 100%; z-index: 40; border-right: 0; border-top: 1px solid var(--line); background: #f5f6ed; padding: 5px 8px 7px; display: block; }
   .sidebar > .brand, .sidebar-bottom { display: none; }
   .sidebar nav { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0; height: 100%; }
   .nav-item { display: flex; flex-direction: column; gap: 4px; height: 100%; padding-top: 5px; }

@@ -511,7 +511,7 @@ export default function KitchenWorld({
       const focus = currentControls.focus
       const closeRoom = usesRoomEntryFraming({
         focus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
-        panelOpen: latest.panelOpen, overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate,
+        overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate,
       })
       const desiredZoom = roomCameraZoom(latest.overviewFocus ? 1 : currentControls.zoom, closeRoom, 'kitchen')
       const placementBounds = placementCandidate ? visibleRoomBounds(room, placementCandidate) : null
