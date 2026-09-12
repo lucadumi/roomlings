@@ -1,5 +1,5 @@
 import { expect, test } from './account-fixtures.ts'
-import { openRoomEditor, selectRoom } from './fixtures.ts'
+import { openRoomEditor, selectRoom, waitForRoomReady } from './fixtures.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
 
@@ -252,11 +252,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 960 
   test(`both rooms start close up with the same measured scene space at ${viewport.width}px`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath())
+    await waitForRoomReady(page)
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-framing', 'close')
     const kitchen = await page.locator('.kitchen-world').boundingBox()
     if (!kitchen) throw new Error('The kitchen scene is missing.')
     await selectRoom(page, 'bathroom')
+    await waitForRoomReady(page)
     const bathroom = page.locator('.bathroom-world')
     await expect(bathroom).toHaveAttribute('data-camera-moving', 'false')
     await expect(bathroom).toHaveAttribute('data-framing', 'close')

@@ -46,7 +46,7 @@ async function clickFixture(page: Page, point: [number, number, number]) {
 test('bathroom objects open room-specific chores and the shared supply list', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   for (const area of ['sink', 'mirror', 'toilet', 'bath', 'floor']) {
     await frameRoom(page)
     await page.locator(`[data-bathroom-target="${area}"]`).click()
@@ -78,7 +78,7 @@ test('bathroom objects open room-specific chores and the shared supply list', { 
 test('bathroom fixtures remain pickable when object labels are hidden', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await clickFixture(page, [bathroomLayout.sink[0], 1.9, bathroomLayout.sink[2] + 0.06])
   await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', 'sink')

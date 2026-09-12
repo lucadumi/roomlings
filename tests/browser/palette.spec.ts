@@ -1,7 +1,7 @@
 import type { Locator } from '@playwright/test'
 import { roomStyleSchema } from '../../shared/domain.ts'
 import { expect, test } from './account-fixtures.ts'
-import { closeRoomEditor, openRoomColors, selectRoom } from './fixtures.ts'
+import { closeRoomEditor, openRoomColors, selectRoom, waitForTourReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -120,7 +120,7 @@ test('the Coolors landing palette keeps uniform copy and a transparent hero', { 
   await page.locator('.welcome-features').scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('garden-pop-journal.png'), animations: 'disabled' })
   await page.getByRole('link', { name: 'Explore rooms', exact: true }).first().click()
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(page.locator('.welcome-stage').first()).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   for (const choice of await page.locator('.welcome-preview-choice').all()) await expectReadable(choice)
   await page.screenshot({ path: testInfo.outputPath('garden-pop-explore.png'), animations: 'disabled' })

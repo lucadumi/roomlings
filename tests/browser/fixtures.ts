@@ -11,6 +11,10 @@ export async function waitForRoomReady(page: Page, room = page.locator('.kitchen
   await expect(room.locator('.world-canvas canvas')).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
 }
 
+export async function waitForTourReady(page: Page) {
+  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready', { timeout: 15_000 })
+}
+
 export async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
     let draws = 0

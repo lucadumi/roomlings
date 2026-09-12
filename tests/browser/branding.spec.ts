@@ -1,7 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator, Page, Route } from '@playwright/test'
 import type { Session } from '../../shared/domain.ts'
-import { createHousehold, openGroceryForm, pauseRequest, savedKitchen } from './fixtures.ts'
+import { createHousehold, openGroceryForm, pauseRequest, savedKitchen, waitForTourReady } from './fixtures.ts'
 import { createPopulatedHousehold } from '../household-fixture.ts'
 
 async function restoreKitchen(page: Page, session: Session) {
@@ -359,7 +359,7 @@ test('the pending tour keeps its Patchwork loader static while the room motion t
   expect(await svgGeometry(page, staticMarkup)).toEqual(original)
   await expectStaticSvg(page, staticMarkup, 'color')
   await route.continue()
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-rendering', 'paused')
   await expect(status.locator('img.roomlings-loader')).toHaveCount(0)
 })

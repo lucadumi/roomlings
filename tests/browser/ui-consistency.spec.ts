@@ -1,6 +1,6 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator } from '@playwright/test'
-import { createHousehold, openGroceryForm } from './fixtures.ts'
+import { createHousehold, openGroceryForm, waitForRoomReady } from './fixtures.ts'
 
 async function expectCenteredLabel(label: Locator) {
   await expect(label).toBeVisible()
@@ -122,7 +122,7 @@ test.describe('UI consistency', () => {
       await page.goto('/kitchen')
       const world = page.locator('.kitchen-world')
       const label = page.locator('.world-view-label')
-      await expect(page.locator('.world-canvas canvas')).toBeVisible()
+      await waitForRoomReady(page)
       await expect(label).toBeHidden()
       await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
       await expect(label).toHaveText('The shared fridge')
@@ -365,7 +365,7 @@ test('camera movement copy also describes zooming out', { tag: '@room' }, async 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/kitchen')
   const world = page.locator('.kitchen-world')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.clock.pauseAt(now)
   await page.clock.runFor(32)
   await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()

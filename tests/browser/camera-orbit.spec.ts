@@ -61,8 +61,8 @@ async function settleView(page: Page) {
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
 }
 
-async function dragView(page: Page, tilt = 0) {
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
+async function dragView(page: Page, tilt = 0, { animated = true } = {}) {
+  await page.emulateMedia({ reducedMotion: animated ? 'no-preference' : 'reduce' })
   const world = page.locator('.kitchen-world')
   const start = await world.locator('canvas').evaluate((canvas, tilt) => {
     const bounds = canvas.getBoundingClientRect()
@@ -75,8 +75,9 @@ async function dragView(page: Page, tilt = 0) {
   }, tilt)
   await page.mouse.move(start.x, start.y)
   await page.mouse.down()
-  for (let step = 1; step <= 10; step++) {
-    await page.mouse.move(start.x + step * 22, start.y + tilt * step / 10)
+  const steps = animated ? 10 : 1
+  for (let step = 1; step <= steps; step++) {
+    await page.mouse.move(start.x + step * 220 / steps, start.y + tilt * step / steps)
     await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
   }
   await page.mouse.up()
@@ -135,7 +136,7 @@ for (const roomId of roomIds) {
     expect(await accounts.store.get(owner.household.id)).toEqual(household)
   })
 
-  test(`${roomId} editor orbit keeps the room fixed without automatic zoom or reframing`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+  for (const stage of ['whole room', 'focused object', 'placement trial'] as const) test(`${roomId} editor orbit keeps the ${stage} fixed without automatic zoom or reframing`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     const household = await accounts.store.get(owner.household.id)
     if (!household) throw new Error('The isolated editor household is missing.')
@@ -153,24 +154,25 @@ for (const roomId of roomIds) {
     const reference = getRoomComponents(household).find((component) => component.roomId === roomId && component.installed)
     if (!reference) throw new Error('The editor has no fixed reference object.')
     await trackCamera(page, reference.name)
-    expectFixedEditorFraming(await dragView(page, 80))
-
-    await editor.getByRole('button', { name: `Edit ${reference.name}`, exact: true }).click()
-    await expect(world).toHaveAttribute('data-selected-component', reference.id)
-    await settleView(page)
-    await trackCamera(page, reference.name)
-    expectFixedEditorFraming(await dragView(page, -100))
-
-    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Wall art'
-    await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-    await editor.getByLabel('Find an object', { exact: true }).fill(name)
-    await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
-    const confirmation = page.getByRole('dialog', { name: `Try ${name}`, exact: true })
-    await expect(confirmation).toBeVisible()
-    await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'true')
+    let name = reference.name
+    if (stage !== 'whole room') {
+      await dragView(page, 80, { animated: false })
+      await editor.getByRole('button', { name: `Edit ${reference.name}`, exact: true }).click()
+      await expect(world).toHaveAttribute('data-selected-component', reference.id)
+      await settleView(page)
+    }
+    if (stage === 'placement trial') {
+      await dragView(page, -100, { animated: false })
+      name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Wall art'
+      await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
+      await editor.getByLabel('Find an object', { exact: true }).fill(name)
+      await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
+      await expect(page.getByRole('dialog', { name: `Try ${name}`, exact: true })).toBeVisible()
+      await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'true')
+    }
     await settleView(page)
     await trackCamera(page, name)
-    expectFixedEditorFraming(await dragView(page, 60))
+    expectFixedEditorFraming(await dragView(page, stage === 'whole room' ? 80 : stage === 'focused object' ? -100 : 60))
     await expect(world.locator('.world-camera-controls')).toContainText('100%')
     expect(await accounts.store.get(owner.household.id)).toEqual(household)
   })

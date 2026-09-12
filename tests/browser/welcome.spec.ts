@@ -1,12 +1,12 @@
 import { expect, routeAccountApi, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
-import { createHousehold, savedKitchen, trackDrawing } from './fixtures.ts'
+import { createHousehold, savedKitchen, trackDrawing, waitForTourReady } from './fixtures.ts'
 import { tourChapters } from '../../src/landing/tour.ts'
 import { roomTourChapters } from '../../src/landing/roomTourChapters.ts'
 
 async function openTour(page: Page) {
   await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready', { timeout: 15_000 })
+  await waitForTourReady(page)
 }
 
 async function chooseChapter(page: Page, index: number) {
@@ -132,18 +132,26 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   expect(dimensions.travel).toBeGreaterThan(0)
   expect(dimensions.travel).toBeLessThanOrEqual(dimensions.screen)
   for (const index of [0, 1, 2, 3, 4, 2, 0]) {
-    await chooseChapter(page, index)
-    await expect(page.locator('.welcome-tour-copy[data-active="true"] h3')).toHaveText(titles[index])
-    await expect.poll(async () => {
-      const position = Number(await page.locator('.welcome-canvas').getAttribute('data-tour-position'))
-      return Math.abs(position - index / 4)
-    }).toBeLessThanOrEqual(1 / dimensions.travel + 0.0005)
-    await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-camera-moving', 'false')
+    const chapter = tourChapters[index]
+    await page.getByRole('navigation', { name: 'Kitchen tour' }).getByRole('button', { name: chapter.label, exact: true }).click()
+    // Read one painted chapter together instead of stalling between separate GPU-bound queries.
+    await expect.poll(() => page.locator('.welcome-tour').evaluate((element, { progress, tolerance }) => {
+      const scene = element.querySelector('.welcome-canvas')
+      return {
+        chapter: element.getAttribute('data-chapter'),
+        selected: element.querySelector('.welcome-chapters [aria-pressed="true"]')?.getAttribute('aria-label'),
+        title: element.querySelector('.welcome-tour-copy[data-active="true"] h3')?.textContent,
+        moving: scene?.getAttribute('data-camera-moving'),
+        onTarget: !!scene && Math.abs(Number(scene.getAttribute('data-tour-position')) - progress) <= tolerance,
+      }
+    }, { progress: index / 4, tolerance: 1 / dimensions.travel + 0.0005 }), { timeout: 15_000 }).toEqual({
+      chapter: chapter.id, selected: chapter.label, title: titles[index], moving: 'false', onTarget: true,
+    })
   }
   const before = await page.evaluate(() => scrollY)
   await page.mouse.move(600, 350)
   await page.mouse.wheel(0, 240)
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(before + 100)
+  await page.waitForFunction((start) => scrollY > start + 100, before, { timeout: 15_000 })
   await page.getByRole('link', { name: 'Skip the tour', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Questions', exact: true })).toBeInViewport()
 })
@@ -208,7 +216,7 @@ test('opening the kitchen from the landing preserves current and Coldshare sessi
 test('chapter deep links and unlinked scroll positions survive lazy entry and reload', { tag: '@room' }, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/welcome#house-pot')
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-chapter', 'house-pot')
   await page.reload()
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-chapter', 'house-pot')
@@ -305,7 +313,8 @@ test('longer copy and orientation changes use measured scene areas without clipp
     await page.setViewportSize({ width, height })
     await openTour(page)
     expect(await layoutProblems(page)).toEqual([])
-    await expect.poll(() => page.locator('.welcome-stage').evaluate((element) => {
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    expect(await page.locator('.welcome-stage').evaluate((element) => {
       const canvas = element.querySelector('.welcome-canvas')
       const raw = canvas?.getAttribute('data-scene-area')
       if (!raw) return false

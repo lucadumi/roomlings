@@ -8,7 +8,7 @@ import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { isSceneObjectVisible } from '../../src/roomComponentScene.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { expect, test } from './account-fixtures.ts'
-import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing, waitForRoomReady } from './fixtures.ts'
+import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing, waitForRoomReady, waitForTourReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -335,7 +335,7 @@ test('the living room landing tour has working chapters without reading or repla
   await page.goto('/#living-room-sofa')
   const tour = page.locator('#tour')
   await expect(tour).toHaveAttribute('data-room', 'living-room')
-  await expect(tour).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(tour).toHaveAttribute('data-chapter', 'living-room-sofa')
   await expect(tour.getByRole('radio', { name: 'Living room', exact: true })).toBeChecked()
   const navigation = tour.getByRole('navigation', { name: 'Living room tour', exact: true })

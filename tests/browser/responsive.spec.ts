@@ -6,7 +6,7 @@ import {
   accountState, expect, test,
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
-import { chooseOption, openGroceryForm, openShoppingBag, savedKitchen } from './fixtures.ts'
+import { chooseOption, openGroceryForm, openShoppingBag, savedKitchen, waitForRoomReady } from './fixtures.ts'
 
 const viewports = [
   { width: 320, height: 568 },
@@ -125,7 +125,7 @@ test.describe('responsive current app', () => {
 
   test('room controls reflow through resizing and landscape orientation', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
-    await expect(page.locator('.world-canvas canvas')).toBeVisible()
+    await waitForRoomReady(page)
     await page.evaluate(() => document.fonts.ready)
     for (const viewport of [...viewports, { width: 667, height: 375 }, { width: 1440, height: 960 }]) {
       await page.setViewportSize(viewport)
@@ -195,7 +195,7 @@ test.describe('responsive current app', () => {
       await page.setViewportSize(viewport)
       await seedContent(page, accounts)
       await page.goto('/kitchen')
-      await expect(page.locator('.world-canvas canvas')).toBeVisible()
+      await waitForRoomReady(page)
       await settledLayout(page)
       const geometry = await page.locator('.game-home').evaluate((home) => {
         const selectors = ['.game-hud', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']

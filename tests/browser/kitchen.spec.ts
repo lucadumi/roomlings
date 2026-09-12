@@ -361,7 +361,7 @@ test('the kitchen ignores nonvisual household refreshes while paused and still r
   await page.goto('/kitchen')
   await waitForRoomReady(page)
   const drawCalls = () => page.evaluate(() => Number(Reflect.get(window, 'roomlingsTestDrawCalls')))
-  await expect.poll(drawCalls).toBeGreaterThan(0)
+  expect(await drawCalls()).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
   await page.locator('.kitchen-world').evaluate(async (element) => {
@@ -435,7 +435,6 @@ test('the phone view gives the room most of the screen and keeps panels below it
 })
 
 test('wheel zoom and the kettle respond without changing the household ledger', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.goto('/kitchen')
   await waitForRoomReady(page)
   const before = await page.locator('.fund-trigger strong').innerText()

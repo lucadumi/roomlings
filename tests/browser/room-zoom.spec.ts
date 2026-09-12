@@ -8,7 +8,7 @@ import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { createPlacementArrow, placementPreviewSize } from '../../src/placementArrow.ts'
 import { visibleRoomBounds } from '../../src/roomComponentScene.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
-import { openRoomEditor } from './fixtures.ts'
+import { openRoomEditor, waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -108,7 +108,7 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
       await page.goto(roomPath(room))
       const world = page.locator('.kitchen-world')
       const controls = world.locator('.world-camera-controls')
-      await expect(world.locator('canvas')).toBeVisible()
+      await waitForRoomReady(page)
       await expect(world).toHaveAttribute('data-rendering', 'paused')
       await expect(world).toHaveAttribute('data-framing', 'close')
       await expect(world).toHaveAttribute('data-focus', 'room')
