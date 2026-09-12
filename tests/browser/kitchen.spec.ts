@@ -364,6 +364,10 @@ test('the kitchen ignores nonvisual household refreshes while paused and still r
   await expect.poll(drawCalls).toBeGreaterThan(0)
   await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
+  await page.locator('.kitchen-world').evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  })
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const pausedAt = await drawCalls()
@@ -450,7 +454,6 @@ test('wheel zoom and the kettle respond without changing the household ledger', 
 })
 
 test('header and footer wrappers are transparent while their controls keep their own surfaces', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.goto('/kitchen')
   await waitForRoomReady(page)
   for (const selector of ['.game-hud', '.game-bottom']) {

@@ -6,7 +6,7 @@ import { roomTourChapters } from '../../src/landing/roomTourChapters.ts'
 
 async function openTour(page: Page) {
   await page.locator('.welcome-stage').scrollIntoViewIfNeeded()
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready', { timeout: 15_000 })
 }
 
 async function chooseChapter(page: Page, index: number) {

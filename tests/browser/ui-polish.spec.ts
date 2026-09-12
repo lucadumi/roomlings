@@ -47,6 +47,7 @@ test.describe('UI polish', () => {
     await expect(world).not.toHaveCSS('transition-property', 'none')
     expect(await home.evaluate((element) => Number.parseFloat(getComputedStyle(element, '::after').transitionDuration))).toBeGreaterThan(0)
     await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
+    await home.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
     await expect(world).toHaveAttribute('data-evening', 'false')
     await expect.poll(opacity).toBe(0)
     await expect(home).toHaveCSS('background-image', daylight)

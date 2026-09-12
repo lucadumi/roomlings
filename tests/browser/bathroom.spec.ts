@@ -4,11 +4,12 @@ import { OrthographicCamera, Vector3 } from 'three'
 import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { bathroomLayout } from '../../src/roomLayout.ts'
-import { selectRoom, trackDrawing } from './fixtures.ts'
+import { selectRoom, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
 async function frameRoom(page: Page) {
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-focus', 'room')
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-camera-moving', 'false')
