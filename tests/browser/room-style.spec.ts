@@ -5,7 +5,7 @@ import { componentFinishes } from '../../shared/componentFinishes.ts'
 import { getRoomComponents } from '../../shared/roomComponents.ts'
 import { sessionSchema } from '../../src/api.ts'
 import { roomPresets } from '../../src/roomStyles.ts'
-import { chooseOption, createHousehold, openRoomEditor, pauseRequest, savedKitchen, selectRoom } from './fixtures.ts'
+import { chooseOption, createHousehold, openRoomEditor, pauseRequest, savedKitchen, selectRoom, waitForRoomReady } from './fixtures.ts'
 
 test.use({ providerEnabled: false })
 test.use({ reducedMotion: 'reduce' })
@@ -227,9 +227,9 @@ test('saved finishes repaint the same scene and restore Original without resetti
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.clock.setFixedTime(new Date())
   await page.goto('/kitchen')
+  await waitForRoomReady(page)
   const room = page.locator('.kitchen-world')
-  // Allow cold reflected-material shader preparation before comparing stable images.
-  await expect(room).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
   const canvas = await page.locator('.world-canvas canvas').elementHandle()
   expect(canvas).not.toBeNull()
   await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
@@ -275,6 +275,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) for (const style of ['coa
     await page.goto('/kitchen')
     if (roomId === 'bathroom') await selectRoom(page, roomId)
     const room = page.locator(roomId === 'bathroom' ? '.bathroom-world' : '.kitchen-world')
+    await waitForRoomReady(page, room)
     await expect(room).toHaveAttribute('data-rendering', 'paused')
     if (roomId === 'kitchen') await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
     await page.getByRole('button', { name: 'Reset room view', exact: true }).click()

@@ -1,6 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import { roomIds } from '../../shared/rooms.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
+import { waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -8,6 +9,7 @@ for (const roomId of roomIds) {
   test(`${roomId} active object names stack above neighboring plus markers`, { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const marker = page.locator('.world-hotspot:visible').first()
     await expect(marker).toBeVisible()
     await marker.hover()

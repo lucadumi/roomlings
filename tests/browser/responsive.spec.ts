@@ -236,10 +236,11 @@ test.describe('responsive current app', () => {
         return {
           panelCoversDock: overlaps(panel, dock),
           panelCoversRoom: overlaps(panel, app.querySelector('.kitchen-world')!.getBoundingClientRect()),
+          labelCentered: Math.abs(label.left + label.width / 2 - innerWidth / 2) < 1,
           labelOverlaps: ['.game-identity', '.game-resources', '.world-camera-controls', '.room-panel']
             .filter((selector) => overlaps(label, app.querySelector(selector)!.getBoundingClientRect())),
         }
-      })).toEqual({ panelCoversDock: false, panelCoversRoom: false, labelOverlaps: [] })
+      })).toEqual({ panelCoversDock: false, panelCoversRoom: false, labelCentered: true, labelOverlaps: [] })
     })
   }
 

@@ -169,7 +169,6 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   addWindow(leftWindow, 'left', leftCurtains)
 
   const cupboard = utility('counters', kitchenLayout.counters)
-  const cabinetBodies: Mesh[] = []
   const [backTop, returnTop] = kitchenWorktops
   const outline = new Shape()
   const left = backTop.position[0] - backTop.width / 2
@@ -227,24 +226,33 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
       section.add(bay)
       const depth = (rear ? top.depth : top.width) - 0.13
       const underSink = unitDefinition.slotId === 'kitchen-bins'
-      const body = box(bay, [unit - 0.035, underSink ? 0.06 : bodyHeight, depth],
+      // One visibility boundary lets the vacant cabinet's opaque siblings batch together.
+      const vacant = new Group()
+      bay.add(vacant)
+      box(vacant, [unit - 0.035, underSink ? 0.06 : bodyHeight, depth],
         [0, underSink ? 0.14 : bodyY, 0], cabinet, 0.025)
-      const front = new Group()
-      bay.add(front)
       if (!unitDefinition.blindCorner) {
-        box(front, [unit - 0.075, bodyHeight - 0.13, 0.065], [0, bodyY, depth / 2 + 0.02], cabinet, 0.025)
-        box(front, [unit - 0.22, bodyHeight - 0.3, 0.012], [0, bodyY - 0.01, depth / 2 + 0.06], cabinetPanel, 0.006)
-        box(front, [0.24, 0.04, 0.08], [0, top.top - 0.42, depth / 2 + 0.085], handles, 0.014)
+        box(vacant, [unit - 0.075, bodyHeight - 0.13, 0.065], [0, bodyY, depth / 2 + 0.02], cabinet, 0.025)
+        box(vacant, [unit - 0.22, bodyHeight - 0.3, 0.012], [0, bodyY - 0.01, depth / 2 + 0.06], cabinetPanel, 0.006)
+        box(vacant, [0.24, 0.04, 0.08], [0, top.top - 0.42, depth / 2 + 0.085], handles, 0.014)
       }
-      if (!unitDefinition.slotId) continue
-      cabinetBodies.push(body)
+      if (!unitDefinition.slotId) {
+        // Fixed bays can batch with the rest of their countertop section.
+        bay.updateMatrix()
+        for (const part of [...vacant.children]) {
+          part.applyMatrix4(bay.matrix)
+          section.add(part)
+        }
+        bay.removeFromParent()
+        continue
+      }
       const shell = new Group()
       // The sink needs an open cabinet cavity even when no bin is installed below it.
       shell.visible = underSink
       bay.add(shell)
       for (const side of [-1, 1]) box(shell, [0.06, bodyHeight, depth], [side * (unit / 2 - 0.045), bodyY, 0], cabinet)
       box(shell, [unit - 0.06, bodyHeight, 0.035], [0, bodyY, -depth / 2 + 0.0175], cabinet)
-      componentFixtures.set(unitDefinition.slotId, { vacant: [body, front], occupied: underSink ? [] : [shell] })
+      componentFixtures.set(unitDefinition.slotId, { vacant: [vacant], occupied: underSink ? [] : [shell] })
     }
   }
   const counterContacts = contacts.slice()
@@ -573,6 +581,6 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
   componentBindings.set('kitchen-house-pot', { root: jar, finishes: [wood], anchor: [1.7, 2.55, 0.77] })
   componentBindings.set('kitchen-shopping-bag', { root: bag, finishes: [bagPaper], anchor: [-0.54, 2.85, 0.65] })
   componentBindings.set('kitchen-settlement-envelope', { root: envelope, finishes: [paper], anchor: [1.85, 1.9, 1.52] })
-  const preserved = new Set([...cabinetBodies, ...coins, ...receipts, ...steam, kettleLid])
+  const preserved = new Set([...coins, ...receipts, ...steam, kettleLid])
   return { actors, utilityActors, coins, portraits, receipts, receiptLines, steam, plants, light, sky, windowDisc, bulb, hourHand, minuteHand, kettleLid, contacts, styleMaterials, componentBindings, componentFixtures, preserved }
 }

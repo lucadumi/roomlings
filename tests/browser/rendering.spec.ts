@@ -5,7 +5,7 @@ import { baseCameraOffset, cameraFraming, roomCameraZoom } from '../../src/camer
 import { kitchenLayout } from '../../src/roomLayout.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
-import { trackDrawing } from './fixtures.ts'
+import { trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.beforeEach(({ populatedHousehold }) => {
   void populatedHousehold
@@ -38,7 +38,7 @@ test('the full-size kitchen stays within its static-geometry draw-call budget', 
   await page.setViewportSize({ width: 1440, height: 960 })
   await trackDrawing(page)
   await page.goto('/kitchen')
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false')
   const draws = await page.evaluate(() => new Promise<number[]>((resolve) => {
     requestAnimationFrame(() => {
@@ -63,9 +63,9 @@ test('reduced-motion rooms stop idle drawing and refresh cached shadows only whe
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
   await page.goto('/kitchen')
+  await waitForRoomReady(page)
   const room = page.locator('.kitchen-world')
-  // Cold reflected-material shaders take longer on the software WebGL renderer.
-  await expect(room).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
+  await expect(room).toHaveAttribute('data-rendering', 'paused')
   const idle = await drawing()
   expect(idle.draws).toBeGreaterThan(0)
   expect(idle.shadows).toBeGreaterThan(0)
@@ -105,6 +105,7 @@ test('kitchen picking ignores secondary clicks and releases abandoned pointer ca
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
   await expect(canvas).toBeVisible()
@@ -151,6 +152,7 @@ for (const room of roomIds) {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto(roomPath(room))
+    await waitForRoomReady(page)
     await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
     await page.locator('.world-canvas canvas').evaluate((element) => {
       if (!(element instanceof HTMLCanvasElement)) throw new Error('The room canvas is missing.')
@@ -184,6 +186,7 @@ for (const room of roomIds) {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(room))
+    await waitForRoomReady(page)
     await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
     await expect(page.locator('.room-panel')).toBeVisible()
     const labelToggle = page.getByRole('button', { name: 'Hide object labels', exact: true, includeHidden: true })
@@ -212,6 +215,7 @@ test('changing to reduced motion refreshes shadows for leaves that return to res
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   await expect(world.locator('canvas')).toBeVisible()
   await page.getByRole('button', { name: 'House rules', exact: true }).click()
@@ -227,6 +231,7 @@ test('changing to reduced motion refreshes shadows for leaves that return to res
 
 test('kitchen context loss stops its renderer and retains the ordinary household tools', { tag: '@room' }, async ({ page }) => {
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
   await expect(canvas).toBeVisible()

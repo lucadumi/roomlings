@@ -112,6 +112,7 @@ export default function KitchenWorld({
     renderer.toneMappingExposure = 1.05
     renderer.setClearColor(0x000000, 0)
     renderer.domElement.setAttribute('aria-hidden', 'true')
+    renderer.domElement.dataset.renderReady = 'false'
     element.appendChild(renderer.domElement)
     const scene = new Scene()
     applyRoomReflections(scene, reflections)
@@ -413,6 +414,7 @@ export default function KitchenWorld({
     renderer.domElement.addEventListener('wheel', wheel, { passive: false })
     const stopUnavailable = () => {
       contextLost = true
+      renderer.domElement.dataset.renderReady = 'false'
       cancelAnimationFrame(frame)
       controls.current = null
       pointers.clear()
@@ -670,7 +672,6 @@ export default function KitchenWorld({
       sunlight.shadow.needsUpdate = shadowsDirty || shadowsMoving || (!reducedMotion.matches && now - lastShadowFrame >= 250)
       if (sunlight.shadow.needsUpdate) { lastShadowFrame = now; shadowsDirty = false }
       renderer.render(scene, camera)
-      initialized = true
       for (const [id, label] of componentLabels.current) {
         const anchor = componentScene.anchors.get(id)
         if (!anchor || !isSceneObjectVisible(anchor, room)) { label.style.visibility = 'hidden'; continue }
@@ -683,6 +684,10 @@ export default function KitchenWorld({
         label.style.visibility = projected.z > -1 && projected.z < 1
           && x > area.x + insetX && x < area.x + area.width - insetX
           && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
+      }
+      if (!initialized) {
+        initialized = true
+        renderer.domElement.dataset.renderReady = 'true'
       }
     }
     resize()

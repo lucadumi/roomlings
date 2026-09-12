@@ -7,7 +7,7 @@ import type { Session } from '../../shared/domain.ts'
 import { componentPositionSupported, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
 import { cameraOrbitOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
-import { roomIds } from '../../shared/rooms.ts'
+import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
@@ -42,13 +42,15 @@ test('switching menus releases object focus and frames the newly selected menu',
 for (const roomId of ['kitchen', 'bathroom'] as const) {
   test(`the compact ${roomId} preserves its ordinary installed room without filling optional positions`, { tag: '@room' }, async ({ page, accounts, emptyHousehold }, testInfo) => {
     const before = await accounts.store.get(emptyHousehold.household.id)
+    if (!before) throw new Error('The isolated household was not created.')
+    const installed = getRoomComponents(before).filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
-    await expect(world).toHaveAttribute('data-component-count', roomId === 'kitchen' ? '20' : '6')
+    await expect(world).toHaveAttribute('data-component-count', String(installed.length))
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-default-components.png`), animations: 'disabled' })
     expect((await accounts.store.get(emptyHousehold.household.id))?.roomComponents).toEqual(before?.roomComponents)
   })
@@ -106,7 +108,7 @@ async function configureDesignedSlots(accounts: AccountHarness, session: Session
     })
   household.roomComponents = components.map((component) => componentPositionSupported(component.slotId, components) ? component : { ...component, installed: false })
   await accounts.store.save(household)
-  return household.roomComponents
+  return getRoomComponents(household)
 }
 
 async function roomPoint(page: Page, roomId: RoomId, position: [number, number, number], rotation = 0, roomBounds?: Box3, viewZoom = 1) {
@@ -289,7 +291,7 @@ for (const roomId of roomIds) {
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
-    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 18)
+    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 17)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-all-components-original.png`), animations: 'disabled' })
   })
 
@@ -326,9 +328,12 @@ for (const roomId of roomIds) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-designed-components-narrow.png`), animations: 'disabled' })
     await page.goto('/#tour')
-    await expect(page.locator('.welcome-preview-choice img')).toHaveCount(roomIds.length)
-    expect(await page.locator('.welcome-preview-choice img').evaluateAll((images) => images.every((image) =>
-      image instanceof HTMLImageElement && !image.src.startsWith('data:') && /\/(?:assets|src)\//.test(image.src)))).toBe(true)
+    const publicChoices = page.getByRole('group', { name: 'Preview a room', exact: true })
+    await expect(publicChoices.getByRole('radio')).toHaveCount(roomIds.length)
+    for (const publicRoomId of roomIds) {
+      await expect(publicChoices.getByRole('radio', { name: roomCatalog[publicRoomId].name, exact: true })).toHaveValue(publicRoomId)
+    }
+    await expect(publicChoices.locator('img')).toHaveCount(0)
     await expect(page.locator('[data-preview-source="saved"]')).toHaveCount(0)
     expect(failures).toEqual([])
   })
@@ -404,7 +409,7 @@ test('configured objects remain reachable without WebGL and saved previews never
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
-  await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(roomIds.length)
+  await expect(picker.getByText('3D is unavailable.', { exact: true })).toHaveCount(roomIds.length)
   expect(await picker.locator('img').evaluateAll((images) => images.every((image) => !image.getAttribute('src')))).toBe(true)
   await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).focus()
   await page.keyboard.press('Enter')

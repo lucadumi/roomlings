@@ -141,7 +141,7 @@ test('the sofa and TV remain directly pickable with their labels hidden', { tag:
 test('living room objects open their own chore areas and shared supply shortcuts', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('living-room'))
-  for (const [target, area] of [['sofa', 'seating'], ['surfaces', 'surfaces'], ['plants', 'plants'], ['floor', 'floor'], ['bins', 'bins']]) {
+  for (const [target, area] of [['sofa', 'seating'], ['surfaces', 'surfaces'], ['plants', 'plants'], ['floor', 'floor']]) {
     await frameRoom(page)
     await page.locator(`[data-living-room-target="${target}"]`).click()
     await expect(page.getByRole('region', { name: 'Household chores.', exact: true })).toBeVisible()
@@ -149,6 +149,7 @@ test('living room objects open their own chore areas and shared supply shortcuts
     await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', area)
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   }
+  await expect(page.locator('[data-living-room-target="bins"]')).toHaveCount(0)
   await frameRoom(page)
   await page.locator('[data-living-room-target="chores"]').click()
   await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', '')

@@ -155,7 +155,7 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
 
       const editor = await openRoomEditor(page)
       await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-      const name = room === 'kitchen' ? 'Dishwasher' : room === 'bathroom' ? 'Washing machine' : 'Record player'
+      const name = room === 'kitchen' ? 'Dishwasher' : room === 'bathroom' ? 'Washing machine' : 'Wall art'
       await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
       const confirmation = page.getByRole('dialog', { name: `Try ${name}`, exact: true })
       await expect(confirmation).toBeVisible()
@@ -167,7 +167,7 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
       if (!id) throw new Error('The candidate has no placement identifier.')
       const candidate = room === 'kitchen' ? createRoomComponent('dishwasher', 'kitchen-undercounter', id)
         : room === 'bathroom' ? createRoomComponent('washing-machine', 'bathroom-laundry', id)
-          : createRoomComponent('record-player', 'living-room-media-accessory', id)
+          : createRoomComponent('wall-art', 'living-room-wall-art', id)
       await expectPlacementVisible(page, components, candidate)
       await page.screenshot({ path: testInfo.outputPath(`${room}-placement-scale.png`), animations: 'disabled' })
       await zoomIn.click()

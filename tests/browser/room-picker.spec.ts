@@ -179,12 +179,15 @@ test('an open room menu follows its button when the viewport changes', async ({ 
   await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 })
   for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 960 }]) {
     await page.setViewportSize(viewport)
-    await expect.poll(async () => {
-      const anchor = await trigger.boundingBox()
-      const bounds = await menu.boundingBox()
-      return !!anchor && !!bounds && Math.abs(bounds.y - anchor.y - anchor.height - 8) < 2
-        && bounds.x >= 0 && bounds.x + bounds.width <= viewport.width && bounds.y + bounds.height <= viewport.height
-    }).toBe(true)
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    await expect.poll(() => menu.evaluate((element) => {
+      const anchor = document.querySelector('.room-picker-trigger')!.getBoundingClientRect()
+      const bounds = element.getBoundingClientRect()
+      return Math.abs(bounds.top - anchor.bottom - 8) < 2
+        && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight
+    }), { message: `Room menu follows its anchor at ${viewport.width}x${viewport.height}` }).toBe(true)
   }
   await page.keyboard.press('Escape')
   await expect(trigger).toBeFocused()

@@ -49,7 +49,7 @@ test('the public welcome page explains the product without opening or changing a
   await page.goto('/welcome')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Share a home.Not the hassle.')
   await expect(page.locator('.welcome-feature')).toHaveCount(3)
-  await expect(page.locator('.welcome-hero')).toContainText('kitchen, bathroom and living room')
+  await expect(page.locator('.welcome-hero .welcome-action-note')).toHaveText('Less chasing. More time together.')
   await expect(page.locator('.welcome-feature h3')).toHaveText(['Rooms & chores.', 'Shopping & bills.', 'Balances & access.'])
   await expect(page.locator('.welcome-feature').nth(0)).toContainText('Assign chores, rotate turns')
   await expect(page.locator('.welcome-feature').nth(1)).toContainText('paid receipts')
@@ -96,9 +96,9 @@ test('landing sections stay compact with spacing after the hero and shared-home 
         headingGap: getComputedStyle(element.querySelector('.welcome-features .welcome-section-heading')!).marginBottom,
         titleToContent: element.querySelector('.welcome-feature h3')!.getBoundingClientRect().top
           - element.querySelector('#features-title')!.getBoundingClientRect().bottom,
-        sectionMinimums: [...element.querySelectorAll('main > section')].map((section) => getComputedStyle(section).minHeight),
+        sectionMinimums: [...element.querySelectorAll('main > section, main > .welcome-invitation-shadow > section')].map((section) => getComputedStyle(section).minHeight),
         headerHeight: element.querySelector('.welcome-header')!.getBoundingClientRect().height,
-        otherMargins: [...element.querySelectorAll('main > section')].slice(1).map((section) => getComputedStyle(section).marginTop),
+        otherMargins: [...element.querySelectorAll('main > section, main > .welcome-invitation-shadow > section')].slice(1).map((section) => getComputedStyle(section).marginTop),
       }
     })
     expect(metrics.words).toBeLessThanOrEqual(230)
@@ -134,9 +134,11 @@ test('the secondary kitchen tour uses less than one extra screen of native scrol
   for (const index of [0, 1, 2, 3, 4, 2, 0]) {
     await chooseChapter(page, index)
     await expect(page.locator('.welcome-tour-copy[data-active="true"] h3')).toHaveText(titles[index])
+    await expect.poll(async () => {
+      const position = Number(await page.locator('.welcome-canvas').getAttribute('data-tour-position'))
+      return Math.abs(position - index / 4)
+    }).toBeLessThanOrEqual(1 / dimensions.travel + 0.0005)
     await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-camera-moving', 'false')
-    const position = Number(await page.locator('.welcome-canvas').getAttribute('data-tour-position'))
-    expect(Math.abs(position - index / 4)).toBeLessThanOrEqual(1 / dimensions.travel + 0.0005)
   }
   const before = await page.evaluate(() => scrollY)
   await page.mouse.move(600, 350)

@@ -5,9 +5,10 @@ import { createRoomComponent, defaultRoomComponents, getRoomComponents } from '.
 import { roomIds } from '../../shared/rooms.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { expect, test } from './account-fixtures.ts'
-import { openRoomEditor, openRoomObjects } from './fixtures.ts'
+import { openRoomEditor, openRoomObjects, waitForRoomReady } from './fixtures.ts'
 
-test.use({ providerEnabled: false, reducedMotion: 'no-preference' })
+// Only the measured focus and orbit interactions need motion, not scene/editor setup.
+test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
 const frameSchema = z.object({
   room: z.array(z.number()).length(16),
@@ -51,7 +52,17 @@ async function trackCamera(page: Page, objectName: string) {
   }, objectName)
 }
 
+async function cameraFrames(page: Page) {
+  return z.array(frameSchema).parse(await page.evaluate(() => Reflect.get(window, 'roomCameraOrbitFrames')))
+}
+
+async function settleView(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await expect(page.locator('.kitchen-world')).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
+}
+
 async function dragView(page: Page, tilt = 0) {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   const world = page.locator('.kitchen-world')
   const start = await world.locator('canvas').evaluate((canvas, tilt) => {
     const bounds = canvas.getBoundingClientRect()
@@ -70,7 +81,9 @@ async function dragView(page: Page, tilt = 0) {
   }
   await page.mouse.up()
   await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
-  return z.array(frameSchema).parse(await page.evaluate(() => Reflect.get(window, 'roomCameraOrbitFrames')))
+  const frames = await cameraFrames(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  return frames
 }
 
 function expectFixedEditorFraming(frames: z.infer<typeof frameSchema>[]) {
@@ -94,13 +107,20 @@ for (const roomId of roomIds) {
     household.roomComponents = [...getRoomComponents(household), object]
     await accounts.store.save(household)
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
-    await expect(world.locator('canvas')).toBeVisible()
     await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
     const objects = await openRoomObjects(page)
+    await settleView(page)
+    await trackCamera(page, object.name)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect.poll(async () => (await cameraFrames(page)).length).toBeGreaterThan(0)
+    const beforeFocus = (await cameraFrames(page)).at(-1)!.camera
     await objects.getByRole('button', { name: 'Open Orbit reference details', exact: true }).click()
     await expect(world).toHaveAttribute('data-selected-component', object.id)
-    await expect(world).toHaveAttribute('data-camera-moving', 'true')
+    // A slow frame can finish focusing before a transient moving flag can be observed.
+    await expect.poll(async () => (await cameraFrames(page))
+      .some((frame) => JSON.stringify(frame.camera) !== JSON.stringify(beforeFocus))).toBe(true)
     await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
     await trackCamera(page, object.name)
     const frames = await dragView(page)
@@ -122,13 +142,14 @@ for (const roomId of roomIds) {
     household.roomComponents = defaultRoomComponents()
     await accounts.store.save(household)
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const editor = await openRoomEditor(page)
     const world = page.locator('.kitchen-world')
     await expect(world).toHaveAttribute('data-edit-mode', 'true')
     await world.evaluate(async (element) => {
       await Promise.all(element.getAnimations().map((animation) => animation.finished))
     })
-    await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
+    await settleView(page)
     const reference = getRoomComponents(household).find((component) => component.roomId === roomId && component.installed)
     if (!reference) throw new Error('The editor has no fixed reference object.')
     await trackCamera(page, reference.name)
@@ -136,18 +157,18 @@ for (const roomId of roomIds) {
 
     await editor.getByRole('button', { name: `Edit ${reference.name}`, exact: true }).click()
     await expect(world).toHaveAttribute('data-selected-component', reference.id)
-    await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
+    await settleView(page)
     await trackCamera(page, reference.name)
     expectFixedEditorFraming(await dragView(page, -100))
 
-    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Record player'
+    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Wall art'
     await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
     await editor.getByLabel('Find an object', { exact: true }).fill(name)
     await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
     const confirmation = page.getByRole('dialog', { name: `Try ${name}`, exact: true })
     await expect(confirmation).toBeVisible()
     await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'true')
-    await expect(world).toHaveAttribute('data-camera-moving', 'false', { timeout: 15_000 })
+    await settleView(page)
     await trackCamera(page, name)
     expectFixedEditorFraming(await dragView(page, 60))
     await expect(world.locator('.world-camera-controls')).toContainText('100%')

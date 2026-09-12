@@ -204,6 +204,7 @@ export default function ChoreRoomWorld<Target extends string>({
     renderer.setClearColor(0x000000, 0)
     const canvas = renderer.domElement
     canvas.setAttribute('aria-hidden', 'true')
+    canvas.dataset.renderReady = 'false'
     element.appendChild(canvas)
     const scene = new Scene()
     applyRoomReflections(scene, reflections)
@@ -506,8 +507,6 @@ export default function ChoreRoomWorld<Target extends string>({
       renderer.shadowMap.needsUpdate = shadowsDirty
       renderer.render(scene, camera)
       shadowsDirty = false
-      if (!initialized) latest.onStatus?.('ready')
-      initialized = true
       for (const [target, originalAnchor] of model.anchors) {
         const button = labels.current.get(target)
         if (!button) continue
@@ -541,6 +540,11 @@ export default function ChoreRoomWorld<Target extends string>({
         button.style.visibility = projected.z > -1 && projected.z < 1
           && x > area.x + insetX && x < area.x + area.width - insetX
           && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
+      }
+      if (!initialized) {
+        initialized = true
+        canvas.dataset.renderReady = 'true'
+        latest.onStatus?.('ready')
       }
       const moving = orbitRotation !== targetRotation || pitch !== targetPitch
         || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom
@@ -665,6 +669,7 @@ export default function ChoreRoomWorld<Target extends string>({
     }
     const stopUnavailable = () => {
       contextLost = true
+      canvas.dataset.renderReady = 'false'
       stopDrawing()
       controls.current = null
       pointers.clear()

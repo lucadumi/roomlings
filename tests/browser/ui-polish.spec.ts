@@ -114,10 +114,10 @@ test.describe('UI polish', () => {
     const share = page.getByRole('button', { name: 'Your household balance', exact: true })
     await expect(share.locator('.balance-caption')).toHaveCSS('font-size', '11px')
     await expect(share.locator('strong')).toHaveText('\u20ac0.00')
-    await expect(share.locator('strong')).toHaveCSS('font-size', '28px')
+    await expect(share.locator('strong')).toHaveCSS('font-size', '24px')
     await expect(share.locator('span').last()).toHaveText('all square')
-    await expect(share.locator('span').last()).toHaveCSS('font-size', '13px')
-    await expect(share).toHaveCSS('padding', '11px 16px')
+    await expect(share.locator('span').last()).toHaveCSS('font-size', '12px')
+    await expect(share).toHaveCSS('padding', '9px 12px')
     await page.evaluate(() => document.fonts.ready)
 
     for (const width of [1440, 1280, 1251]) {

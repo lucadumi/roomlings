@@ -295,18 +295,24 @@ for (const [roomId, kind, slotId] of [
   })
 }
 
-test('the fitted appliance bay swaps its cabinet front and carcass back on removal', (t) => {
-  const { scene, componentModel } = fixture(t, 'kitchen')
+test('the fitted appliance bay swaps its batched cabinet front and carcass back on removal', (t) => {
+  const { room, scene, componentModel } = fixture(t, 'kitchen')
   const defaults = defaultRoomComponents()
   const fixtureBay = componentModel.componentFixtures.get('kitchen-undercounter')!
   scene.update(defaults, 'original')
+  batchStaticMeshes(room, 'preserved' in componentModel ? componentModel.preserved : new Set())
+  const vacantMeshes = fixtureBay.vacant.flatMap(meshes)
+  assert.ok(vacantMeshes.length)
+  assert.ok(vacantMeshes.every((mesh) => isSceneObjectVisible(mesh, room)))
   assert.ok(fixtureBay.vacant.every((object) => object.visible))
   assert.ok(fixtureBay.occupied.every((object) => !object.visible))
   const dishwasher = createRoomComponent('dishwasher', 'kitchen-undercounter', 'dishwasher')
   scene.update([...defaults, dishwasher], 'sage')
+  assert.ok(vacantMeshes.every((mesh) => !isSceneObjectVisible(mesh, room)))
   assert.ok(fixtureBay.vacant.every((object) => !object.visible))
   assert.ok(fixtureBay.occupied.every((object) => object.visible))
   scene.update(defaults, 'sage')
+  assert.ok(vacantMeshes.every((mesh) => isSceneObjectVisible(mesh, room)))
   assert.ok(fixtureBay.vacant.every((object) => object.visible))
   assert.ok(fixtureBay.occupied.every((object) => !object.visible))
 })
