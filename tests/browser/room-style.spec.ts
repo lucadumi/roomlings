@@ -409,7 +409,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }
     await page.goto('/kitchen')
     const tools = page.locator('.house-tools')
     await expect(tools).toBeVisible()
-    await expect(page.locator('.world-camera-controls')).toBeVisible()
+    await waitForRoomReady(page)
     const controls = await tools.boundingBox()
     const camera = await page.locator('.world-camera-controls').boundingBox()
     expect(controls).not.toBeNull()

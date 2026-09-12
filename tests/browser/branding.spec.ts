@@ -1,7 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator, Page, Route } from '@playwright/test'
 import type { Session } from '../../shared/domain.ts'
-import { createHousehold, openGroceryForm, pauseRequest, savedKitchen, waitForTourReady } from './fixtures.ts'
+import { createHousehold, openGroceryForm, pauseRequest, savedKitchen, waitForRoomReady, waitForTourReady } from './fixtures.ts'
 import { createPopulatedHousehold } from '../household-fixture.ts'
 
 async function restoreKitchen(page: Page, session: Session) {
@@ -332,7 +332,7 @@ for (const module of ['App', 'Welcome', 'KitchenWorld', 'BathroomWorld'] as cons
         await expect(page.locator('.game-house')).toContainText('The lazy household')
       }
       await expect(page.locator('.scene-loading')).toHaveCount(0)
-      if (module === 'KitchenWorld' || module === 'BathroomWorld') await expect(page.locator('.world-canvas canvas')).toBeVisible()
+      if (module === 'KitchenWorld' || module === 'BathroomWorld') await waitForRoomReady(page)
     })
 }
 

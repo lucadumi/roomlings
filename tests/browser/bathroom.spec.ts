@@ -126,7 +126,7 @@ test('bathroom rendering settles, recolors existing geometry and releases the sc
 test('bathroom drag, wheel and touch zoom do not accidentally open chores', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await page.mouse.move(160, 430)
   await page.mouse.wheel(0, -160)
@@ -148,7 +148,7 @@ test('bathroom drag, wheel and touch zoom do not accidentally open chores', { ta
 
 test('bathroom context loss retains ordinary chore and restocking actions', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.locator('.bathroom-world canvas').evaluate((canvas) => {
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error('The bathroom canvas is missing.')
     const loss = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')
@@ -167,7 +167,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   test(`bathroom framing and shared room controls fit at ${viewport.width}x${viewport.height}`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath('bathroom'))
-    await expect(page.locator('.bathroom-world canvas')).toBeVisible()
+    await waitForRoomReady(page)
     await frameRoom(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toBeInViewport({ ratio: 1 })
@@ -186,6 +186,6 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
     await selectRoom(page, 'kitchen')
     await expect(page.locator('.bathroom-world')).toHaveCount(0)
-    await expect(page.locator('.kitchen-world .world-canvas canvas')).toBeVisible()
+    await waitForRoomReady(page)
   })
 }

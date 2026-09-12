@@ -155,7 +155,7 @@ test.describe('UI polish', () => {
     test(`panels and forms stay usable at ${viewport.width}px`, async ({ page, populatedHousehold: _household }) => {
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
-      await expect(page.locator('.world-camera-controls')).toBeVisible()
+      await waitForRoomReady(page)
       await expectNoOverflow(page.locator('html'))
       expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true)
       const dock = await page.locator('.game-dock').boundingBox()

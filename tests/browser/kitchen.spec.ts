@@ -50,7 +50,7 @@ test('fridge, expenses, repayment records, and reload persistence', async ({ pag
   page.on('pageerror', (error) => pageErrors.push(error.message))
   await page.goto('/kitchen')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
-  await expect(page.locator('.world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Close the fridge' }).click()
   await expect(page.getByRole('button', { name: 'Peek inside' })).toBeVisible()
   await page.getByRole('button', { name: 'Peek inside' }).click()

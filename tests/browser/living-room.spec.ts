@@ -90,7 +90,7 @@ test('the living room opens at its entry scale and preserves the household acros
   await selectRoom(page, 'kitchen')
   await expect(world).toHaveCount(0)
   await selectRoom(page, 'bathroom')
-  await expect(page.locator('.bathroom-world canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   await page.keyboard.press('End')
   await expect(page.getByRole('menuitemradio', { name: 'Open Living room', exact: true })).toBeFocused()
@@ -313,7 +313,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   test(`living room controls fit at ${viewport.width}x${viewport.height}`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath('living-room'))
-    await expect(page.locator('.living-room-world canvas')).toBeVisible()
+    await waitForRoomReady(page)
     await frameRoom(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toBeInViewport({ ratio: 1 })
