@@ -336,9 +336,17 @@ test('the grocery bag and receipt book meshes work without clickable labels', { 
   await expect(page.getByRole('dialog')).toContainText('What is in the bag?')
   await page.getByLabel('What did you pick up?').fill('Groceries from the 3D bag')
   await page.getByLabel('Total (EUR)').fill('8.70')
-  await page.getByRole('button', { name: 'Add & split the groceries' }).click()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
+  // Keep the transient notice alive while saving redraws the room.
+  const savedAt = Date.now()
+  await page.clock.install({ time: savedAt - 60_000 })
+  await page.clock.pauseAt(savedAt)
+  try {
+    await page.getByRole('button', { name: 'Add & split the groceries' }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    await expect(page.locator('.toast').getByRole('status')).toHaveText('Grocery run saved.')
+  } finally {
+    await page.clock.resume()
+  }
   await frameRoom(page)
   await clickRoomPoint(page, [kitchenLayout.ledger[0], kitchenLayout.ledger[1] + 0.1, kitchenLayout.ledger[2]])
   await expect(page.getByRole('region', { name: 'The receipt book.' })).toBeVisible()
