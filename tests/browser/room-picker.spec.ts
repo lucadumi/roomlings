@@ -176,6 +176,7 @@ test('an open room menu follows its button when the viewport changes', async ({ 
   const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
   await trigger.click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
+  await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 })
   for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1440, height: 960 }]) {
     await page.setViewportSize(viewport)
     await expect.poll(async () => {

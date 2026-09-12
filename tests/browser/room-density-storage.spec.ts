@@ -60,6 +60,26 @@ const counterAdditions = [
   ['cutting-boards', 'kitchen-cutting-boards'], ['paper-towel-holder', 'kitchen-paper-towels'],
 ] as const
 
+test('old living-room bins appear only in Storage and cannot be placed again', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+  const household = await current(accounts, owner)
+  const bin = { ...createRoomComponent('bins', 'living-room-bins', randomUUID()), name: 'Old lounge bin' }
+  household.roomComponents = [...getRoomComponents(household), bin]
+  await accounts.store.save(household)
+  await page.goto(roomPath('living-room'))
+  const editor = await openRoomEditor(page)
+  await expect(editor.getByRole('button', { name: 'Edit Old lounge bin', exact: true })).toHaveCount(0)
+  await expect(page.locator('.living-room-world')).toHaveAttribute('data-component-count', '12')
+  await editor.getByRole('button', { name: 'Storage', exact: true }).click()
+  const card = editor.locator(`[data-stored-component="${bin.id}"]`)
+  await expect(card).toContainText(bin.name)
+  await expect(card.getByRole('button', { name: /^Bring back/ })).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
+  await editor.getByLabel('Find an object', { exact: true }).fill('bin')
+  await expect(editor.getByRole('article', { name: 'Bin', exact: true })).toHaveCount(0)
+  expect(getRoomComponents(await current(accounts, owner)).find((component) => component.id === bin.id))
+    .toEqual({ ...bin, installed: false })
+})
+
 test('zone filters have names only and catalog Preview keeps the selected actual instance and accepted drafts', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
   const before = await current(accounts, owner)
   await page.goto('/kitchen')

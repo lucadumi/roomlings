@@ -8,6 +8,46 @@ import { Store } from '../server/store.ts'
 import { applyRoomComponentPatch, setRoomComponentState } from '../shared/componentChanges.ts'
 import { componentAllowedInRoom, componentPositionOffered, createRoomComponent, defaultRoomComponents, getRoomComponents } from '../shared/roomComponents.ts'
 import { completeRoomLayout } from './room-layout-fixture.ts'
+import { createPopulatedHousehold } from './household-fixture.ts'
+
+it('retires old living-room bins into Storage without rewriting history or replacing sessions', async (context) => {
+  const filename = resolve('data', `test-living-bin-retirement-${randomUUID()}.sqlite`)
+  let store = new Store(filename)
+  context.after(async () => {
+    await store.close()
+    for (const path of [filename, `${filename}-wal`, `${filename}-shm`]) rmSync(path, { force: true })
+  })
+  const session = await createPopulatedHousehold(store)
+  const bin = {
+    ...createRoomComponent('bins', 'living-room-bins', randomUUID()),
+    name: 'Old lounge bin', finish: 'sage' as const, version: 7,
+    supplies: [{ id: 'liners', name: 'Bin liners', quantity: '2 rolls' }],
+  }
+  const legacy = { ...session.household, roomComponents: [...getRoomComponents(session.household), bin] }
+  const originalJson = JSON.stringify(legacy)
+  await store.close()
+  const writer = new DatabaseSync(filename)
+  writer.prepare('UPDATE households SET state = ? WHERE id = ?').run(originalJson, legacy.id)
+  writer.close()
+  store = new Store(filename)
+  const restored = await store.authenticate(session.token)
+  assert.ok(restored)
+  assert.equal(restored.memberId, session.memberId)
+  assert.equal(restored.household.version, legacy.version)
+  assert.deepEqual(restored.household.roomComponents?.find((component) => component.id === bin.id), { ...bin, installed: false })
+  assert.deepEqual(restored.household.roomComponents?.filter((component) => component.id !== bin.id), session.household.roomComponents)
+  for (const key of ['members', 'expenses', 'settlements', 'shopping', 'chores'] as const) {
+    assert.deepEqual(restored.household[key], legacy[key])
+  }
+  const reader = new DatabaseSync(filename, { readOnly: true })
+  try {
+    assert.equal(reader.prepare('SELECT state FROM households WHERE id = ?').get(legacy.id)?.state, originalJson)
+  } finally { reader.close() }
+  await store.save(restored.household)
+  await store.close()
+  store = new Store(filename)
+  assert.deepEqual((await store.authenticate(session.token))?.household, restored.household)
+})
 
 it('keeps installed objects, settings, manual states and the original browser session across a database reopen', async (context) => {
   const filename = resolve('data', `test-room-components-${randomUUID()}.sqlite`)

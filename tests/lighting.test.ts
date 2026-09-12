@@ -1,12 +1,19 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Box3, DirectionalLight, Group, Mesh, Raycaster, Vector3 } from 'three'
-import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, fitRoomShadowBounds } from '../src/lighting.ts'
+import { addContactShadows, createContactShadowTexture, createRoomLights, daylight, fitRoomShadowBounds, roomPreviewShadowSize } from '../src/lighting.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
 import { completeRoomLayout } from './room-layout-fixture.ts'
 import { roomRotationPeriod } from '../src/camera.ts'
 
 describe('room lighting', () => {
+  it('sizes preview shadows for their actual image instead of allocating full room maps', () => {
+    for (const [width, height, expected] of [[86, 59, 256], [172, 118, 512], [560, 384, 1024], [1440, 960, 1024]]) {
+      assert.equal(roomPreviewShadowSize(width, height), expected)
+    }
+    for (const invalid of [0, -1, NaN, Infinity]) assert.throws(() => roomPreviewShadowSize(invalid, 100), RangeError)
+  })
+
   it('adds front and overhead fill without creating more shadow maps', () => {
     const lights = createRoomLights()
     assert.equal(lights.fillLights.length, 3)

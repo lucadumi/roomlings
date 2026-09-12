@@ -52,7 +52,9 @@ describe('in-memory room storage mutation boundary', () => {
     const api = await fixture(context)
     const legacy = { ...await api.current(), roomComponents: completeRoomLayout() }
     await api.store.save(legacy)
-    assert.deepEqual((await api.store.authenticate(api.session.token))?.household, legacy)
+    const normalized = householdSchema.parse(legacy)
+    assert.deepEqual((await api.store.authenticate(api.session.token))?.household, normalized)
+    assert.equal(normalized.roomComponents?.find((component) => component.slotId === 'living-room-bins')?.installed, false)
     const coffee = getRoomComponents(legacy).find((component) => component.slotId === 'kitchen-coffee')!
     const edited = (await api.call('patch', '/api/household/room-components', {
       roomId: 'kitchen', changes: [change(coffee, { finish: 'sage' })],

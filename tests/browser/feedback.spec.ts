@@ -9,6 +9,20 @@ async function expectFeedbackFits(feedback: Locator) {
   expect(await feedback.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   await expect(feedback.locator('.feedback-text')).toHaveCSS('font-size', '12px')
   await expect(feedback.locator('.feedback-text')).toHaveCSS('line-height', '19.2px')
+  const layout = await feedback.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    const parts = [...element.querySelectorAll('.feedback-icon, .feedback-text, .feedback-actions, .feedback-dismiss')]
+      .map((part) => part.getBoundingClientRect())
+    return {
+      contained: parts.every((part) => part.left >= bounds.left && part.right <= bounds.right
+        && part.top >= bounds.top && part.bottom <= bounds.bottom),
+      overlap: parts.some((a, index) => parts.slice(index + 1).some((b) =>
+        Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+        && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1)),
+    }
+  })
+  expect(layout.contained).toBe(true)
+  expect(layout.overlap).toBe(false)
 }
 
 for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
@@ -21,9 +35,11 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     await page.goto('/kitchen')
     const feedback = page.locator('.app-feedback .feedback-error')
     const retry = feedback.getByRole('button', { name: 'Retry room access', exact: true })
-    await expect(feedback.getByRole('alert')).toHaveText('Server unavailable. Try again.')
+    await expect(feedback).toHaveCSS('background-color', 'rgb(135, 69, 51)')
+    await expect(feedback).toHaveCSS('color', 'rgb(255, 255, 255)')
+    await expect(feedback.getByRole('alert')).toHaveText('Server unavailable.')
     await expect(retry).toHaveText('Retry')
-    await expect(retry).toHaveCSS('white-space', 'nowrap')
+    await expect(retry).toHaveCSS('white-space', 'normal')
     await expect(retry).toBeInViewport({ ratio: 1 })
     await expectFeedbackFits(feedback)
 
@@ -59,7 +75,7 @@ test('form errors and confirmed successes share formatting without leaving stale
     ? route.fulfill({ status: 503, contentType: 'text/html', body: '<h1>Service unavailable</h1>' })
     : route.fallback())
   await save.click()
-  await expect(dialog.getByRole('alert')).toHaveText('Server unavailable. Request not confirmed. Try again.')
+  await expect(dialog.getByRole('alert')).toHaveText('Server unavailable. Unconfirmed request.')
   await expectFeedbackFits(dialog.locator('.feedback-error'))
   await expect(name).toHaveValue('A saved household name')
   await expect(page.locator('.toast')).toHaveCount(0)
@@ -71,7 +87,15 @@ test('form errors and confirmed successes share formatting without leaving stale
   const success = page.locator('.toast')
   await expect(success.getByRole('status')).toHaveText('House rules saved.')
   await expect(success).toHaveClass(/feedback-success/)
+  await expect(success).toHaveCSS('background-color', 'rgb(66, 101, 83)')
+  await expect(success).toHaveCSS('color', 'rgb(255, 255, 255)')
   await expectFeedbackFits(success)
+  const verticalOffset = await success.evaluate((element) => {
+    const box = element.getBoundingClientRect()
+    const text = element.querySelector('.feedback-text')!.getBoundingClientRect()
+    return Math.abs(text.y + text.height / 2 - box.y - box.height / 2)
+  })
+  expect(verticalOffset).toBeLessThan(1)
   expect((await accounts.store.get(household.household.id))?.name).toBe('A saved household name')
 
   await rules.click()
@@ -80,7 +104,7 @@ test('form errors and confirmed successes share formatting without leaving stale
     ? route.fulfill({ status: 503, contentType: 'text/html', body: '<h1>Service unavailable</h1>' })
     : route.fallback())
   await save.click()
-  await expect(dialog.getByRole('alert')).toContainText('Request not confirmed.')
+  await expect(dialog.getByRole('alert')).toContainText('Unconfirmed request.')
   await expect(success).toHaveCount(0)
   await expect(name).toHaveValue('An unconfirmed household name')
   expect((await accounts.store.get(household.household.id))?.name).toBe('A saved household name')
@@ -92,14 +116,14 @@ test('room-access errors and successful saves stay separate without overlapping'
     status: 503, contentType: 'text/html', body: '<h1>Service unavailable</h1>',
   }))
   await page.goto('/kitchen')
-  await expect(page.getByRole('alert')).toHaveText('Server unavailable. Try again.')
+  await expect(page.getByRole('alert')).toHaveText('Server unavailable.')
   await page.getByRole('button', { name: 'House rules', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Kitchen name', { exact: true }).fill('The same shared home')
   await dialog.getByRole('button', { name: 'Save the house rules', exact: true }).click()
   await expect(dialog).toHaveCount(0)
   const messages = page.locator('.app-feedback')
-  await expect(messages.getByRole('alert')).toHaveText('Server unavailable. Try again.')
+  await expect(messages.getByRole('alert')).toHaveText('Server unavailable.')
   await expect(messages.getByRole('status')).toHaveText('House rules saved.')
   await expect(messages.locator('.feedback-success').getByRole('button', { name: 'Retry room access', exact: true })).toHaveCount(0)
   const separation = await messages.evaluate((element) => {

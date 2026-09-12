@@ -24,7 +24,9 @@
 .welcome-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }
 .welcome .welcome-enter { min-height: 48px; padding: 12px 19px; gap: 12px; color: var(--action-ink); font-size: 14px; line-height: 1.4; text-align: center; }
 .welcome-header .welcome-enter { min-height: 44px; font-size: 13px; padding: 10px 16px; }
-.welcome-hero { display: grid; grid-template-columns: 1fr 1.08fr; align-items: center; align-content: center; min-height: calc(100svh - var(--welcome-header-height)); gap: clamp(24px, 4vw, 64px); padding-block: clamp(32px, 4.4vw, 64px); margin-bottom: calc(clamp(24px, 4vw, 56px) + 16px); }
+.welcome-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.28fr); align-items: center; align-content: center; min-height: calc(100svh - var(--welcome-header-height)); gap: clamp(20px, 2vw, 32px); padding-block: clamp(32px, 4.4vw, 64px); margin-bottom: calc(clamp(24px, 4vw, 56px) + 16px); }
+.welcome-hero .welcome-home-frame { width: 94%; margin-inline: auto; padding: 0; border: 0; }
+.welcome-hero .welcome-home-frame .welcome-vignette { aspect-ratio: 908 / 714; }
 .welcome-hero h1 { margin: 0 0 23px; font-size: clamp(46px, 6vw, 82px); font-weight: 600; line-height: 1.04; letter-spacing: -2.9px; }
 .welcome-hero h1 em { color: var(--sage); font-style: normal; }
 .welcome-hero-copy > p { max-width: 39ch; margin-bottom: 0; color: var(--muted); font-size: 17px; line-height: 1.8; }

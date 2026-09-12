@@ -43,6 +43,10 @@ room appearances refresh the cached images. Previews never use an unconfirmed
 editor draft or substitute another household's room. If 3D rendering is unavailable,
 the app shows a message rather than a static room picture or an SVG object substitute.
 
+Cold 3D initialization waits while account dialogs are open. Already loaded rooms
+stay mounted and pause normally, and queued preview warming waits until the
+account flow closes.
+
 | Object | Purpose |
 | --- | --- |
 | Shopping bag | Add and claim items, then record the paid receipt. Checking off items creates no debt. |
@@ -176,8 +180,10 @@ The catalog includes fitted appliances; coffee and cooking equipment; fruit bowl
 Retired extras are hidden from **Add objects** and cannot be newly placed, moved
 or restored. Their historical kinds and positions remain supported so saved
 objects, supplies, chores and financial records are not erased. Existing placed
-objects can still be edited or stored. A saved living-room bin follows the same
-preservation rule, while new bins belong in the kitchen or bathroom.
+objects can still be edited or stored. Existing living-room bins are moved into
+Storage when their household is read, keeping their identifiers, supplies and
+history while pausing linked care. They cannot be placed or restored in the living
+room; new bins belong in the kitchen or bathroom.
 
 Individual object details and Edit room settings use a narrower side panel than
 the full components browser on desktop. Constrained phone layouts keep their
@@ -254,7 +260,7 @@ The compact footer links to the home guide, room exploration and questions. Its 
 
 Use http://localhost:5173 for review, preserving its data and browser sessions. `PLAYWRIGHT_BASE_URL` targets an already-running isolated test server; stop temporary servers when finished. Tag rendering and 3D-interaction browser scenarios with `@room` and keep them independent for CI sharding.
 
-CI uses two household shards and two room shards, each with one browser worker.
+CI uses four household shards and four room shards, each with one browser worker.
 The pinned Playwright container supplies browsers and system libraries without
 installing OS packages during a run. Its version must match `package-lock.json`.
 Pull requests and main pushes run CI; manual dispatch supports branch checks
@@ -274,6 +280,10 @@ Configuration updates use `PATCH /api/household/room-components` with a room ID,
 Use `src/Dropdown.tsx` for form selects. It preserves raw values, including empty whole-home and one-off choices, while Radix handles menu positioning, keyboard navigation and touch interaction.
 
 Use `Feedback` and `FeedbackAction` from `src/Feedback.tsx` for errors, confirmations and informational notices. Keep copy short and factual, with recovery actions separate from the message. Actions may move to another row, but their labels stay intact. Use success only after a confirmed result; private previews and pending account deletion remain informational. Keep API error codes and specific validation guidance. `shared/requestMessages.ts` keeps client and server failures consistent and describes interrupted writes as unconfirmed rather than failed or saved.
+
+Confirmed successes use dark green and errors use dark red, with light text and
+wrapping recovery actions. Floating focus labels are opaque and use the focused
+component's name; the unfocused room overview has no label.
 
 Version-checked household mutations accept a stable `mutationId` and its original `mutationVersion`. The latest 1,000 mutation receipts persist with household JSON, independently of financial records. Replays return the current household without repeating a saved change; changed payloads or requests older than retained confirmation history require explicit review. Older clients without mutation metadata remain compatible. Do not regenerate a mutation identifier merely because a response was lost or a background refresh advanced the household version.
 

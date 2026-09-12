@@ -39,13 +39,21 @@ jobs:
       matrix:
         include:
           - suite: household-1
-            args: --grep-invert @room --fully-parallel --shard=1/2
+            args: --grep-invert @room --fully-parallel --shard=1/4
           - suite: household-2
-            args: --grep-invert @room --fully-parallel --shard=2/2
+            args: --grep-invert @room --fully-parallel --shard=2/4
+          - suite: household-3
+            args: --grep-invert @room --fully-parallel --shard=3/4
+          - suite: household-4
+            args: --grep-invert @room --fully-parallel --shard=4/4
           - suite: room-1
-            args: --grep @room --fully-parallel --shard=1/2
+            args: --grep @room --fully-parallel --shard=1/4
           - suite: room-2
-            args: --grep @room --fully-parallel --shard=2/2
+            args: --grep @room --fully-parallel --shard=2/4
+          - suite: room-3
+            args: --grep @room --fully-parallel --shard=3/4
+          - suite: room-4
+            args: --grep @room --fully-parallel --shard=4/4
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

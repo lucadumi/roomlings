@@ -659,7 +659,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
               const isPreview = group.items.some((item) => !currentById.get(item.id)?.installed)
               return <li key={group.kind} className="room-object-card">
               <button type="button" className="room-object-choice room-object-tile control-surface" disabled={locked} aria-pressed={component.id === selectedComponentId}
-                aria-description={`${currentById.get(component.id)?.installed ? 'Placed' : 'In preview'}. ${previewDescription(component)}`}
+                aria-description={`${isPreview ? 'In preview' : 'Placed'}. ${previewDescription(component)}`}
                 aria-label={`Edit ${label}`} onClick={() => select(component.id)}>
                 <ObjectCardPreview component={component} household={household} />
                 <span className="room-object-copy"><span className="room-object-title"><strong>{label}</strong>

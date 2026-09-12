@@ -18,6 +18,7 @@ import { tourCameraFraming } from './tourCamera.ts'
 import { measureKitchenTourBounds, sharedTourOverviewBounds, tourDoorAngles } from './tourGeometry.ts'
 import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from '../roomEnvironment.ts'
 import type { RoomReflections } from '../roomEnvironment.ts'
+import { useDeferredSceneEffect } from '../deferredScene.ts'
 
 export type TourStatus = 'loading' | 'ready' | 'unavailable'
 
@@ -38,7 +39,7 @@ export default function TourScene({ progress, layout, wake, reducedMotion, onSta
   const state = useRef({ reducedMotion, onStatus, onSelectChapter })
   state.current = { reducedMotion, onStatus, onSelectChapter }
 
-  useEffect(() => {
+  useDeferredSceneEffect(() => {
     const element = host.current
     if (!element) return
     let renderer: WebGLRenderer

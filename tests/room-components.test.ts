@@ -343,33 +343,36 @@ describe('room component changes', () => {
     for (const key of ['expenses', 'settlements', 'shopping', 'members'] as const) assert.deepEqual(household[key], original[key])
   })
 
-  it('keeps a legacy living-room bin and its care editable without offering another or restoring it', () => {
+  it('moves legacy living-room bins into Storage while keeping their care and blocking placement', () => {
     const household = home()
     const legacy = createRoomComponent('bins', 'living-room-bins', randomUUID())
     household.roomComponents = [...defaultRoomComponents(), legacy]
     const chore = linkedChore(household, legacy)
     household.chores.items.push(chore)
-    assert.deepEqual(householdSchema.parse(JSON.parse(JSON.stringify(household))), household)
+    const parsed = householdSchema.parse(JSON.parse(JSON.stringify(household)))
+    const stored = getRoomComponents(parsed).find((component) => component.id === legacy.id)!
+    assert.deepEqual(stored, { ...legacy, installed: false })
+    assert.equal(legacy.installed, true)
+    assert.deepEqual(parsed.chores, household.chores)
+    assert.equal(componentChoreIsPaused(chore, getRoomComponents(parsed)), true)
+    household.roomComponents = parsed.roomComponents
     const original = structuredClone(household)
     throwsStatus(() => applyRoomComponentPatch(household, {
       roomId: 'living-room', changes: [change({ ...legacy, id: randomUUID() }, { componentVersion: null })],
     }, now), 400)
     assert.deepEqual(household, original)
     applyRoomComponentPatch(household, {
-      roomId: 'living-room', changes: [change(legacy, { name: 'Our saved bin' })],
+      roomId: 'living-room', changes: [change(stored, { name: 'Our saved bin' })],
     }, now)
     const edited = getRoomComponents(household).find((component) => component.id === legacy.id)!
-    assert.equal(edited.installed, true)
+    assert.equal(edited.installed, false)
     assert.deepEqual(household.chores.items, [chore])
-    applyRoomComponentPatch(household, {
-      roomId: 'living-room', changes: [change(edited, { installed: false, linkedChores: 'keep' })],
-    }, now)
-    const removed = getRoomComponents(household).find((component) => component.id === legacy.id)!
     throwsStatus(() => applyRoomComponentPatch(household, {
-      roomId: 'living-room', changes: [change(removed, { installed: true })],
+      roomId: 'living-room', changes: [change(edited, { installed: true })],
     }, now), 400)
-    assert.equal(household.chores.items[0].componentId, null)
+    assert.equal(household.chores.items[0].componentId, legacy.id)
     assert.equal(household.chores.items[0].archived, false)
+    assert.equal(componentChoreIsPaused(chore, getRoomComponents(household)), true)
     for (const key of ['expenses', 'settlements', 'shopping', 'members'] as const) assert.deepEqual(household[key], original[key])
   })
 

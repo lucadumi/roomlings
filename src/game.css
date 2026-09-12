@@ -114,10 +114,14 @@
 .world-hotspot:hover .hotspot-label, .world-hotspot:focus-visible .hotspot-label { opacity: 1; transform: translate(-50%, 0); }
 .world-hotspot[data-selected="true"] .hotspot-dot { border-color: var(--hotspot-ink); }
 .hotspot-stock { background: color-mix(in srgb, var(--tomato-soft) 88%, transparent); box-shadow: 0 3px 0 #af774a47; }
-.world-view-label { position: absolute; top: 25px; left: 50vw; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--control-glass); border: 1px solid var(--control-border); border-radius: 8px; color: var(--muted); font-size: 11px; pointer-events: none; white-space: nowrap; }
+.world-view-label { position: absolute; top: 25px; left: 50vw; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--control-surface); opacity: 1; border: 1px solid var(--control-border); border-radius: 8px; color: var(--muted); font-size: 11px; pointer-events: none; white-space: nowrap; }
 .view-label-dot { height: 5px; width: 5px; flex-shrink: 0; background: var(--sage); border-radius: 50%; }
 .view-moving { color: var(--muted); font-size: 9px; padding-left: 8px; border-left: 1px solid var(--line); }
-.kitchen-world[data-focus="room"] .world-view-label { display: none; }
+.world-view-label[data-visible="false"] { display: none; }
+.kitchen-world[data-component-focus="true"] .world-view-label { max-width: calc(100vw - 40px); white-space: normal; text-align: center; justify-content: center; }
+@media (min-width: 561px) {
+  .world-view-label { position: fixed; top: calc(var(--world-top) + 25px); }
+}
 .world-camera-controls { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; padding: 5px; gap: 2px; border: 1px solid var(--control-border); background: var(--control-glass); box-shadow: 0 3px 0 #abb9955c, 0 8px 24px #53683a10; border-radius: 11px; color: var(--control-ink); }
 .world-camera-controls .icon-button { width: var(--control-compact-height); height: var(--control-compact-height); color: var(--control-ink); }
 .world-camera-controls .icon-button:hover:not(:disabled), .world-camera-controls .icon-button[aria-pressed="true"] { color: var(--leaf-ink); background: var(--leaf-soft); }
@@ -323,7 +327,7 @@
   .world-interaction-hint { display: none; }
   .room-panel { top: 150px; }
   .game-home[data-panel-open="true"] .party-members { display: none; }
-  .game-home[data-panel-open="true"] .world-view-label { top: calc(30px - var(--world-top)); font-size: 10px; }
+  .game-home[data-panel-open="true"] .world-view-label { top: 30px; font-size: 10px; }
   .game-home[data-panel-open="true"] .view-moving { display: none; }
   .room-sync { display: none; }
   .game-dock { left: 50%; }
@@ -336,7 +340,7 @@
   .room-panel-scroll { padding: 16px 18px 21px; }
   .game-home[data-panel-open="true"] .kitchen-world { right: 0; bottom: calc(var(--sheet-height) + 123px); }
   .game-home[data-panel-open="true"] .room-caption { display: none; }
-  .game-home[data-panel-open="true"] .world-view-label { top: 12px; }
+  .game-home[data-panel-open="true"] .world-view-label { top: calc(var(--world-top) + 12px); }
   .game-home[data-panel-open="true"] .world-camera-controls { top: 10px; right: 15px; transform: none; padding: 4px; }
   .game-home[data-panel-open="true"] .world-camera-controls > span,
   .game-home[data-panel-open="true"] .world-camera-controls > i,
@@ -428,7 +432,7 @@
 }
 
 @media (max-width: 365px) and (max-height: 620px) {
-  .game-home[data-panel-open="true"] .world-view-label { top: auto; bottom: 6px; left: 13px; max-width: calc(100% - 178px); padding-inline: 8px; transform: none; justify-content: flex-start; text-align: left; }
+  .game-home[data-panel-open="true"] .world-view-label { top: 6px; bottom: auto; left: 50vw; max-width: calc(100% - 32px); padding-inline: 8px; transform: translateX(-50%); justify-content: center; text-align: center; }
 }
 
 @media (max-width: 1024px), (any-pointer: coarse) {
@@ -438,7 +442,7 @@
 }
 
 @media (min-width: 561px) and (max-width: 1000px) and (min-height: 621px) {
-  .game-home[data-panel-open="false"] .world-view-label { top: calc(var(--control-compact-height) + 68px); }
+  .game-home[data-panel-open="false"] .world-view-label { top: calc(var(--world-top) + var(--control-compact-height) + 68px); }
 }
 
 @media (min-width: 561px) and (max-height: 620px) {
@@ -454,7 +458,7 @@
   .game-app .modal-backdrop { padding: 12px; justify-content: center; }
   .game-app .modal { max-height: calc(100dvh - 24px); }
   .game-home[data-panel-open="true"] .kitchen-world { right: calc(var(--panel-width) + 35px); bottom: 104px; }
-  .game-home[data-panel-open="true"] .world-view-label { top: calc(30px - var(--world-top)); }
+  .game-home[data-panel-open="true"] .world-view-label { top: 30px; }
   .game-home[data-panel-open="true"] .world-camera-controls { top: auto; bottom: 58px; transform: none; }
 }
 

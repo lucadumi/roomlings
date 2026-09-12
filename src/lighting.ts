@@ -9,6 +9,13 @@ import { roomRotationPeriod } from './camera.ts'
 export const daylight = { sun: 2.7, sky: 0.8, fill: 0.3, lamp: 0, bulb: 0.12, window: roomAccents.sky, disc: roomAccents.gold }
 export const eveningLight = { sun: 0.35, sky: 0.5, fill: 0.2, lamp: 10, bulb: 1.7, window: '#697e98', disc: '#e6edf0' }
 
+export function roomPreviewShadowSize(width: number, height: number): number {
+  if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new RangeError('Room previews need positive, finite image dimensions.')
+  }
+  return Math.min(1024, Math.max(256, 2 ** Math.ceil(Math.log2(Math.max(width, height) * 2))))
+}
+
 export function fitRoomShadowBounds(sunlight: DirectionalLight, bounds: Box3): void {
   if (bounds.isEmpty() || ![...bounds.min.toArray(), ...bounds.max.toArray()].every(Number.isFinite)) {
     throw new Error('Room lighting needs finite, nonempty scene bounds.')

@@ -628,10 +628,15 @@ export function newHouseholdRoomComponents(createId: () => string): RoomComponen
 export function getRoomComponents(household: { roomComponents?: readonly RoomComponent[] }): readonly RoomComponent[] {
   const components = household.roomComponents
   if (!components) return defaultRoomComponents()
+  const retiredBin = (component: RoomComponent) => component.kind === 'bins' && component.roomId === 'living-room' && component.installed
+  // Keep old bin identities and linked history, but retire their living-room placement into Storage.
+  const current = components.some(retiredBin)
+    ? components.map((component) => retiredBin(component) ? { ...component, installed: false } : component)
+    : components
   // Older saved layouts have no living room. Any saved record, including a removed
   // object, marks it as initialized so customization is never reset.
-  if (components.some((component) => component.roomId === 'living-room')) return components
-  return [...components, ...defaultRoomComponents().filter((component) => component.roomId === 'living-room')]
+  if (current.some((component) => component.roomId === 'living-room')) return current
+  return [...current, ...defaultRoomComponents().filter((component) => component.roomId === 'living-room')]
 }
 
 export type ComponentSlotContext = {

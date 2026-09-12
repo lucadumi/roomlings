@@ -28,6 +28,7 @@ import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } fr
 import { createRoomCutaway } from './roomCutaway.ts'
 import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from './roomEnvironment.ts'
 import type { RoomReflections } from './roomEnvironment.ts'
+import { useDeferredSceneEffect } from './deferredScene.ts'
 import './bathroom.css'
 
 type ChoreRoomFocus<Target extends string> = Target | 'room'
@@ -96,7 +97,7 @@ type ChoreRoomControls<Target extends string> = {
 type ChoreRoomHit<Target extends string> = Target | { componentId: string } | { lighting: true }
 
 export type ChoreRoomWorldProps<Target extends string> = Pick<RoomWorldProps,
-  'roomStyle' | 'paused' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'
+  'roomStyle' | 'paused' | 'deferColdStart' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'
   | 'components' | 'editMode' | 'selectedComponentId' | 'placementPreviewId' | 'onComponentSelect' | 'overviewFocus'> & {
   focusRequest: { target: SceneFocus | ChoreRoomFocus<Target>; id: number }
   preview?: boolean
@@ -119,7 +120,7 @@ function availableFocus<Target extends string>(config: ChoreRoomConfig<Target>, 
 }
 
 export default function ChoreRoomWorld<Target extends string>({
-  config, roomStyle, paused, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
+  config, roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
   preview = false, motionReduced, onStatus, tour, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: ChoreRoomWorldProps<Target> & { config: ChoreRoomConfig<Target> }) {
   const host = useRef<HTMLDivElement>(null)
@@ -172,7 +173,7 @@ export default function ChoreRoomWorld<Target extends string>({
     }
   }
 
-  useEffect(() => {
+  useDeferredSceneEffect(() => {
     const element = host.current
     const stageElement = stage.current
     if (!element || !stageElement) return
@@ -741,7 +742,7 @@ export default function ChoreRoomWorld<Target extends string>({
       cleanup()
     }
     return cleanup
-  }, [])
+  }, [], deferColdStart)
 
   useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, selectedComponentId, placementPreviewId, overviewFocus])
 
@@ -767,10 +768,11 @@ export default function ChoreRoomWorld<Target extends string>({
       aria-label={config.copy.preview} />
   </div>
 
+  const componentFocused = !overviewFocus && !!selectedComponent && !roomViewReset
   return (
     <div className={`kitchen-world chore-room-world ${config.roomId}-world`} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused}
       data-framing={overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'}
-      data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined}>
+      data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined} data-component-focus={componentFocused}>
       <div className={`chore-room-scene-area ${config.roomId}-scene-area`} ref={stage} aria-hidden="true" />
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable}
         aria-label={editMode ? config.copy.editing : config.copy.interactive} />
@@ -797,7 +799,7 @@ export default function ChoreRoomWorld<Target extends string>({
             <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
           </button>)}
         </div>}
-        <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? config.copy.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? config.copy.room : config.labels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
+        <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? config.copy.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? config.copy.room : config.labels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
           <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
           <span>{Math.round(zoom * 100)}%</span>

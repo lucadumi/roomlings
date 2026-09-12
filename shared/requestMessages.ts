@@ -7,5 +7,5 @@ const failures = {
 
 export function requestFailureMessage(failure: keyof typeof failures, method: string): string {
   const readOnly = ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
-  return `${failures[failure]}${readOnly ? '' : ' Request not confirmed.'} Try again.`
+  return `${failures[failure]}${readOnly ? '' : ' Unconfirmed request.'}`
 }

@@ -4,6 +4,8 @@ import { createHousehold, openGroceryForm } from './fixtures.ts'
 
 async function expectCenteredLabel(label: Locator) {
   await expect(label).toBeVisible()
+  await expect(label).toHaveCSS('opacity', '1')
+  await expect(label).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   const geometry = await label.evaluate((element) => new Promise<{ offset: number; overlap: number }>((resolve) => {
     const start = performance.now()
     let offset = 0

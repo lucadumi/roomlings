@@ -56,9 +56,9 @@ function listedTests(args: readonly string[]): Set<string> {
   return ids
 }
 
-test('the four browser shards run every existing browser scenario exactly once', () => {
+test('the eight browser shards run every existing browser scenario exactly once', () => {
   const selectors = [...workflow.matchAll(/^\s+args: (.+)$/gm)].map((match) => match[1].trim().split(/\s+/))
-  assert.equal(selectors.length, 4)
+  assert.equal(selectors.length, 8)
   const all = listedTests([])
   assert.ok(all.size > 0)
   const covered = new Set<string>()

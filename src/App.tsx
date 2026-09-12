@@ -730,6 +730,9 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
+  const accountIntent = dialog !== null && typeof dialog === 'object' && 'account' in dialog ? dialog.account
+    : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
+      ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
   const renderDialog = () => {
     if (!dialog) return null
     const close = () => {
@@ -750,9 +753,6 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       setDialog(null)
     }
     const footerError = formError && <Feedback>{formError}</Feedback>
-    const accountIntent = typeof dialog === 'object' && 'account' in dialog ? dialog.account
-      : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
-        ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
     if (accountIntent) return <AccountDialog key={`account:${accessRouteVersion}`} autoEnter={enteringRoom.current}
       intent={accountIntent} initialState={account} initialInvite={accountInvitation || invitation} legacySession={session && session.token !== null ? session : null}
       savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
@@ -1018,13 +1018,13 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   return <div className="game-app" data-page={page} data-component-panel={page === 'objects' || page === 'room-edit'}
     data-component-detail={page === 'objects' ? selectedComponentId !== null : page === 'room-edit' && editorDetailOpen}
     data-placement-preview={!!activePlacement}>
-    <RoomPreviewPreloader householdId={household.id} components={savedComponents} roomStyle={household.roomStyle}
+    <RoomPreviewPreloader householdId={household.id} components={savedComponents} roomStyle={household.roomStyle} suspended={accountIntent !== null || dialog === 'rooms'}
       ledger={{ counts, memberCount: household.members.filter((member) => !member.inactive).length, expenseCount: household.expenses.length, fundFraction: remaining / household.budget }} />
     <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
-      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null && dialog !== 'rooms'}
+      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null && dialog !== 'rooms'} deferColdStart={accountIntent !== null || dialog === 'rooms'}
       overviewFocus={page !== 'overview' && (dialog === 'room-style' || dialog === 'help' || dialog === 'settings' || dialog === 'room-admins')}
       busy={busy} roomsOpen={dialog === 'rooms'} onRooms={(anchor) => {
         setRoomMenuAnchor(anchor)

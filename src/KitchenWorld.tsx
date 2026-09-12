@@ -28,6 +28,7 @@ import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } fr
 import { createRoomCutaway } from './roomCutaway.ts'
 import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from './roomEnvironment.ts'
 import type { RoomReflections } from './roomEnvironment.ts'
+import { useDeferredSceneEffect } from './deferredScene.ts'
 
 type Target = { category: Category } | { action: SceneAction } | { utility: KitchenUtility } | { componentId: string }
 const targetLabels: Record<SceneAction, string> = {
@@ -56,7 +57,7 @@ type WorldControls = {
 }
 
 export default function KitchenWorld({
-  roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
+  roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
   onSelect, onAction, onOpenChores, onRestock, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: RoomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
@@ -84,7 +85,7 @@ export default function KitchenWorld({
   const selectedComponent = installed.find((component) => component.id === selectedComponentId)
   const hoveredComponent = hovered && 'componentId' in hovered ? installed.find((component) => component.id === hovered.componentId) : undefined
 
-  useEffect(() => {
+  useDeferredSceneEffect(() => {
     const element = host.current
     const stageElement = stage.current
     if (!element || !stageElement) return
@@ -727,7 +728,7 @@ export default function KitchenWorld({
     }
     if (!disposed) frame = requestAnimationFrame(animate)
     return cleanup
-  }, [])
+  }, [], deferColdStart)
 
   // The loop detects component content changes; refreshed copies must not wake a paused scene.
   useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, selectedComponentId, placementPreviewId, overviewFocus])
@@ -755,8 +756,9 @@ export default function KitchenWorld({
     setEvening(next)
     controls.current?.wake()
   }
+  const componentFocused = !overviewFocus && !!selectedComponent && !roomViewReset
   return (
-    <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused} data-framing={overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined}>
+    <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused} data-framing={overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined} data-component-focus={componentFocused}>
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable} aria-label={editMode
         ? 'Kitchen editing preview. Use the Components menu to edit objects. Drag to turn 360 degrees, scroll or pinch to zoom.'
         : 'Interactive shared kitchen. Object plus markers open chores. Select the shopping bag, receipt book, house pot or noticeboard for household tools. Drag to turn 360 degrees, scroll or pinch to zoom.'} />
@@ -772,7 +774,7 @@ export default function KitchenWorld({
             <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
           </button>)}
         </div>}
-        <div className="world-view-label"><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
+        <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size={18} /></button><button className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={placementLabelsHidden} aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'} aria-pressed={labelsShown} title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size={18} /> : <EyeOff size={18} />}</button><button className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size={18} /> : <Sun size={18} />}</button></div>
         <div className="world-interaction-hint"><Move size={13} />{hovered ? ('componentId' in hovered ? hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores' : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
         {!editMode && <div className="world-quick-actions" role="group" aria-label="Kitchen quick actions">

@@ -5,7 +5,7 @@ import type { RoomStyle } from '../shared/domain.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../shared/rooms.ts'
 import type { RoomId } from '../shared/rooms.ts'
-import { cachedHouseholdRoomPreviews, householdRoomPreviews, roomSelectorPreviewSizes } from './roomPreviews.ts'
+import { cachedHouseholdRoomPreviews, householdRoomPreviews, preloadHouseholdRoomPreviews, roomSelectorPreviewSizes } from './roomPreviews.ts'
 import type { RoomPreviewLedger } from './householdRoomPreview.ts'
 import './roomPicker.css'
 
@@ -26,17 +26,21 @@ type SavedPreviewProps = {
   ledger?: RoomPreviewLedger
 }
 
-export function RoomPreviewPreloader({ householdId, components, roomStyle = 'original', roomStyles, ledger }: SavedPreviewProps) {
+export function RoomPreviewPreloader({ householdId, components, roomStyle = 'original', roomStyles, ledger, suspended = false }: SavedPreviewProps & { suspended?: boolean }) {
   const appearance = JSON.stringify([components, roomStyles, ledger])
-  useEffect(() => {
-    let cancelled = false
+  useLayoutEffect(() => {
+    if (suspended) return
+    const controller = new AbortController()
     let scheduled = false
     let idle: number | undefined
     let frame = 0
     const warm = () => {
-      if (cancelled) return
-      void householdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio) }, householdId)
-        .catch((error: unknown) => console.warn('Saved room previews could not be prepared:', error instanceof Error ? error.message : error))
+      if (controller.signal.aborted) return
+      void preloadHouseholdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio) }, householdId, controller.signal)
+        .catch((error: unknown) => {
+          if (controller.signal.aborted && error === controller.signal.reason) return
+          console.warn('Saved room previews could not be prepared:', error instanceof Error ? error.message : error)
+        })
     }
     const schedule = () => {
       if (scheduled || !document.querySelector('.world-canvas:not([hidden]) canvas')) return
@@ -50,12 +54,12 @@ export function RoomPreviewPreloader({ householdId, components, roomStyle = 'ori
     if (home) observer.observe(home, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] })
     schedule()
     return () => {
-      cancelled = true
+      controller.abort()
       observer.disconnect()
       if (idle !== undefined) window.cancelIdleCallback(idle)
       cancelAnimationFrame(frame)
     }
-  }, [householdId, roomStyle, appearance])
+  }, [householdId, roomStyle, appearance, suspended])
   return null
 }
 
