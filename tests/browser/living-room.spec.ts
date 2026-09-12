@@ -8,11 +8,12 @@ import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { isSceneObjectVisible } from '../../src/roomComponentScene.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { expect, test } from './account-fixtures.ts'
-import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing } from './fixtures.ts'
+import { chooseOption, openRoomEditor, openRoomObjects, selectRoom, trackDrawing, waitForRoomReady, waitForTourReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
 async function frameRoom(page: Page) {
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   const world = page.locator('.living-room-world')
   await expect(world).toHaveAttribute('data-focus', 'room')
@@ -75,6 +76,7 @@ test('the living room opens at its entry scale and preserves the household acros
   await page.setViewportSize({ width: 1440, height: 960 })
   const before = await accounts.store.get(populatedHousehold.household.id)
   await page.goto(roomPath('living-room'))
+  await waitForRoomReady(page)
   const world = page.locator('.living-room-world')
   await expect(world.locator('canvas')).toBeVisible()
   await expect(world).toHaveAttribute('data-focus', 'room')
@@ -88,7 +90,7 @@ test('the living room opens at its entry scale and preserves the household acros
   await selectRoom(page, 'kitchen')
   await expect(world).toHaveCount(0)
   await selectRoom(page, 'bathroom')
-  await expect(page.locator('.bathroom-world canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   await page.keyboard.press('End')
   await expect(page.getByRole('menuitemradio', { name: 'Open Living room', exact: true })).toBeFocused()
@@ -141,7 +143,7 @@ test('the sofa and TV remain directly pickable with their labels hidden', { tag:
 test('living room objects open their own chore areas and shared supply shortcuts', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('living-room'))
-  for (const [target, area] of [['sofa', 'seating'], ['surfaces', 'surfaces'], ['plants', 'plants'], ['floor', 'floor'], ['bins', 'bins']]) {
+  for (const [target, area] of [['sofa', 'seating'], ['surfaces', 'surfaces'], ['plants', 'plants'], ['floor', 'floor']]) {
     await frameRoom(page)
     await page.locator(`[data-living-room-target="${target}"]`).click()
     await expect(page.getByRole('region', { name: 'Household chores.', exact: true })).toBeVisible()
@@ -149,6 +151,7 @@ test('living room objects open their own chore areas and shared supply shortcuts
     await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', area)
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   }
+  await expect(page.locator('[data-living-room-target="bins"]')).toHaveCount(0)
   await frameRoom(page)
   await page.locator('[data-living-room-target="chores"]').click()
   await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', '')
@@ -286,7 +289,7 @@ test('living room rendering sleeps and reuses shadows when only the camera or fi
 
 test('living room context loss keeps chores, shopping and object details available', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto(roomPath('living-room'))
-  await expect(page.locator('.living-room-world canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.locator('.living-room-world canvas').evaluate((canvas) => {
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error('The living room canvas is missing.')
     const loss = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')
@@ -310,7 +313,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   test(`living room controls fit at ${viewport.width}x${viewport.height}`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath('living-room'))
-    await expect(page.locator('.living-room-world canvas')).toBeVisible()
+    await waitForRoomReady(page)
     await frameRoom(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toBeInViewport({ ratio: 1 })
@@ -332,7 +335,7 @@ test('the living room landing tour has working chapters without reading or repla
   await page.goto('/#living-room-sofa')
   const tour = page.locator('#tour')
   await expect(tour).toHaveAttribute('data-room', 'living-room')
-  await expect(tour).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(tour).toHaveAttribute('data-chapter', 'living-room-sofa')
   await expect(tour.getByRole('radio', { name: 'Living room', exact: true })).toBeChecked()
   const navigation = tour.getByRole('navigation', { name: 'Living room tour', exact: true })

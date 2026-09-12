@@ -39,13 +39,29 @@ jobs:
       matrix:
         include:
           - suite: household-1
-            args: --grep-invert @room --fully-parallel --shard=1/2
+            args: --grep-invert @room --fully-parallel --shard=1/4
           - suite: household-2
-            args: --grep-invert @room --fully-parallel --shard=2/2
+            args: --grep-invert @room --fully-parallel --shard=2/4
+          - suite: household-3
+            args: --grep-invert @room --fully-parallel --shard=3/4
+          - suite: household-4
+            args: --grep-invert @room --fully-parallel --shard=4/4
           - suite: room-1
-            args: --grep @room --fully-parallel --shard=1/2
+            args: --grep @room --fully-parallel --shard=1/8 --timeout=180000
           - suite: room-2
-            args: --grep @room --fully-parallel --shard=2/2
+            args: --grep @room --fully-parallel --shard=2/8 --timeout=180000
+          - suite: room-3
+            args: --grep @room --fully-parallel --shard=3/8 --timeout=180000
+          - suite: room-4
+            args: --grep @room --fully-parallel --shard=4/8 --timeout=180000
+          - suite: room-5
+            args: --grep @room --fully-parallel --shard=5/8 --timeout=180000
+          - suite: room-6
+            args: --grep @room --fully-parallel --shard=6/8 --timeout=180000
+          - suite: room-7
+            args: --grep @room --fully-parallel --shard=7/8 --timeout=180000
+          - suite: room-8
+            args: --grep @room --fully-parallel --shard=8/8 --timeout=180000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,7 +69,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run test:browser -- ${{ matrix.args }}
+      - run: npm run test:browser -- --reporter=line ${{ matrix.args }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

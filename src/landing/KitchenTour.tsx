@@ -2,12 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, Pause, Play } from 'lucide-react'
 import { scrollProgress } from './tour.ts'
 import type { TourLayout } from './tour.ts'
-import { TourFallback } from './TourFallback.tsx'
 import type { TourStatus } from './TourScene.tsx'
 import { defaultRoom } from '../roomNavigation.ts'
 import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
-import { RoomChoices, RoomPreview } from './RoomPreview.tsx'
+import { RoomChoices } from './RoomChoices.tsx'
 import { ExploreLoading, PreviewBoundary } from './PreviewStatus.tsx'
 import { roomTourChapters } from './roomTourChapters.ts'
 
@@ -191,8 +190,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
         <div className="welcome-tour-card">
           <div className="welcome-stage-shell">
             <div className="welcome-stage" ref={stage} aria-hidden="true">
-              <div className="welcome-static">{room === 'kitchen' ? <TourFallback /> : <RoomPreview key={room} roomId={room} />}</div>
-              {mounted && <PreviewBoundary key={room} onFailure={() => reportStatus('unavailable')}>
+              {mounted && status !== 'unavailable' && <PreviewBoundary key={room} onFailure={() => reportStatus('unavailable')}>
                 <Suspense fallback={null}>{room === 'kitchen'
                   ? <TourScene progress={progress} layout={layout} wake={wake} reducedMotion={reducedMotion || paused} onStatus={reportStatus}
                     onSelectChapter={!paused ? selectChapter : undefined} />
@@ -204,6 +202,9 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
               </PreviewBoundary>}
             </div>
             {mounted && status === 'loading' && <ExploreLoading label={`Loading the ${roomCatalog[room].name.toLowerCase()}...`} reducedMotion={reducedMotion || paused} />}
+            {status === 'unavailable' && <div className="welcome-preview-unavailable welcome-scene-status" role="status">
+              <p>3D is unavailable. Use the controls to explore each part of the room.</p>
+            </div>}
           </div>
           <div className="welcome-tour-description">
             <div className="welcome-tour-details" id="tour-details">
@@ -222,9 +223,6 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
           </nav>
           {motionControl}
         </div>
-        {status === 'unavailable' && <div className="welcome-scene-status" role="status">
-          3D is unavailable. Use the controls to explore each part of the room.
-        </div>}
         </div>
       </div>
     </div>

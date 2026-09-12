@@ -1,14 +1,14 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Page } from '@playwright/test'
 import { Matrix4, Vector3 } from 'three'
-import { createRoomComponent, getRoomComponents } from '../../shared/roomComponents.ts'
+import { createRoomComponent, defaultRoomComponents } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
 import { cameraFraming, preferredRoomRotation, roomCameraZoom, roomFramingArea } from '../../src/camera.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { createPlacementArrow, placementPreviewSize } from '../../src/placementArrow.ts'
 import { visibleRoomBounds } from '../../src/roomComponentScene.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
-import { openRoomEditor } from './fixtures.ts'
+import { openRoomEditor, waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -65,11 +65,11 @@ async function expectPlacementVisible(page: Page, components: readonly RoomCompo
   model.scene.add(arrow.object)
   try {
     const bounds = visibleRoomBounds(model.room, model.componentScene.actors.get(candidate.id)!)
-    model.room.rotation.y = preferredRoomRotation(candidate.slotId)
+    const rotation = preferredRoomRotation(candidate.slotId)
     const area = roomFramingArea(layout.canvas, layout.stage, layout.controls,
-      placementPreviewSize(bounds, layout.canvas.width, layout.canvas.height, roomCameraZoom(1, true, candidate.roomId), model.room.rotation.y))
+      placementPreviewSize(bounds, layout.canvas.width, layout.canvas.height, roomCameraZoom(1, true, candidate.roomId)))
     model.room.updateMatrixWorld(true)
-    arrow.update(bounds, 400, true)
+    arrow.update(bounds, 400, true, rotation)
     arrow.object.updateWorldMatrix(true, false)
     const points: Vector3[] = []
     for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
@@ -101,12 +101,14 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
     { width: 320, height: 568 }, { width: 390, height: 844 },
     { width: 844, height: 390 }, { width: 1440, height: 960 },
   ]) {
-    test(`${room} keeps the same 100% scale in placement previews and zooms by 10% from 50% to 150% on ${viewport.width}px screens`, { tag: '@room' }, async ({ page, emptyHousehold: _household }, testInfo) => {
+    test(`${room} keeps the same 100% scale in placement previews and zooms by 10% from 50% to 150% on ${viewport.width}px screens`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }, testInfo) => {
+      const components = defaultRoomComponents()
+      await accounts.store.save({ ...owner.household, roomComponents: components })
       await page.setViewportSize(viewport)
       await page.goto(roomPath(room))
       const world = page.locator('.kitchen-world')
       const controls = world.locator('.world-camera-controls')
-      await expect(world.locator('canvas')).toBeVisible()
+      await waitForRoomReady(page)
       await expect(world).toHaveAttribute('data-rendering', 'paused')
       await expect(world).toHaveAttribute('data-framing', 'close')
       await expect(world).toHaveAttribute('data-focus', 'room')
@@ -153,7 +155,7 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
 
       const editor = await openRoomEditor(page)
       await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-      const name = room === 'kitchen' ? 'Dishwasher' : room === 'bathroom' ? 'Washing machine' : 'Speaker'
+      const name = room === 'kitchen' ? 'Dishwasher' : room === 'bathroom' ? 'Washing machine' : 'Wall art'
       await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
       const confirmation = page.getByRole('dialog', { name: `Try ${name}`, exact: true })
       await expect(confirmation).toBeVisible()
@@ -165,8 +167,8 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
       if (!id) throw new Error('The candidate has no placement identifier.')
       const candidate = room === 'kitchen' ? createRoomComponent('dishwasher', 'kitchen-undercounter', id)
         : room === 'bathroom' ? createRoomComponent('washing-machine', 'bathroom-laundry', id)
-          : createRoomComponent('speaker', 'living-room-media-accessory', id)
-      await expectPlacementVisible(page, getRoomComponents(_household.household), candidate)
+          : createRoomComponent('wall-art', 'living-room-wall-art', id)
+      await expectPlacementVisible(page, components, candidate)
       await page.screenshot({ path: testInfo.outputPath(`${room}-placement-scale.png`), animations: 'disabled' })
       await zoomIn.click()
       await expectZoom(110)
@@ -176,7 +178,7 @@ for (const room of ['kitchen', 'bathroom', 'living-room'] as const) {
       await expectZoom(90)
       await reset.click()
       await expectZoom(100)
-      await expectPlacementVisible(page, getRoomComponents(_household.household), candidate)
+      await expectPlacementVisible(page, components, candidate)
       await confirmation.getByRole('button', { name: 'Discard preview', exact: true }).click()
       await expect(confirmation).toHaveCount(0)
       await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'false')

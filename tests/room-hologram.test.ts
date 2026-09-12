@@ -335,7 +335,7 @@ for (const roomId of roomIds) {
     const anchor = scene.anchors.get(component.id)
     const candidateMaterials = materials(actor)
     const candidateMeshes = new Set(meshes(actor))
-    const paint = candidateMaterials.find((material) => material.name === 'fridge')
+    const paint = candidateMaterials.find((material) => material.name === 'Original body finish')
     assert.ok(paint instanceof MeshStandardMaterial)
     hologram.update(actor, scene.actors.values())
     for (const saved of originals) {
@@ -465,7 +465,7 @@ test('both world integrations use the actual pending actor, suppress its edit ti
   const bathroom = readFileSync(new URL('../src/ChoreRoomWorld.tsx', import.meta.url), 'utf8')
   assert.match(bathroom, /latest\.editMode && !preview && !latest\.tour \? latest\.placementPreviewId : null/)
   const kitchen = readFileSync(new URL('../src/KitchenWorld.tsx', import.meta.url), 'utf8')
-  assert.match(kitchen, /targetRotation = nearestRoomRotation\(room\.rotation\.y, preferredRoomRotation\(selectedObject\.slotId\)\)/)
+  assert.match(kitchen, /targetRotation = nearestRoomRotation\(orbitRotation, preferredRoomRotation\(selectedObject\.slotId\)\)/)
   assert.match(kitchen, /now - lastShadowFrame >= 250/)
 })
 
@@ -493,8 +493,8 @@ test('placement cameras share the entry scale instead of candidate closeups with
   const bathroom = readFileSync(new URL('../src/ChoreRoomWorld.tsx', import.meta.url), 'utf8')
   assert.match(bathroom, /const framedFocus = placementCandidate \|\| latest\.overviewFocus/)
   assert.match(bathroom, /const bounds = framedFocus === 'room' \? componentScene\.bounds/)
-  assert.match(bathroom, /roomEntryFraming\(viewport\.width, viewport\.height, frameArea, room\.rotation\.y\)/)
-  assert.match(bathroom, /config\.framing\(frameArea\.width, frameArea\.height, bounds, room\.rotation\.y, pitch\)/)
+  assert.match(bathroom, /roomEntryFraming\(viewport\.width, viewport\.height, frameArea, orbitRotation\)/)
+  assert.match(bathroom, /config\.framing\(frameArea\.width, frameArea\.height, bounds, orbitRotation, pitch\)/)
 })
 
 test('both reset controls use the entry camera path and are unpressed whenever zoom differs from 100%', () => {
@@ -512,7 +512,7 @@ test('both reset controls use the entry camera path and are unpressed whenever z
     assert.match(source, /Math\.exp\(-event\.deltaY \* units \* 0\.0015\)/)
   }
   const kitchen = readFileSync(new URL('../src/KitchenWorld.tsx', import.meta.url), 'utf8')
-  assert.match(kitchen, /targetRotation = nearestRoomRotation\(room\.rotation\.y, preferredRoomRotation\(pendingActor \? componentScene\.componentForObject\(pendingActor\)\?\.slotId : undefined\)\)/)
+  assert.match(kitchen, /targetRotation = nearestRoomRotation\(orbitRotation, preferredRoomRotation\(pendingActor \? componentScene\.componentForObject\(pendingActor\)\?\.slotId : undefined\)\)/)
 })
 
 test('kettle steam has no idle baseline, fades out after the actual cycle, and respects reduced motion', () => {

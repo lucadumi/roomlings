@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { roomIds } from '../../shared/rooms.ts'
+import { waitForRoomReady } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
@@ -26,6 +27,7 @@ for (const roomId of roomIds) for (const viewport of [
     await page.setViewportSize(viewport)
     await page.clock.setFixedTime(new Date())
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     const controls = world.locator('.world-camera-controls')
     const zoomIn = controls.getByRole('button', { name: 'Zoom in', exact: true })

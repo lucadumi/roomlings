@@ -7,6 +7,7 @@ import type { RoomComponent } from '../shared/roomComponents.ts'
 export type RoomWorldProps = {
   roomStyle: RoomStyle
   paused: boolean
+  deferColdStart?: boolean
   panelOpen: boolean
   overviewFocus?: boolean
   focusRequest: FocusRequest

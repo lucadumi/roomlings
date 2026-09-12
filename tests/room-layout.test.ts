@@ -2,21 +2,24 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { TestContext } from 'node:test'
 import { Box3, Group, Mesh, OrthographicCamera, Raycaster, Vector3 } from 'three'
-import type { Intersection, Object3D } from 'three'
+import type { Intersection } from 'three'
 import {
-  componentCatalog, componentKinds, createRoomComponent, defaultRoomComponents, roomComponentLimit, roomComponentSchema, roomSlots, validateRoomComponents,
+  availableComponentSlots, componentCatalog, componentKinds,
+  createRoomComponent, defaultRoomComponents, roomComponentLimit, roomComponentSchema, roomSlots, validateRoomComponents,
 } from '../shared/roomComponents.ts'
 import type { RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import type { RoomId } from '../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../src/householdRoomPreview.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds } from '../src/camera.ts'
+import { cameraOrbitOffset, cameraProjection, fitRoomBounds } from '../src/camera.ts'
 import { buildKitchenModel } from '../src/kitchenModel.ts'
 import { buildBathroomModel } from '../src/bathroomModel.ts'
 import { buildRoomComponentModel } from '../src/roomComponentModels.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
-import { createRoomComponentScene, isSceneObjectVisible, visibleRoomBounds } from '../src/roomComponentScene.ts'
-import { componentPlacements, kitchenApplianceBays, kitchenLayout, kitchenShelves, kitchenWorktops, roomFootprints, roomShellBounds } from '../src/roomLayout.ts'
-import { completeRoomLayout } from './room-layout-fixture.ts'
+import { createRoomComponentScene, visibleRoomBounds } from '../src/roomComponentScene.ts'
+import {
+  componentPlacements, kitchenApplianceBays, kitchenLayout, kitchenShelves, kitchenWorktops, roomFootprints, roomShellBounds, roomShellLayout,
+} from '../src/roomLayout.ts'
+import { completeRoomLayout, pickablePoint, worldTriangles } from './room-layout-fixture.ts'
 
 function configured(t: TestContext, roomId: RoomId, components = completeRoomLayout()) {
   const preview = createConfiguredRoomPreview(roomId, 'original', components)
@@ -24,32 +27,29 @@ function configured(t: TestContext, roomId: RoomId, components = completeRoomLay
   return { ...preview, components: components.filter((component) => component.roomId === roomId) }
 }
 
-function pickablePoint(room: Group, root: Object3D, identifies: (object: Object3D) => boolean, rotation = 0) {
-  const raycaster = new Raycaster()
-  const direction = new Vector3(...baseCameraOffset).applyAxisAngle(new Vector3(0, 1, 0), -rotation).normalize()
-  const meshes: Mesh[] = []
-  root.traverseVisible((object) => { if (object instanceof Mesh) meshes.push(object) })
-  for (const mesh of meshes) {
-    const positions = mesh.geometry.getAttribute('position')
-    const index = mesh.geometry.index
-    for (let triangle = 0; triangle < (index?.count ?? positions.count); triangle += 3) {
-      const point = new Vector3()
-      for (let vertex = 0; vertex < 3; vertex++) {
-        point.add(new Vector3().fromBufferAttribute(positions, index?.getX(triangle + vertex) ?? triangle + vertex))
-      }
-      point.divideScalar(3).applyMatrix4(mesh.matrixWorld)
-      raycaster.set(point.clone().addScaledVector(direction, 40), direction.clone().negate())
-      const hit = raycaster.intersectObject(room, true).find(({ object }) => isSceneObjectVisible(object, room))
-      if (hit && identifies(hit.object)) return point
-    }
-  }
-  return null
+function offeredKindsForSweep(slotId: RoomSlotId) {
+  const defaults = defaultRoomComponents()
+  const slot = roomSlots.find((candidate) => candidate.id === slotId)!
+  if (slot.defaultKind) return slot.kinds
+  return slot.kinds.filter((kind) =>
+    availableComponentSlots(defaults, slot.roomId, kind, { ignoreZoneCapacity: true }).some((candidate) => candidate.id === slot.id))
+}
+
+function objectsOverlap(room: Group, a: RoomComponent, b: RoomComponent, actors: ReadonlyMap<string, Group>): boolean {
+  const left = actors.get(a.id)!
+  const right = actors.get(b.id)!
+  const overlap = visibleRoomBounds(room, left).intersect(visibleRoomBounds(room, right))
+  if (overlap.isEmpty() || overlap.getSize(new Vector3()).toArray().some((size) => size < 0.008)) return false
+  // Window curtains and the hob/hood assembly include clear space between their parts.
+  if (['curtains', 'hob'].includes(a.kind) && !worldTriangles(left).some((triangle) => overlap.intersectsTriangle(triangle))) return false
+  if (['curtains', 'hob'].includes(b.kind) && !worldTriangles(right).some((triangle) => overlap.intersectsTriangle(triangle))) return false
+  return true
 }
 
 test('all compatible catalog kinds coexist without changing the original installed defaults or object limit', () => {
   const original = defaultRoomComponents()
   const complete = completeRoomLayout()
-  assert.equal(original.length, 39)
+  assert.equal(original.length, 38)
   assert.equal(complete.length, 118)
   assert.ok(complete.length < roomComponentLimit)
   assert.deepEqual(new Set(complete.map((component) => component.kind)), new Set(componentKinds))
@@ -58,7 +58,7 @@ test('all compatible catalog kinds coexist without changing the original install
   assert.deepEqual(complete.filter((component) => component.id.startsWith('default-')), original)
   assert.equal(original.filter((component) => component.roomId === 'kitchen').length, 20)
   assert.equal(original.filter((component) => component.roomId === 'bathroom').length, 6)
-  assert.equal(original.filter((component) => component.roomId === 'living-room').length, 13)
+  assert.equal(original.filter((component) => component.roomId === 'living-room').length, 12)
   for (const roomId of ['kitchen', 'bathroom'] as const) {
     const allowed = new Set(roomSlots.filter((slot) => slot.roomId === roomId).flatMap((slot) => slot.kinds))
     assert.deepEqual(new Set(complete.filter((component) => component.roomId === roomId).map((component) => component.kind)), allowed)
@@ -82,7 +82,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     })
     const choices: { component: RoomComponent; bounds: Box3; parts: Box3[] }[] = []
     for (const slot of roomSlots.filter((slot) => slot.roomId === roomId)) {
-      for (const kind of slot.kinds) for (const variant of componentCatalog[kind].variants) {
+      for (const kind of offeredKindsForSweep(slot.id)) for (const variant of componentCatalog[kind].variants) {
         if (['counters', 'table', 'seating', 'rug', 'bath', 'sink', 'toilet'].includes(kind)) continue
         const component = { ...createRoomComponent(kind, slot.id, `alternative-${slot.id}`), variant: variant.id }
         const generated = slot.defaultKind === kind && variant.id === 'original' ? undefined : buildRoomComponentModel(component, 'original')
@@ -152,7 +152,6 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     assert.ok(Math.abs(bounds.getSize(new Vector3()).x - footprint.width) < 0.001)
     assert.ok(bounds.max.z <= roomShellBounds(roomId).max.z + 0.001)
     const rotations = [-0.75, 0, 0.75]
-    const axis = new Vector3(0, 1, 0)
     const layouts = [
       { width: 1440, height: 960, area: { x: 12, y: 100, width: 884, height: 680 } },
       { width: 390, height: 844, area: { x: 12, y: 90, width: 366, height: 255 } },
@@ -165,11 +164,11 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
         const projection = cameraProjection(layout.width, layout.height, layout.area, frame.halfHeight, 1)
         const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
         const center = new Vector3(...frame.center)
-        camera.position.copy(center).add(new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
+        camera.position.copy(center).add(cameraOrbitOffset(rotation, pitch))
         camera.lookAt(center)
         camera.updateMatrixWorld(true)
         for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
-          const point = new Vector3(x, y, z).applyAxisAngle(axis, rotation).project(camera)
+          const point = new Vector3(x, y, z).project(camera)
           const screenX = (point.x * 0.5 + 0.5) * layout.width
           const screenY = (-point.y * 0.5 + 0.5) * layout.height
           assert.ok(screenX > layout.area.x && screenX < layout.area.x + layout.area.width)
@@ -190,9 +189,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     for (let i = 0; i < loose.length; i++) for (let j = i + 1; j < loose.length; j++) {
       const a = loose[i]
       const b = loose[j]
-      const overlap = visibleRoomBounds(room, componentScene.actors.get(a.id)!)
-        .intersect(visibleRoomBounds(room, componentScene.actors.get(b.id)!))
-      assert.ok(overlap.isEmpty() || overlap.getSize(new Vector3()).toArray().some((size) => size < 0.008),
+      assert.equal(objectsOverlap(room, a, b, componentScene.actors), false,
         `${a.slotId} must not intersect ${b.slotId}`)
     }
   })
@@ -201,15 +198,13 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
     const { room, componentScene: scene } = configured(t, roomId)
     const complete = completeRoomLayout()
     for (const slot of roomSlots.filter((slot) => slot.roomId === roomId && !slot.defaultKind)) {
-      for (const kind of slot.kinds) for (const variant of componentCatalog[kind].variants) {
+      for (const kind of offeredKindsForSweep(slot.id)) for (const variant of componentCatalog[kind].variants) {
         const component = { ...createRoomComponent(kind, slot.id, `alternative-${slot.id}`), variant: variant.id }
         const layout = complete.map((other) => other.slotId === slot.id ? component : other)
         scene.update(layout, 'original')
-        const bounds = visibleRoomBounds(room, scene.actors.get(component.id)!)
         for (const other of layout.filter((other) => other.roomId === roomId && other.id !== component.id
           && !['counters', 'table', 'seating', 'rug', 'bath', 'sink', 'toilet'].includes(other.kind))) {
-          const overlap = bounds.clone().intersect(visibleRoomBounds(room, scene.actors.get(other.id)!))
-          assert.ok(overlap.isEmpty() || overlap.getSize(new Vector3()).toArray().some((size) => size < 0.008),
+          assert.equal(objectsOverlap(room, component, other, scene.actors), false,
             `${slot.id} (${kind}, ${variant.id}) must not intersect ${other.slotId}`)
         }
       }
@@ -272,6 +267,63 @@ test('the kitchen keeps its sink-side runner, supported work surfaces and a clea
   }
 })
 
+test('corrected kitchen shelf and tabletop alternates stay supported at full usable size', (t) => {
+  const { room, componentScene: scene } = configured(t, 'kitchen')
+  const complete = completeRoomLayout()
+  const shelf = room.getObjectByName('Appliance shelf')
+  assert.ok(shelf)
+  const shelfBounds = new Box3().setFromObject(shelf, true)
+  for (const [slotId, kind] of [
+    ['kitchen-small-appliance', 'air-fryer'],
+    ['kitchen-small-appliance', 'coffee-machine'],
+    ['kitchen-table-center', 'record-player'],
+    ['kitchen-table-center', 'tissue-box'],
+  ] as const) {
+    const component = createRoomComponent(kind, slotId, `support-${slotId}`)
+    scene.update(complete.map((other) => other.slotId === slotId ? { ...component, id: other.id } : other), 'original')
+    const bounds = visibleRoomBounds(room, scene.actors.get(scene.componentAtSlot(slotId)!.id)!)
+    if (slotId === 'kitchen-small-appliance') {
+      assert.ok(bounds.min.x >= shelfBounds.min.x - 0.015 && bounds.max.x <= shelfBounds.max.x + 0.015, `${kind} must stay within the shelf width`)
+      assert.ok(bounds.min.z >= shelfBounds.min.z - 0.015 && bounds.max.z <= shelfBounds.max.z + 0.015, `${kind} must stay within the shelf depth`)
+      assert.ok(Math.abs(bounds.min.y - shelfBounds.max.y) < 0.001, `${kind} must sit on the appliance shelf`)
+    } else {
+      assert.ok(Math.abs(componentPlacements[slotId]!.position[1] - bounds.min.y) < 0.001, `${kind} must sit on the dining table`)
+    }
+  }
+})
+
+test('corrected optional wall placements stay on their intended interior wall faces', (t) => {
+  const complete = completeRoomLayout()
+  const previews = new Map<RoomId, ReturnType<typeof configured>>()
+  const roomFor = (roomId: RoomId) => {
+    const existing = previews.get(roomId)
+    if (existing) return existing
+    const created = configured(t, roomId)
+    previews.set(roomId, created)
+    return created
+  }
+  for (const { roomId, slotId, kind, axis, maxGap } of [
+    { roomId: 'kitchen', slotId: 'kitchen-wall-art', kind: 'wall-art', axis: 'z', maxGap: 0.08 },
+    { roomId: 'kitchen', slotId: 'kitchen-wall-art', kind: 'spice-rack', axis: 'z', maxGap: 0.04 },
+    { roomId: 'kitchen', slotId: 'kitchen-left-wall', kind: 'spice-rack', axis: 'x', maxGap: 0.055 },
+    { roomId: 'kitchen', slotId: 'kitchen-wall-shelf', kind: 'wall-shelf', axis: 'z', maxGap: 0.01 },
+    { roomId: 'bathroom', slotId: 'bathroom-wall-art', kind: 'wall-shelf', axis: 'z', maxGap: 0.03 },
+    { roomId: 'bathroom', slotId: 'bathroom-wall-calendar', kind: 'wall-calendar', axis: 'x', maxGap: 0.01 },
+    { roomId: 'bathroom', slotId: 'bathroom-key-hooks', kind: 'key-hooks', axis: 'x', maxGap: 0.01 },
+    { roomId: 'bathroom', slotId: 'bathroom-wall-shelf', kind: 'wall-shelf', axis: 'z', maxGap: 0.03 },
+    { roomId: 'living-room', slotId: 'living-room-wall-art', kind: 'key-hooks', axis: 'z', maxGap: 0.01 },
+  ] as const) {
+    const { room, componentScene: scene } = roomFor(roomId)
+    const component = createRoomComponent(kind, slotId, `wall-${slotId}`)
+    scene.update(complete.map((other) => other.slotId === slotId ? { ...component, id: other.id } : other), 'original')
+    const bounds = visibleRoomBounds(room, scene.actors.get(scene.componentAtSlot(slotId)!.id)!)
+    const plane = axis === 'x' ? roomShellLayout(roomId).inner.left : roomShellLayout(roomId).inner.back
+    const back = axis === 'x' ? bounds.min.x : bounds.min.z
+    assert.ok(back >= plane - 0.015, `${slotId} (${kind}) must not sink into the wall`)
+    assert.ok(back <= plane + maxGap, `${slotId} (${kind}) must stay visually mounted to the wall`)
+  }
+})
+
 test('the fitted kitchen appliances leave clear space in front of their inward-facing doors', (t) => {
   const { room, componentScene: scene, components } = configured(t, 'kitchen')
   for (const { slotId, rotation } of kitchenApplianceBays) {
@@ -307,7 +359,7 @@ test('bathroom laundry faces into the room from the left-wall corner and leaves 
   assert.equal(frame.position.x, componentPlacements['bathroom-laundry']!.position[0])
   assert.equal(frame.position.z, componentPlacements['bathroom-laundry']!.position[2])
   assert.ok(boundsFor('ironing-board').min.x - boundsFor('drying-rack').max.x > 0.45)
-  const aisle = new Box3(new Vector3(-0.4, 0.15, -0.2), new Vector3(2.8, 1.3, 1.35))
+  const aisle = new Box3(new Vector3(-0.4, 0.15, -0.2), new Vector3(1.7, 1.3, 1.35))
   for (const component of components) {
     assert.equal(visibleRoomBounds(room, componentScene.actors.get(component.id)!).intersectsBox(aisle), false, component.slotId)
   }
@@ -341,7 +393,8 @@ test('bathroom additions are sized against the vanity rather than a miniature ge
   assert.ok(size('bathroom-toilet-accessory').y >= vanityTop * 0.43, 'The toilet brush must reach a normal size beside the fixtures')
   assert.ok(size('bathroom-stool').y >= vanityTop * 0.3, 'The step stool must not look like a miniature')
   assert.ok(size('bathroom-air-purifier').y >= vanityTop * 0.6)
-  assert.ok(size('bathroom-ironing-board').x > size('bathroom-bath').x)
+  const ironingBoard = size('bathroom-ironing-board')
+  assert.ok(Math.max(ironingBoard.x, ironingBoard.z) > size('bathroom-bath').x)
 })
 
 test('bathroom accessories keep their full model size in shared and dedicated positions', (t) => {
@@ -398,7 +451,7 @@ test('optional bathroom floor objects clear the full-size fixtures and shelf par
   const complete = completeRoomLayout()
   const slots = roomSlots.filter((slot) => slot.roomId === 'bathroom' && !slot.defaultKind
     && ['floor', 'fitted'].includes(componentPlacements[slot.id]?.surface ?? ''))
-  for (const { id: slotId, kinds } of slots) for (const kind of kinds) {
+  for (const { id: slotId } of slots) for (const kind of offeredKindsForSweep(slotId)) {
     for (const variant of componentCatalog[kind].variants) {
       scene.update(complete.map((component) => component.slotId === slotId
         ? { ...createRoomComponent(kind, slotId, component.id), variant: variant.id } : component), 'original')

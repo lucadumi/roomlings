@@ -9,11 +9,19 @@ export type SceneFocus = KitchenAction | KitchenUtility | 'room' | 'fridge' | 'b
 export type FocusRequest = { target: SceneFocus; id: number }
 export const baseCameraOffset: [number, number, number] = [9, 7.85, 13]
 export const roomRotationPeriod = Math.PI * 2
+export const roomPitchLimits = { min: -1.7, max: 3 } as const
 export const roomZoomLimits = { min: 0.5, max: 1.5, step: 0.1 } as const
 export type FramingArea = { x: number; y: number; width: number; height: number }
 export type FramingMeasurements = { canvas: FramingArea; stage: FramingArea; controls?: FramingArea }
+type BoundsProjection = { center: [number, number, number]; horizontal: number; vertical: number }
 
 const roomEntryZoom: Record<RoomId, number> = { kitchen: 1, bathroom: 1, 'living-room': 1.2 }
+const orbitAxis = new Vector3(0, 1, 0)
+
+export function cameraOrbitOffset(rotation = 0, pitch = 0, target = new Vector3()): Vector3 {
+  if (!Number.isFinite(rotation) || !Number.isFinite(pitch)) throw new Error('Camera orbit needs finite angles.')
+  return target.set(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).applyAxisAngle(orbitAxis, -rotation)
+}
 
 export function normalizeRoomRotation(angle: number): number {
   if (!Number.isFinite(angle)) throw new Error('Room rotation needs a finite angle.')
@@ -141,30 +149,55 @@ export function roomEntryFraming(width: number, height: number, area: FramingAre
   if (![area.width, area.height].every((value) => Number.isFinite(value) && value > 0) || !Number.isFinite(rotation)) {
     throw new Error('Room entry framing needs a measured scene area and a finite angle.')
   }
-  const center = new Vector3(...frame.center).applyAxisAngle(new Vector3(0, 1, 0), rotation)
-  return { center: center.toArray(), halfHeight: frame.halfHeight * area.height / height }
+  return { center: frame.center, halfHeight: frame.halfHeight * area.height / height }
 }
 
-export function projectRoomBounds(bounds: Box3, rotation = 0, pitch = 0): {
-  center: [number, number, number]; horizontal: number; vertical: number
-} {
+export function projectRoomBounds(bounds: Box3, rotation = 0, pitch = 0): BoundsProjection {
   if (![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
     throw new Error('Room projection needs finite bounds and camera angles.')
   }
   const center = bounds.getCenter(new Vector3())
   const axis = new Vector3(0, 1, 0)
-  const backward = new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]).normalize()
+  const backward = cameraOrbitOffset(rotation, pitch).normalize()
   const right = new Vector3().crossVectors(axis, backward).normalize()
   const up = new Vector3().crossVectors(backward, right).normalize()
   let horizontal = 0
   let vertical = 0
   for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
-    const corner = new Vector3(x, y, z).sub(center).applyAxisAngle(axis, rotation)
+    const corner = new Vector3(x, y, z).sub(center)
     horizontal = Math.max(horizontal, Math.abs(corner.dot(right)))
     vertical = Math.max(vertical, Math.abs(corner.dot(up)))
   }
-  center.applyAxisAngle(axis, rotation)
   return { center: center.toArray(), horizontal, vertical }
+}
+
+export function projectRoomOrbitBounds(bounds: Box3): BoundsProjection {
+  if (![...bounds.min.toArray(), ...bounds.max.toArray()].every(Number.isFinite) || bounds.isEmpty()) {
+    throw new Error('Room orbit projection needs finite bounds.')
+  }
+  const half = bounds.getSize(new Vector3()).multiplyScalar(0.5)
+  const horizontal = Math.hypot(half.x, half.z)
+  const distance = Math.hypot(baseCameraOffset[0], baseCameraOffset[2])
+  const minimumElevation = Math.atan2(baseCameraOffset[1] + roomPitchLimits.min, distance)
+  const maximumElevation = Math.atan2(baseCameraOffset[1] + roomPitchLimits.max, distance)
+  // Fit the entire allowed orbit once instead of zooming to each changing silhouette.
+  const elevation = MathUtils.clamp(Math.atan2(horizontal, half.y), minimumElevation, maximumElevation)
+  return {
+    center: bounds.getCenter(new Vector3()).toArray(),
+    horizontal,
+    vertical: half.y * Math.cos(elevation) + horizontal * Math.sin(elevation),
+  }
+}
+
+function fitBoundsProjection(width: number, height: number, { center, horizontal, vertical }: BoundsProjection) {
+  if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error('Room framing needs positive scene dimensions.')
+  }
+  return { center, halfHeight: Math.max(1.25, vertical + 0.18, (horizontal + 0.18) * height / width) * 1.08 }
+}
+
+export function fitRoomOrbitBounds(width: number, height: number, bounds: Box3) {
+  return fitBoundsProjection(width, height, projectRoomOrbitBounds(bounds))
 }
 
 export function fitRoomBounds(width: number, height: number, bounds: Box3, rotation = 0, pitch = 0): {
@@ -174,11 +207,7 @@ export function fitRoomBounds(width: number, height: number, bounds: Box3, rotat
     || ![...bounds.min.toArray(), ...bounds.max.toArray(), rotation, pitch].every(Number.isFinite) || bounds.isEmpty()) {
     throw new Error('Room framing needs positive scene dimensions and finite bounds.')
   }
-  const { center, horizontal, vertical } = projectRoomBounds(bounds, rotation, pitch)
-  return {
-    center,
-    halfHeight: Math.max(1.25, vertical + 0.18, (horizontal + 0.18) * height / width) * 1.08,
-  }
+  return fitBoundsProjection(width, height, projectRoomBounds(bounds, rotation, pitch))
 }
 
 export function roomCameraZoom(zoom: number, closeRoom: boolean, roomId: RoomId): number {

@@ -1,6 +1,6 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator } from '@playwright/test'
-import { openGroceryForm } from './fixtures.ts'
+import { openGroceryForm, waitForRoomReady } from './fixtures.ts'
 
 async function surface(control: Locator) {
   return control.evaluate((element) => {
@@ -26,29 +26,31 @@ test.describe('UI polish', () => {
 
   test('the room backdrop blends lighting changes and honors reduced motion', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.goto('/kitchen')
+    await waitForRoomReady(page)
     const home = page.locator('.game-home')
     const world = page.locator('.kitchen-world')
     const opacity = () => home.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
     const transition = () => home.evaluate((element) => getComputedStyle(element, '::after').transitionProperty)
     await expect(world).toHaveAttribute('data-evening', 'false')
-    await expect.poll(opacity).toBe(0)
-    await expect.poll(transition).toBe('none')
+    expect(await opacity()).toBe(0)
+    expect(await transition()).toBe('none')
     await expect(world).toHaveCSS('transition-property', 'none')
     const daylight = await home.evaluate((element) => getComputedStyle(element).backgroundImage)
     expect(await home.evaluate((element) => getComputedStyle(element, '::after').backgroundImage)).not.toBe('none')
 
     await page.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
     await expect(world).toHaveAttribute('data-evening', 'true')
-    await expect.poll(opacity).toBe(1)
+    expect(await opacity()).toBe(1)
     await expect(home).toHaveCSS('background-image', daylight)
 
     await page.emulateMedia({ reducedMotion: 'no-preference' })
-    await expect.poll(transition).toBe('opacity')
+    expect(await transition()).toBe('opacity')
     await expect(world).not.toHaveCSS('transition-property', 'none')
     expect(await home.evaluate((element) => Number.parseFloat(getComputedStyle(element, '::after').transitionDuration))).toBeGreaterThan(0)
     await page.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
+    await home.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
     await expect(world).toHaveAttribute('data-evening', 'false')
-    await expect.poll(opacity).toBe(0)
+    expect(await opacity()).toBe(0)
     await expect(home).toHaveCSS('background-image', daylight)
   })
 
@@ -111,13 +113,14 @@ test.describe('UI polish', () => {
   test('the enlarged share summary stays clear of the dock and opens settlements', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/kitchen')
+    await waitForRoomReady(page)
     const share = page.getByRole('button', { name: 'Your household balance', exact: true })
     await expect(share.locator('.balance-caption')).toHaveCSS('font-size', '11px')
     await expect(share.locator('strong')).toHaveText('\u20ac0.00')
-    await expect(share.locator('strong')).toHaveCSS('font-size', '28px')
+    await expect(share.locator('strong')).toHaveCSS('font-size', '24px')
     await expect(share.locator('span').last()).toHaveText('all square')
-    await expect(share.locator('span').last()).toHaveCSS('font-size', '13px')
-    await expect(share).toHaveCSS('padding', '11px 16px')
+    await expect(share.locator('span').last()).toHaveCSS('font-size', '12px')
+    await expect(share).toHaveCSS('padding', '9px 12px')
     await page.evaluate(() => document.fonts.ready)
 
     for (const width of [1440, 1280, 1251]) {
@@ -152,7 +155,7 @@ test.describe('UI polish', () => {
     test(`panels and forms stay usable at ${viewport.width}px`, async ({ page, populatedHousehold: _household }) => {
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
-      await expect(page.locator('.world-camera-controls')).toBeVisible()
+      await waitForRoomReady(page)
       await expectNoOverflow(page.locator('html'))
       expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true)
       const dock = await page.locator('.game-dock').boundingBox()

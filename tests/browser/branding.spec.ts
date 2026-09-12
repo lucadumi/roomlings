@@ -1,7 +1,7 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator, Page, Route } from '@playwright/test'
 import type { Session } from '../../shared/domain.ts'
-import { createHousehold, openGroceryForm, pauseRequest, savedKitchen } from './fixtures.ts'
+import { createHousehold, openGroceryForm, pauseRequest, savedKitchen, waitForRoomReady, waitForTourReady } from './fixtures.ts'
 import { createPopulatedHousehold } from '../household-fixture.ts'
 
 async function restoreKitchen(page: Page, session: Session) {
@@ -113,6 +113,7 @@ function svgGeometry(page: Page, markup: string) {
       paths: document.querySelectorAll('path').length,
       text: document.querySelectorAll('text').length,
       raster: document.querySelectorAll('image, foreignObject, canvas').length,
+      outline: document.querySelector('svg > g > path')?.getAttribute('d') ?? null,
     }
   }, markup)
 }
@@ -145,85 +146,34 @@ async function expectLoader(loader: Locator) {
   expect(await imageType(loader)).toBe('image/svg+xml')
 }
 
-async function expectSvgMotion(page: Page, markup: string, mode: 'normal' | 'light' | 'static') {
+async function expectStaticSvg(page: Page, markup: string, tone: 'color' | 'light') {
   const browser = page.context().browser()
-  if (!browser) throw new Error('SVG animation checks need an isolated browser context.')
+  if (!browser) throw new Error('SVG checks need an isolated browser context.')
   const isolated = await browser.newPage({ reducedMotion: 'no-preference' })
   try {
     await isolated.goto(`data:image/svg+xml,${encodeURIComponent(markup)}`)
     expect(await isolated.locator('svg').evaluate((element: SVGSVGElement) => {
       const box = element.viewBox.baseVal
       return [box.x, box.y, box.width, box.height]
-    })).toEqual([0, 0, 128, 128])
+    })).toEqual([0, 0, 256, 256])
     await expect(isolated.locator('image, foreignObject, canvas, animate, animateTransform, animateMotion')).toHaveCount(0)
-    if (mode === 'static') {
-      expect(await isolated.evaluate(() => document.getAnimations().length)).toBe(0)
-      return
-    }
-
-    await expect(isolated.locator('rect.threshold')).toHaveCount(1)
-    await expect.poll(() => isolated.evaluate(() => document.getAnimations().length)).toBe(1)
-    const motion = await isolated.evaluate(async () => {
-      const animation = document.getAnimations()[0]
-      if (!(animation.effect instanceof KeyframeEffect)) throw new Error('The threshold needs a CSS animation.')
-      const effect = animation.effect
-      const threshold = document.querySelector('rect.threshold')!
-      const stationary = [...document.querySelectorAll('svg, g, path, rect')].filter((element) => element !== threshold)
-      const timing = effect.getTiming()
-      const keyframes = effect.getKeyframes().map(({ computedOffset, easing }) => ({ offset: computedOffset, easing }))
-      animation.pause()
-      await animation.ready
-      const samples: { threshold: number[]; stationary: string[] }[] = []
-      for (const time of [0, 500, 1000, 1500, 2000]) {
-        animation.currentTime = time
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-        const transform = getComputedStyle(threshold).transform
-        const matrix = new DOMMatrixReadOnly(transform === 'none' ? undefined : transform)
-        samples.push({
-          threshold: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f],
-          stationary: stationary.map((element) => getComputedStyle(element).transform),
-        })
-      }
-      return {
-        thresholdOnly: effect.target === threshold,
-        duration: timing.duration,
-        delay: timing.delay,
-        infinite: timing.iterations === Infinity,
-        direction: timing.direction,
-        keyframes,
-        samples,
-        fills: [...new Set([...document.querySelectorAll('path, rect')].map((element) => getComputedStyle(element).fill))],
-      }
-    })
-    expect(motion.thresholdOnly).toBe(true)
-    expect(motion.duration).toBe(2000)
-    expect(motion.delay).toBe(0)
-    expect(motion.infinite).toBe(true)
-    expect(motion.direction).toBe('normal')
-    expect(motion.keyframes.map((frame) => frame.offset)).toEqual([0, 0.5, 1])
-    expect(motion.keyframes.slice(0, 2).map((frame) => frame.easing)).toEqual([
-      'cubic-bezier(0.37, 0, 0.63, 1)', 'cubic-bezier(0.37, 0, 0.63, 1)',
-    ])
-    for (const [index, lift] of [0, -4, -8, -4, 0].entries()) {
-      const sample = motion.samples[index]
-      expect(sample.threshold.slice(0, 5)).toEqual([1, 0, 0, 1, 0])
-      expect(sample.threshold[5]).toBeCloseTo(lift, 2)
-      expect(sample.stationary).toEqual(motion.samples[0].stationary)
-    }
-    expect(motion.fills).toHaveLength(mode === 'light' ? 1 : 2)
-
+    expect(await isolated.evaluate(() => document.getAnimations().length)).toBe(0)
+    const fills = await isolated.evaluate(() => [...new Set(
+      [...document.querySelectorAll('path')].filter((element) => !element.closest('defs'))
+        .map((element) => getComputedStyle(element).fill),
+    )])
+    expect(fills.sort()).toEqual(tone === 'light' ? ['rgb(252, 249, 241)'] : [
+      'rgb(129, 178, 154)', 'rgb(224, 122, 95)', 'rgb(242, 204, 143)', 'rgb(82, 120, 97)',
+    ].sort())
     await isolated.emulateMedia({ reducedMotion: 'reduce' })
-    await expect.poll(() => isolated.evaluate(() => document.getAnimations().length)).toBe(0)
-    expect(await isolated.locator('rect.threshold').evaluate((element) => {
-      const transform = getComputedStyle(element).transform
-      return new DOMMatrixReadOnly(transform === 'none' ? undefined : transform).isIdentity
-    })).toBe(true)
+    expect(await isolated.evaluate(() => document.getAnimations().length)).toBe(0)
   } finally {
     await isolated.close()
   }
 }
 
 test('the Roomlings rebrand restores existing Coldshare households without replacing them', async ({ page, accounts }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const original = await createPopulatedHousehold(accounts.store)
   const kitchen = savedKitchen(original)
   await page.addInitScript(({ token, kitchen }) => {
@@ -232,10 +182,10 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
   }, { token: original.token, kitchen })
 
   await page.goto('/kitchen')
-  await expect(page).toHaveTitle('Roomlings | A home to share')
+  await expect(page).toHaveTitle('Roomlings \u00b7 A home to share')
   await expect(page.getByRole('link', { name: 'Roomlings home', exact: true })).toBeVisible()
   await expect(page.locator('.game-house')).toContainText(original.household.name)
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
+  expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(original.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('roomlings.kitchens') ?? '[]'))).toEqual([kitchen])
   expect(await page.evaluate(() => localStorage.getItem('coldshare.session'))).toBe(original.token)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([kitchen])
@@ -248,6 +198,7 @@ test('the Roomlings rebrand restores existing Coldshare households without repla
 })
 
 test('Roomlings sessions take precedence over retained legacy browser storage', async ({ page, accounts }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
   const legacy = await createHousehold(accounts.store, 'The legacy household', 'Legacy roommate')
   const current = await createHousehold(accounts.store, 'The current household', 'Current roommate')
   const currentKitchen = savedKitchen(current)
@@ -266,10 +217,11 @@ test('Roomlings sessions take precedence over retained legacy browser storage', 
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('coldshare.kitchens') ?? '[]'))).toEqual([savedKitchen(legacy)])
 })
 
-test('landing branding keeps accessible links and fits phones, the icon breakpoint and landscape', async ({ page }) => {
+test('flat Patchwork branding keeps accessible links and fits phones, tablets and landscape', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/welcome')
+  await expect(page).toHaveTitle('Roomlings \u00b7 Share a home. Not the hassle.')
   const header = page.locator('.welcome-header .brand')
   const footer = page.locator('.welcome footer .brand')
   for (const brand of [header, footer]) {
@@ -288,9 +240,9 @@ test('landing branding keeps accessible links and fits phones, the icon breakpoi
   })))
   await expect(header.locator('.roomlings-brand')).toHaveAttribute('data-variant', 'featured')
   await expect(footer.locator('.roomlings-brand')).toHaveAttribute('data-variant', 'compact')
-  await expect(header.locator('picture.roomlings-brand-icon source')).toHaveAttribute('media', /^\(max-width:\s*640px\)$/)
+  await expect(header.locator('picture')).toHaveCount(0)
   await expect(footer.locator('picture')).toHaveCount(0)
-  const featured = header.locator('picture.roomlings-brand-icon img')
+  const featured = header.locator('img.roomlings-brand-icon')
   const compact = footer.locator('img.roomlings-brand-icon')
   expect(await imageType(compact)).toBe('image/svg+xml')
   for (const viewport of [
@@ -299,7 +251,8 @@ test('landing branding keeps accessible links and fits phones, the icon breakpoi
   ]) {
     await page.setViewportSize(viewport)
     await page.evaluate(() => document.fonts.ready)
-    await expect.poll(() => imageType(featured)).toBe(viewport.width <= 640 ? 'image/svg+xml' : 'image/png')
+    await expect.poll(() => imageType(featured)).toBe('image/svg+xml')
+    expect(await imageSource(featured)).toBe(await imageSource(compact))
     await expectLoadedImage(featured)
     await expectLoadedImage(compact)
     await expectBrandFits(page)
@@ -315,7 +268,7 @@ test('the favicon uses the flat mark and both landing wordmarks are real outline
   const icon = page.locator('.welcome footer .brand img.roomlings-brand-icon')
   await expectLoadedImage(icon)
   const flat = await svgGeometry(page, await readSvg(page, await imageSource(icon)))
-  expect(flat.viewBox).toEqual([0, 0, 128, 128])
+  expect(flat.viewBox).toEqual([0, 0, 256, 256])
   expect(flat.paths).toBeGreaterThan(0)
   expect(flat.text).toBe(0)
   expect(flat.raster).toBe(0)
@@ -381,11 +334,11 @@ for (const module of ['App', 'Welcome', 'KitchenWorld', 'BathroomWorld'] as cons
         await expect(page.locator('.game-house')).toContainText('The lazy household')
       }
       await expect(page.locator('.scene-loading')).toHaveCount(0)
-      if (module === 'KitchenWorld' || module === 'BathroomWorld') await expect(page.locator('.world-canvas canvas')).toBeVisible()
+      if (module === 'KitchenWorld' || module === 'BathroomWorld') await waitForRoomReady(page)
     })
 }
 
-test('the pending kitchen tour obeys its own reduced-motion toggle without changing loading state', { tag: '@room' }, async ({ page }) => {
+test('the pending tour keeps its Patchwork loader static while the room motion toggle still works', { tag: '@room' }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 1280, height: 800 })
   const pending = await pauseRequest(page, '**/{TourScene.tsx*,TourScene-*.js}')
@@ -397,18 +350,18 @@ test('the pending kitchen tour obeys its own reduced-motion toggle without chang
   await expectLoader(loader)
   const loadingText = await status.innerText()
   expect(loadingText.trim()).not.toBe('')
-  const animatedSource = await imageSource(loader)
-  const animated = await svgGeometry(page, await readSvg(page, animatedSource))
+  const originalSource = await imageSource(loader)
+  const original = await svgGeometry(page, await readSvg(page, originalSource))
   const toggle = page.getByRole('button', { name: 'Reduced motion', exact: true })
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(() => imageSource(loader)).not.toBe(animatedSource)
+  expect(await imageSource(loader)).toBe(originalSource)
   await expect(status).toHaveText(loadingText)
   const staticMarkup = await readSvg(page, await imageSource(loader))
-  expect(await svgGeometry(page, staticMarkup)).toEqual(animated)
-  await expectSvgMotion(page, staticMarkup, 'static')
+  expect(await svgGeometry(page, staticMarkup)).toEqual(original)
+  await expectStaticSvg(page, staticMarkup, 'color')
   await route.continue()
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(page.locator('.welcome-canvas')).toHaveAttribute('data-rendering', 'paused')
   await expect(status.locator('img.roomlings-loader')).toHaveCount(0)
 })
@@ -428,7 +381,7 @@ test('an initial account check announces loading before exposing the sign-in for
   await expect(dialog.getByLabel('Email address', { exact: true })).toBeVisible()
 })
 
-test('account and primary-button loaders follow real requests, preserve retries and animate only their thresholds', async ({ page }) => {
+test('static Patchwork loaders follow real requests and preserve failed-save retries', async ({ page }) => {
   const initial = await holdApiRequests(page, '**/api/account')
   await page.goto('/rooms/kitchen', { waitUntil: 'commit' })
   await initial.pending
@@ -452,7 +405,7 @@ test('account and primary-button loaders follow real requests, preserve retries 
   await expect(page.getByRole('alert')).toHaveCount(0)
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email address', { exact: true }).fill('branding@example.com')
-  // A resolved request must not wait for a decorative animation cycle or a cosmetic timer.
+  // A resolved request must not wait for a cosmetic timer.
   await page.clock.install()
   await page.clock.pauseAt(new Date(Date.now() + 60_000))
   const sending = await holdApiRequests(page, '**/api/account/code')
@@ -463,7 +416,10 @@ test('account and primary-button loaders follow real requests, preserve retries 
   await expect(busy).not.toHaveAccessibleName(/Roomlings/i)
   await expectLoader(busy.locator('img.roomlings-loader'))
   const lightMarkup = await readSvg(page, await imageSource(busy.locator('img.roomlings-loader')))
-  expect(await svgGeometry(page, lightMarkup)).toEqual(await svgGeometry(page, normalMarkup))
+  const lightGeometry = await svgGeometry(page, lightMarkup)
+  const normalGeometry = await svgGeometry(page, normalMarkup)
+  expect(lightGeometry.viewBox).toEqual(normalGeometry.viewBox)
+  expect(lightGeometry.outline).toBe(normalGeometry.outline)
   expect(lightMarkup).not.toBe(normalMarkup)
   await sending.release({ status: 503, json: { error: 'Email delivery is temporarily unavailable.' } })
   await expect(dialog.getByRole('alert')).toHaveText('Email delivery is temporarily unavailable.')
@@ -479,8 +435,8 @@ test('account and primary-button loaders follow real requests, preserve retries 
   await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('alert')).toHaveCount(0)
   await expect(dialog.locator('img.roomlings-loader, .spin')).toHaveCount(0)
-  await expectSvgMotion(page, normalMarkup, 'normal')
-  await expectSvgMotion(page, lightMarkup, 'light')
+  await expectStaticSvg(page, normalMarkup, 'color')
+  await expectStaticSvg(page, lightMarkup, 'light')
 })
 
 test('browser-access loading and refresh icons recover from failure without pretending a refresh succeeded', async ({ page, accounts }) => {

@@ -5,18 +5,25 @@ import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } fr
 import { createRoomHologram } from '../src/roomHologram.ts'
 import { visibleRoomBounds } from '../src/roomComponentScene.ts'
 import { roomAccents } from '../src/roomStyles.ts'
+import { cameraFraming, projectRoomBounds, roomPitchLimits } from '../src/camera.ts'
 
 const bounds = () => new Box3(new Vector3(-0.5, 0, -0.6), new Vector3(0.5, 2, 0.6))
 
-test('placement space follows the real projected size rather than normalizing each object', () => {
+test('placement space fits the full orbit without resizing objects or switching clear areas during a drag', () => {
   const target = bounds()
   const before = target.clone()
-  for (const rotation of [-0.75, 0, 0.75]) for (const pitch of [-1.7, 0, 3]) {
-    const normal = placementPreviewSize(target, 390, 844, 1, rotation, pitch)
-    const zoomed = placementPreviewSize(target, 390, 844, 1.5, rotation, pitch)
-    assert.ok(normal.width > 0 && normal.height > 0)
-    assert.ok(Math.abs((zoomed.width - 4) / (normal.width - 4) - 1.5) < 0.000001)
-    assert.ok(Math.abs((zoomed.height - 4) / (normal.height - 4) - 1.5) < 0.000001)
+  const normal = placementPreviewSize(target, 390, 844, 1)
+  const zoomed = placementPreviewSize(target, 390, 844, 1.5)
+  assert.ok(normal.width > 0 && normal.height > 0)
+  assert.ok(Math.abs((zoomed.width - 4) / (normal.width - 4) - 1.5) < 0.000001)
+  assert.ok(Math.abs((zoomed.height - 4) / (normal.height - 4) - 1.5) < 0.000001)
+  const framed = target.clone()
+  framed.max.y += 0.46 + 0.12 + 0.065
+  const pixelsPerUnit = 844 / (2 * cameraFraming(390, 844, 'room', false).halfHeight)
+  for (let turn = 0; turn <= 72; turn++) for (const pitch of [roomPitchLimits.min, 0, roomPitchLimits.max]) {
+    const projected = projectRoomBounds(framed, turn * Math.PI / 36, pitch)
+    assert.ok(projected.horizontal * 2 * pixelsPerUnit < normal.width)
+    assert.ok(projected.vertical * 2 * pixelsPerUnit < normal.height)
   }
   assert.deepEqual(target, before)
   for (const zoom of [0, -1, NaN, Infinity]) {
@@ -68,6 +75,7 @@ test('the low-poly marker is a downward triangle without a shaft, shadow or pick
   assert.equal(arrow.update(bounds(), 0, false), false)
   assert.equal(arrow.object.visible, true)
   assert.ok(arrow.object.material.flatShading)
+  assert.equal(arrow.object.material.roughness, 1)
   assert.equal(arrow.object.material.color.getHexString(), roomAccents.tomato.slice(1))
   assert.equal(arrow.object.castShadow, false)
   assert.equal(arrow.object.receiveShadow, false)

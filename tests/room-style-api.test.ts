@@ -247,7 +247,7 @@ describe('shared room style API', () => {
     const input = { roomStyle: 'linen', version: before.version }
     const save = context.mock.method(store, 'save', () => { throw new Error('Simulated room style save failure') })
     const failure = await error(await patch(input, owner.token), 500)
-    assert.equal(failure.error, 'Server unavailable. Request not confirmed. Try again.')
+    assert.equal(failure.error, 'Server unavailable. Unconfirmed request.')
     assert.equal(save.mock.callCount(), 1)
     save.mock.restore()
     assert.deepEqual(await current(owner), before)

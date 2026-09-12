@@ -1,9 +1,51 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Box3, BoxGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial, Raycaster, Vector3 } from 'three'
+import type { BufferGeometry } from 'three'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
+import { createRoomBoxGeometry } from '../src/roomGeometry.ts'
 
 describe('static room geometry batching', () => {
+  it('indexes rounded batches without changing triangles, normals or texture seams', (t) => {
+    const room = new Group()
+    const material = new MeshStandardMaterial()
+    const expected = new Map<string, number[]>()
+    for (const x of [-1, 1]) {
+      const mesh = new Mesh(createRoomBoxGeometry([1.3, 0.7, 0.3], 0.08), material)
+      mesh.position.x = x
+      mesh.rotation.y = x * 0.2
+      room.add(mesh)
+      mesh.updateMatrix()
+      const transformed = mesh.geometry.clone().applyMatrix4(mesh.matrix)
+      for (const [name, attribute] of Object.entries(transformed.attributes)) {
+        expected.set(name, [...(expected.get(name) ?? []), ...attribute.array])
+      }
+      transformed.dispose()
+    }
+    batchStaticMeshes(room, new Set())
+    t.after(() => {
+      room.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
+      material.dispose()
+    })
+    assert.equal(room.children.length, 1)
+    const combined = room.children[0]
+    assert.ok(combined instanceof Mesh)
+    const geometry: BufferGeometry = combined.geometry
+    const indices = geometry.getIndex()
+    assert.ok(indices)
+    assert.equal(indices.count, expected.get('position')!.length / 3)
+    assert.ok(geometry.getAttribute('position').count < indices.count / 2)
+    for (const [name, values] of expected) {
+      const attribute = geometry.getAttribute(name)
+      for (let index = 0; index < indices.count; index++) {
+        for (let component = 0; component < attribute.itemSize; component++) {
+          assert.ok(Math.abs(attribute.array[indices.getX(index) * attribute.itemSize + component]
+            - values[index * attribute.itemSize + component]) < 0.000001, `${name} must retain its triangle-corner values`)
+        }
+      }
+    }
+  })
+
   it('combines sibling primitives while preserving their world bounds and material', () => {
     const room = new Group()
     room.position.set(2, 3, -1)

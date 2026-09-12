@@ -9,8 +9,10 @@ import type { RoomId } from '../shared/rooms.ts'
 import { roomModels } from './roomModels.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { baseCameraOffset, fitRoomBounds } from './camera.ts'
-import { createContactShadowTexture, createRoomLights } from './lighting.ts'
+import { createContactShadowTexture, createRoomLights, roomPreviewShadowSize } from './lighting.ts'
 import { createRoomComponentScene } from './roomComponentScene.ts'
+import { applyRoomReflections, createRoomReflections } from './roomEnvironment.ts'
+import type { RoomReflections } from './roomEnvironment.ts'
 
 export type RoomPreviewLedger = {
   counts?: Record<Category, number>
@@ -52,7 +54,7 @@ export function createConfiguredRoomPreview(
   scene.add(lights.group)
   let disposed = false
   return {
-    scene, room, componentScene,
+    scene, room, componentScene, sunlight: lights.sunlight,
     dispose() {
       if (disposed) return
       disposed = true
@@ -68,16 +70,22 @@ export function createConfiguredRoomPreview(
   }
 }
 
-export function renderHouseholdRoomPreviews(options: {
+export async function renderHouseholdRoomPreviews(options: {
   components?: readonly RoomComponent[]
   roomStyle: RoomStyle
   roomStyles?: Partial<Record<RoomId, RoomStyle>>
   ledger?: RoomPreviewLedger
   sizes: Record<RoomId, { width: number; height: number }>
-}): Record<RoomId, string> {
+}, signal?: AbortSignal): Promise<Record<RoomId, string>> {
+  signal?.throwIfAborted()
+  // Let the picker paint and reposition before offscreen GPU allocation starts.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+  signal?.throwIfAborted()
   const renderer = new WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: 'low-power' })
   const images = {} as Record<RoomId, string>
+  let reflections: RoomReflections | undefined
   try {
+    reflections = createRoomReflections(renderer)
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = PCFShadowMap
     renderer.outputColorSpace = SRGBColorSpace
@@ -85,9 +93,13 @@ export function renderHouseholdRoomPreviews(options: {
     renderer.toneMappingExposure = 1.05
     renderer.setClearColor(0x000000, 0)
     for (const roomId of roomIds) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      signal?.throwIfAborted()
       const { width, height } = options.sizes[roomId]
       const model = createConfiguredRoomPreview(roomId, options.roomStyles?.[roomId] ?? options.roomStyle, options.components, options.ledger)
       try {
+        model.sunlight.shadow.mapSize.setScalar(roomPreviewShadowSize(width, height))
+        applyRoomReflections(model.scene, reflections)
         const framing = fitRoomBounds(width, height, model.componentScene.bounds)
         const camera = new OrthographicCamera(-framing.halfHeight * width / height, framing.halfHeight * width / height,
           framing.halfHeight, -framing.halfHeight, 0.1, 100)
@@ -96,14 +108,20 @@ export function renderHouseholdRoomPreviews(options: {
         camera.lookAt(center)
         camera.updateMatrixWorld(true)
         renderer.setSize(width, height, false)
+        renderer.compile(model.scene, camera)
+        // Let the live room and its UI settle between offscreen image renders.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        signal?.throwIfAborted()
         renderer.render(model.scene, camera)
         images[roomId] = renderer.domElement.toDataURL('image/png')
       } finally {
         model.dispose()
       }
     }
+    signal?.throwIfAborted()
     return images
   } finally {
+    reflections?.dispose()
     renderer.dispose()
     renderer.forceContextLoss()
   }

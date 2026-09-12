@@ -1,10 +1,11 @@
 import { z } from 'zod'
 import type { ChoreInput, Household } from './domain.ts'
 import {
-  componentAllowedInRoom, componentCatalog, componentChoreArea, componentChoreMatches, componentStateInputSchema, getRoomComponents,
+  componentAllowedInRoom, componentCatalog, componentChoreArea, componentChoreMatches, componentIsRetired, componentPositionOffered, componentStateInputSchema, getRoomComponents,
   roomComponentSchema, roomComponentsPatchSchema, validateRoomComponents,
 } from './roomComponents.ts'
 import type { RoomComponent, RoomComponentsPatch } from './roomComponents.ts'
+import { componentZonePlacementReason } from './roomZones.ts'
 
 export class RoomComponentError extends Error {
   readonly status: 400 | 404 | 409
@@ -17,7 +18,7 @@ export class RoomComponentError extends Error {
 export function requireInstalledComponent(household: Household, id: string): RoomComponent {
   const component = getRoomComponents(household).find((component) => component.id === id)
   if (!component) throw new RoomComponentError(404, 'That object was not found in this home.')
-  if (!component.installed) throw new RoomComponentError(409, 'Object removed. Shopping entries and history are kept.')
+  if (!component.installed) throw new RoomComponentError(409, 'This object is in storage. Bring it back to use its care or supplies. Shopping entries and history are kept.')
   return component
 }
 
@@ -35,6 +36,7 @@ export function applyRoomComponentPatch(household: Household, input: RoomCompone
   const current = getRoomComponents(household)
   const byId = new Map(current.map((component) => [component.id, component]))
   const changes = new Map<string, RoomComponent>()
+  const placements = new Set<string>()
   for (const { componentVersion, linkedChores: _linkedChores, ...change } of patch.changes) {
     const previous = byId.get(change.id)
     if (previous) {
@@ -46,8 +48,15 @@ export function applyRoomComponentPatch(household: Household, input: RoomCompone
       throw new RoomComponentError(400, 'Add a new object with a fresh identifier, or restore a saved object.')
     }
     const placing = change.installed && (!previous?.installed || change.slotId !== previous.slotId)
+    if (placing) placements.add(change.id)
+    if (placing && componentIsRetired(change.kind)) {
+      throw new RoomComponentError(400, `${componentCatalog[change.kind].name} is no longer offered for new placements. Existing objects and their history are kept.`)
+    }
     if (placing && !componentAllowedInRoom(change.kind, change.roomId)) {
       throw new RoomComponentError(400, `${componentCatalog[change.kind].name} is not available for new placements in this room.`)
+    }
+    if (placing && !componentPositionOffered(change.kind, change.slotId)) {
+      throw new RoomComponentError(400, `${componentCatalog[change.kind].name} is not available for new placements in that position. Choose a wall position.`)
     }
     changes.set(change.id, roomComponentSchema.parse({
       ...change, version: previous ? previous.version + 1 : 0,
@@ -60,14 +69,21 @@ export function applyRoomComponentPatch(household: Household, input: RoomCompone
   ]
   const invalid = validateRoomComponents(components)
   if (invalid) throw new RoomComponentError(409, invalid)
+  for (const component of components) {
+    if (!placements.has(component.id)) continue
+    const reason = componentZonePlacementReason(components, component.roomId, component.slotId, component.id)
+    if (reason) throw new RoomComponentError(409, reason)
+  }
   const choreChanges = new Map<string, Household['chores']['items'][number]>()
   for (const change of patch.changes) {
     const previous = byId.get(change.id)
     if (!previous?.installed || change.installed) continue
     const linked = household.chores.items.filter((chore) => !chore.archived && componentChoreMatches(chore, previous))
     if (linked.length && !change.linkedChores) {
-      throw new RoomComponentError(400, `Choose whether to archive ${previous.name}'s linked chores or keep them as room chores.`)
+      throw new RoomComponentError(400, `Choose whether to pause ${previous.name}'s linked chores, archive them or keep them as room chores.`)
     }
+    // Storage derives the pause from installed:false, preserving links, versions and dates.
+    if (change.linkedChores === 'pause') continue
     for (const chore of linked) {
       choreChanges.set(chore.id, {
         ...chore, version: chore.version + 1, updatedAt: now,

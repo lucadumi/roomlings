@@ -5,10 +5,11 @@ import { Box3, Group, Mesh, MeshStandardMaterial, OrthographicCamera, Raycaster,
 import type { BufferGeometry, Object3D } from 'three'
 import { bathroomFocusForRequest, bathroomFraming, bathroomTargets, buildBathroomModel } from '../src/bathroomModel.ts'
 import { batchStaticMeshes } from '../src/batchStaticMeshes.ts'
-import { baseCameraOffset, cameraFraming, cameraProjection, fitRoomBounds } from '../src/camera.ts'
+import { baseCameraOffset, cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds } from '../src/camera.ts'
 import { bathroomCaddyShelf, bathroomLayout, bathroomMat, roomFootprints, roomShellBounds, roomShellLayout } from '../src/roomLayout.ts'
 import { isSceneObjectVisible } from '../src/roomComponentScene.ts'
 import { applyRoomStyle, roomPresets } from '../src/roomStyles.ts'
+import { assertRoomSurface } from './surface-fixture.ts'
 
 function bathroom(t: TestContext) {
   const room = new Group()
@@ -102,14 +103,14 @@ test('compacting the bathroom preserves the physical size of every original fixt
   }
 })
 
-test('all bathroom surfaces use registered flat-shaded, opaque materials', (t) => {
+test('all bathroom surfaces use registered opaque materials with physical finishes', (t) => {
   const { room, model } = bathroom(t)
   assert.equal(new Set(model.materials).size, model.materials.length)
   assert.deepEqual(Object.keys(model.styleMaterials).sort(), Object.keys(roomPresets.original.colors).sort())
   for (const mesh of meshes(room)) {
     assert.ok(mesh.material instanceof MeshStandardMaterial)
     assert.ok(model.materials.includes(mesh.material))
-    assert.equal(mesh.material.flatShading, true)
+    assertRoomSurface(mesh.material)
     assert.equal(mesh.material.transparent, false)
     assert.equal(mesh.material.opacity, 1)
     assert.equal(mesh.material.depthWrite, true)
@@ -200,7 +201,7 @@ test('room styles recolor existing bathroom materials while keeping every actor 
   const originalMeshes = meshes(room)
   const originalGeometry = originalMeshes.map((mesh) => mesh.geometry)
   const finishes = Object.values(model.styleMaterials)
-  const unchanged = model.materials.filter((material) => !finishes.includes(material))
+  const unchanged = model.materials.filter((material) => !finishes.some((source) => source.color === material.color))
     .map((material) => ({ material, color: material.color.getHexString() }))
   for (const style of ['original', 'sage', 'clay', 'linen'] as const) {
     applyRoomStyle(model.styleMaterials, style)
@@ -241,12 +242,12 @@ test('bathroom framing contains the room and selected actors in measured scene a
         const projection = cameraProjection(width, height, area, framing.halfHeight, 1)
         const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
         const center = new Vector3(...framing.center)
-        camera.position.copy(center).add(new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
+        camera.position.copy(center).add(cameraOrbitOffset(rotation, pitch))
         camera.lookAt(center)
         camera.updateMatrixWorld(true)
         for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) {
           for (const z of [bounds.min.z, bounds.max.z]) {
-            const corner = new Vector3(x, y, z).applyAxisAngle(new Vector3(0, 1, 0), rotation).project(camera)
+            const corner = new Vector3(x, y, z).project(camera)
             const screenX = (corner.x * 0.5 + 0.5) * width
             const screenY = (-corner.y * 0.5 + 0.5) * height
             assert.ok(screenX >= area.x && screenX <= area.x + area.width, 'Object must fit the actual scene width')

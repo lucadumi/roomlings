@@ -97,9 +97,9 @@ describe('account-aware client access', () => {
       error instanceof RequestError && error.status === 401 && error.message === 'Verify your email again.')
     mock.method(globalThis, 'fetch', async () => { throw new TypeError('Connection failed') })
     await assert.rejects(request('/account'), (error: unknown) =>
-      error instanceof RequestError && error.status === 0 && error.message === 'Connection lost. Try again.')
+      error instanceof RequestError && error.status === 0 && error.message === 'Connection lost.')
     await assert.rejects(request('/account', { method: 'DELETE' }), (error: unknown) =>
-      error instanceof RequestError && error.status === 0 && error.message === 'Connection lost. Request not confirmed. Try again.')
+      error instanceof RequestError && error.status === 0 && error.message === 'Connection lost. Unconfirmed request.')
   })
 
   it('retains lifecycle error codes so pending deletion is not mistaken for a completed sign-out', async () => {
@@ -119,11 +119,11 @@ describe('account-aware client access', () => {
       })
       await assert.rejects(request('/account/code', { body: { email: 'example@example.com' } }), (error: unknown) =>
         error instanceof RequestError && error.status === status && error.code === 'SERVER_UNAVAILABLE'
-        && error.message === 'Server unavailable. Request not confirmed. Try again.')
+        && error.message === 'Server unavailable. Unconfirmed request.')
       assert.equal(calls, 1)
       await assert.rejects(request('/household/room-access'), (error: unknown) =>
         error instanceof RequestError && error.status === status && error.code === 'SERVER_UNAVAILABLE'
-        && error.message === 'Server unavailable. Try again.')
+        && error.message === 'Server unavailable.')
       assert.equal(calls, 2)
     }
   })
@@ -137,16 +137,16 @@ describe('account-aware client access', () => {
       && error.message === 'Email delivery is temporarily unavailable.')
     mock.method(globalThis, 'fetch', async () => new Response('<html>Not JSON</html>'))
     await assert.rejects(request('/account'), (error: unknown) =>
-      error instanceof RequestError && error.status === 200 && error.message === 'Unreadable server response. Try again.')
+      error instanceof RequestError && error.status === 200 && error.message === 'Unreadable server response.')
     await assert.rejects(request('/expenses', { body: {} }), (error: unknown) =>
-      error instanceof RequestError && error.status === 200 && error.message === 'Unreadable server response. Request not confirmed. Try again.')
+      error instanceof RequestError && error.status === 200 && error.message === 'Unreadable server response. Unconfirmed request.')
   })
 
   it('keeps malformed or blank error responses visible without claiming a write failed', async () => {
     for (const body of [{ error: '   ' }, { message: 'Unexpected shape' }, { error: '', code: 'ACCOUNT_DELETION_PENDING' }]) {
       mock.method(globalThis, 'fetch', async () => Response.json(body, { status: 503 }))
       await assert.rejects(request('/expenses', { body: {} }), (error: unknown) =>
-        error instanceof RequestError && error.status === 503 && error.message === 'Unexpected response. Request not confirmed. Try again.'
+        error instanceof RequestError && error.status === 503 && error.message === 'Unexpected response. Unconfirmed request.'
         && error.code === ('code' in body ? body.code : undefined))
     }
   })

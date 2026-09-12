@@ -1,7 +1,7 @@
 import type { Locator } from '@playwright/test'
 import { roomStyleSchema } from '../../shared/domain.ts'
 import { expect, test } from './account-fixtures.ts'
-import { closeRoomEditor, openRoomColors, selectRoom } from './fixtures.ts'
+import { closeRoomEditor, openRoomColors, selectRoom, waitForTourReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
@@ -95,6 +95,7 @@ test('the Coolors landing palette keeps uniform copy and a transparent hero', { 
   await page.goto('/')
   await expect(page.locator('.welcome-garden, .grass-tufts')).toHaveCount(0)
   await expect(page.locator('.welcome-hero h1')).toHaveCSS('text-shadow', 'none')
+  await expect(page.locator('.welcome-action-note')).toHaveText('Less chasing. More time together.')
   const featureColors = await page.locator('.welcome-feature h3').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color))
   expect(new Set(featureColors)).toEqual(new Set(['rgb(61, 64, 91)']))
   await expect(page.locator('.welcome-features .welcome-feature-art, .welcome-features svg, .welcome-features img')).toHaveCount(0)
@@ -102,6 +103,7 @@ test('the Coolors landing palette keeps uniform copy and a transparent hero', { 
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 960 })
     await expectReadable(page.locator('.welcome-hero h1 em'), page.locator('.welcome'))
+    await expectReadable(page.locator('.welcome-action-note'), page.locator('.welcome'))
     await expectReadable(page.locator('#home-start'))
     await page.locator('#home-start').hover()
     await expectReadable(page.locator('#home-start'))
@@ -118,17 +120,30 @@ test('the Coolors landing palette keeps uniform copy and a transparent hero', { 
   await page.locator('.welcome-features').scrollIntoViewIfNeeded()
   await page.screenshot({ path: testInfo.outputPath('garden-pop-journal.png'), animations: 'disabled' })
   await page.getByRole('link', { name: 'Explore rooms', exact: true }).first().click()
-  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready')
+  await waitForTourReady(page)
   await expect(page.locator('.welcome-stage').first()).toHaveCSS('background-color', 'rgb(255, 255, 255)')
   for (const choice of await page.locator('.welcome-preview-choice').all()) await expectReadable(choice)
   await page.screenshot({ path: testInfo.outputPath('garden-pop-explore.png'), animations: 'disabled' })
   expect(plantRequests.every((url) => new URL(url).pathname.endsWith('/left.png'))).toBe(true)
 })
 
-test('the closing invitation is a white outlined letter with a static plant and a working action', { tag: '@room' }, async ({ page }, testInfo) => {
+test('the closing invitation keeps its folded outline, shared app shadow and working action', { tag: '@room' }, async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => document.fonts.ready)
+  await expect(page.getByText('Sign in to create or join your household.', { exact: true })).toHaveCount(0)
   const letter = page.locator('#get-started')
+  const shadow = page.locator('.welcome-invitation-shadow')
+  const expectedShadow = await page.evaluate(() => {
+    const reference = document.createElement('div')
+    reference.style.filter = 'var(--paper-shadow)'
+    document.body.append(reference)
+    const value = getComputedStyle(reference).filter
+    reference.remove()
+    return value
+  })
+  expect(expectedShadow).not.toBe('none')
+  expect(expectedShadow.match(/drop-shadow/g)).toHaveLength(1)
+  expect(expectedShadow).toContain('0px 5px 0px')
   const plant = letter.locator('.welcome-invitation-plant')
   const action = letter.getByRole('link', { name: 'Start sharing', exact: true })
   for (const [width, height] of [[1440, 960], [390, 844], [320, 568], [844, 390]]) {
@@ -136,7 +151,7 @@ test('the closing invitation is a white outlined letter with a static plant and 
     await letter.scrollIntoViewIfNeeded()
     await expect(letter).toHaveCSS('background-color', 'rgb(255, 255, 255)')
     await expect(letter).toHaveCSS('background-image', 'none')
-    await expect(letter).toHaveCSS('box-shadow', 'none')
+    await expect(shadow).toHaveCSS('filter', expectedShadow)
     await expect(letter).toHaveCSS('border-top-style', 'solid')
     await expect(plant).toBeVisible()
     await expect(plant).toHaveAttribute('aria-hidden', 'true')
@@ -155,7 +170,7 @@ test('the closing invitation is a white outlined letter with a static plant and 
     expect(bounds).not.toBeNull()
     expect(bounds!.width).toBeGreaterThanOrEqual(44)
     expect(bounds!.height).toBeGreaterThanOrEqual(44)
-    await letter.screenshot({ path: testInfo.outputPath(`outlined-letter-${width}.png`), animations: 'disabled' })
+    await page.screenshot({ path: testInfo.outputPath(`outlined-letter-${width}.png`), animations: 'disabled' })
   }
   await action.click()
   const signIn = page.getByRole('dialog', { name: 'Your place, on every device.', exact: true })

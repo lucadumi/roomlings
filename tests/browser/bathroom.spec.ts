@@ -4,11 +4,12 @@ import { OrthographicCamera, Vector3 } from 'three'
 import { baseCameraOffset, cameraProjection, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { bathroomLayout } from '../../src/roomLayout.ts'
-import { selectRoom, trackDrawing } from './fixtures.ts'
+import { selectRoom, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
 async function frameRoom(page: Page) {
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-focus', 'room')
   await expect(page.locator('.bathroom-world')).toHaveAttribute('data-camera-moving', 'false')
@@ -45,7 +46,7 @@ async function clickFixture(page: Page, point: [number, number, number]) {
 test('bathroom objects open room-specific chores and the shared supply list', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   for (const area of ['sink', 'mirror', 'toilet', 'bath', 'floor']) {
     await frameRoom(page)
     await page.locator(`[data-bathroom-target="${area}"]`).click()
@@ -77,7 +78,7 @@ test('bathroom objects open room-specific chores and the shared supply list', { 
 test('bathroom fixtures remain pickable when object labels are hidden', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await clickFixture(page, [bathroomLayout.sink[0], 1.9, bathroomLayout.sink[2] + 0.06])
   await expect(page.getByRole('combobox', { name: 'Chore area', exact: true })).toHaveAttribute('data-value', 'sink')
@@ -95,7 +96,8 @@ test('bathroom rendering settles, recolors existing geometry and releases the sc
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('bathroom'))
   const world = page.locator('.bathroom-world')
-  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  // This first frame includes reflected-material shader preparation in software WebGL.
+  await expect(world).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
   await expect(world.locator('canvas')).toBeVisible()
   const idle = await drawing()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
@@ -124,7 +126,7 @@ test('bathroom rendering settles, recolors existing geometry and releases the sc
 test('bathroom drag, wheel and touch zoom do not accidentally open chores', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world .world-canvas canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.getByRole('button', { name: 'Hide object labels', exact: true }).click()
   await page.mouse.move(160, 430)
   await page.mouse.wheel(0, -160)
@@ -146,7 +148,7 @@ test('bathroom drag, wheel and touch zoom do not accidentally open chores', { ta
 
 test('bathroom context loss retains ordinary chore and restocking actions', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   await page.goto(roomPath('bathroom'))
-  await expect(page.locator('.bathroom-world canvas')).toBeVisible()
+  await waitForRoomReady(page)
   await page.locator('.bathroom-world canvas').evaluate((canvas) => {
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error('The bathroom canvas is missing.')
     const loss = canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')
@@ -165,7 +167,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   test(`bathroom framing and shared room controls fit at ${viewport.width}x${viewport.height}`, { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath('bathroom'))
-    await expect(page.locator('.bathroom-world canvas')).toBeVisible()
+    await waitForRoomReady(page)
     await frameRoom(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toBeInViewport({ ratio: 1 })
@@ -184,6 +186,6 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
     await selectRoom(page, 'kitchen')
     await expect(page.locator('.bathroom-world')).toHaveCount(0)
-    await expect(page.locator('.kitchen-world .world-canvas canvas')).toBeVisible()
+    await waitForRoomReady(page)
   })
 }

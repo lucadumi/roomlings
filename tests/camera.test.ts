@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { baseCameraOffset, cameraFraming, cameraProjection, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomRotationPeriod, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
+import { readFile } from 'node:fs/promises'
+import { baseCameraOffset, cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, projectRoomBounds, projectRoomOrbitBounds, roomCameraZoom, roomEntryFraming, roomFramingArea, roomPitchLimits, roomRotationPeriod, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
 import { roomIds } from '../shared/rooms.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
@@ -8,6 +9,74 @@ import { buildKitchenModel } from '../src/kitchenModel.ts'
 import { bathroomFraming } from '../src/bathroomModel.ts'
 
 describe('room-first camera framing', () => {
+  it('keeps live rooms, public tours and saved previews free of room-root view transforms', async () => {
+    for (const file of ['KitchenWorld.tsx', 'ChoreRoomWorld.tsx', 'landing/TourScene.tsx', 'householdRoomPreview.ts']) {
+      const source = await readFile(new URL(`../src/${file}`, import.meta.url), 'utf8')
+      assert.doesNotMatch(source, /\b(?:room|scene)\.(?:rotation|position|scale)\s*[.=]|\b(?:room|scene)\.(?:rotate[XYZ]|translate[XYZ]|applyMatrix4)\(/,
+        `${file} must move the camera rather than the room`)
+    }
+  })
+
+  it('orbits the camera around a fixed focus point without rotating or translating room geometry', () => {
+    const room = new Group()
+    room.updateMatrixWorld(true)
+    const transform = room.matrixWorld.clone()
+    const bounds = new Box3(new Vector3(3, 0, -3), new Vector3(4, 1.4, -2))
+    const focus = bounds.getCenter(new Vector3())
+    const initial = cameraOrbitOffset()
+    assert.deepEqual(initial.toArray(), baseCameraOffset)
+    const output = new Vector3()
+    for (const rotation of [-Math.PI, -0.75, 0, 0.75, Math.PI, Math.PI * 4]) {
+      const frame = fitRoomBounds(600, 700, bounds, rotation)
+      assert.deepEqual(frame.center, focus.toArray())
+      const camera = new OrthographicCamera(-3, 3, 3.5, -3.5, 0.1, 100)
+      assert.equal(cameraOrbitOffset(rotation, 0, output), output)
+      assert.ok(Math.abs(output.length() - initial.length()) < 0.000001)
+      camera.position.copy(focus).add(output)
+      camera.lookAt(focus)
+      camera.updateMatrixWorld(true)
+      const projected = focus.clone().project(camera)
+      assert.ok(Math.abs(projected.x) < 0.000001 && Math.abs(projected.y) < 0.000001)
+      assert.ok(room.matrixWorld.equals(transform))
+      assert.deepEqual(roomEntryFraming(600, 700, { x: 0, y: 0, width: 600, height: 700 }, rotation).center,
+        cameraFraming(600, 700, 'room', false).center)
+      assert.deepEqual(bathroomFraming(600, 700, bounds, rotation, 0, { closeRoom: true }).center,
+        cameraFraming(600, 700, 'room', false).center)
+    }
+    assert.throws(() => cameraOrbitOffset(NaN), /finite angles/)
+    assert.throws(() => cameraOrbitOffset(0, Infinity), /finite angles/)
+  })
+
+  it('fits the full editor orbit at a fixed scale for rooms, tall fixtures and flat objects', () => {
+    for (const size of [[10, 5, 8], [0.3, 4, 0.4], [3, 0.2, 2], [2, 3, 2], [0, 0, 0]]) {
+      const bounds = new Box3(new Vector3(1, 0.3, -4), new Vector3(1 + size[0], 0.3 + size[1], -4 + size[2]))
+      const before = bounds.clone()
+      const envelope = projectRoomOrbitBounds(bounds)
+      assert.deepEqual(envelope.center, bounds.getCenter(new Vector3()).toArray())
+      let widest = 0
+      let tallest = 0
+      for (let turn = 0; turn <= 72; turn++) for (let tilt = 0; tilt <= 20; tilt++) {
+        const yaw = turn * Math.PI / 36
+        const pitch = roomPitchLimits.min + (roomPitchLimits.max - roomPitchLimits.min) * tilt / 20
+        const projected = projectRoomBounds(bounds, yaw, pitch)
+        widest = Math.max(widest, projected.horizontal)
+        tallest = Math.max(tallest, projected.vertical)
+        assert.ok(projected.horizontal <= envelope.horizontal + 1e-10)
+        assert.ok(projected.vertical <= envelope.vertical + 1e-10)
+        for (const [width, height] of [[1440, 960], [390, 844], [844, 390]]) {
+          const framing = fitRoomOrbitBounds(width, height, bounds)
+          assert.ok(framing.halfHeight >= projected.vertical)
+          assert.ok(framing.halfHeight * width / height >= projected.horizontal)
+        }
+      }
+      assert.ok(envelope.horizontal - widest < 0.01, 'The orbit envelope must not add arbitrary horizontal padding.')
+      assert.ok(envelope.vertical - tallest < 0.01, 'The orbit envelope must follow the allowed camera elevations.')
+      assert.deepEqual(bounds, before)
+    }
+    assert.throws(() => projectRoomOrbitBounds(new Box3()), /finite bounds/)
+    assert.throws(() => fitRoomOrbitBounds(0, 100, new Box3(new Vector3(), new Vector3(1, 1, 1))), /positive scene dimensions/)
+  })
+
   it('supports complete rotations and takes the shortest path when resetting or selecting an object', () => {
     assert.equal(roomRotationPeriod, Math.PI * 2)
     for (const angle of [0, roomRotationPeriod, -roomRotationPeriod, roomRotationPeriod * 20]) {
@@ -159,19 +228,18 @@ describe('room-first camera framing', () => {
       room.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
       model.materials.forEach((material) => material.dispose())
     })
-    const axis = new Vector3(0, 1, 0)
     for (const [width, height] of [[1440, 960], [390, 844], [844, 390]]) {
       for (const rotation of [-Math.PI, -Math.PI / 2, -0.75, 0, 0.75, Math.PI / 2, Math.PI]) for (const pitch of [-1.7, 0, 3]) {
         const framing = cameraFraming(width, height, 'room', true, { bounds, rotation, pitch })
         const halfWidth = framing.halfHeight * width / height
         const camera = new OrthographicCamera(-halfWidth, halfWidth, framing.halfHeight, -framing.halfHeight, 0.1, 100)
-        const center = new Vector3(...framing.center).applyAxisAngle(axis, rotation)
-        camera.position.copy(center).add(new Vector3(baseCameraOffset[0], baseCameraOffset[1] + pitch, baseCameraOffset[2]))
+        const center = new Vector3(...framing.center)
+        camera.position.copy(center).add(cameraOrbitOffset(rotation, pitch))
         camera.lookAt(center)
         camera.updateMatrixWorld(true)
         const projected: Vector3[] = []
         for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
-          const point = new Vector3(x, y, z).applyAxisAngle(axis, rotation).project(camera)
+          const point = new Vector3(x, y, z).project(camera)
           projected.push(point)
           assert.ok(Math.abs(point.x) < 1, `The room must fit horizontally at ${width}x${height}, ${rotation}, ${pitch}`)
           assert.ok(Math.abs(point.y) < 1, `The room must fit vertically at ${width}x${height}, ${rotation}, ${pitch}`)

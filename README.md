@@ -10,13 +10,8 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 - Track the monthly grocery budget and record roommate repayments.
 - Share a household through verified-email accounts, invitations and saved access.
 - Customize all three rooms with optional appliances, furniture and decorations across compatible, live-previewed positions.
+- Keep rooms clear with zone filters, placement limits and reversible object storage.
 - Give room admins editing access while everyone uses the same supplies, chores and manually recorded object states.
-
-The room's objects open these tools, and a toolbar keeps them available without 3D. **Room objects** groups each kind into one preview card, with position choices for repeated objects. Its **Edit room** action lets admins preview and apply a shared layout. Installing or moving an object never creates a purchase, debt or chore. Every balance comes from the same shared ledger.
-
-The object library includes kitchen appliances, shared-care tools and decorative pieces such as a stand mixer, mug tree, record player, board game and reed diffuser. **Rooms** opens a compact preview menu directly beneath its button.
-
-The living room includes a corner sofa, coffee table, TV and media unit, bookshelf, reading lamp, rug and curtained window. All three rooms use the same starting camera scale. Their objects share the same chores, shopping list and ledger. Existing saved layouts gain the living room without resetting their furniture or browser access.
 
 ## Run locally
 
@@ -39,6 +34,17 @@ Email sign-in needs [Supabase setup](docs/accounts.md). Existing real browser ac
 ## Development
 
 TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. All rooms share household access, chores, shopping and financial history.
+
+`src/surfaceMaterials.ts` shares deterministic, DOM-free room textures and releases
+them when their last material owner is disposed. Use its material/clone helpers
+for textured room surfaces, and keep physical finish roles separate from palette
+color bindings. Surface preparation changes texture coordinates, not model shapes.
+`src/roomGeometry.ts` controls bounded bevels and circular detail while preserving
+dimensions and crisp thin details. Static batches index identical vertices without
+merging distinct normals or texture coordinates.
+`src/roomEnvironment.ts` owns each renderer's reusable reflection map. Preview
+rendering yields between offscreen images, and material warmup does not leave
+uncancellable shader polling behind when a room unmounts.
 
 | Command | Purpose |
 | --- | --- |

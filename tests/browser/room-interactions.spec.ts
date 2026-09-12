@@ -5,7 +5,7 @@ import { componentChoreArea, createRoomComponent, getRoomComponents } from '../.
 import { roomIds } from '../../shared/rooms.ts'
 import { normalizeRoomRotation } from '../../src/camera.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
-import { openRoomEditor, openRoomObjects, trackDrawing } from './fixtures.ts'
+import { openRoomEditor, openRoomObjects, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.use({ providerEnabled: false, reducedMotion: 'reduce' })
 
@@ -34,6 +34,7 @@ for (const roomId of roomIds) for (const viewport of [{ width: 1440, height: 960
     await page.clock.setFixedTime(new Date())
     const drawing = await trackDrawing(page)
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     const canvas = world.locator('canvas')
     await expect(world).toHaveAttribute('data-rendering', 'paused')
@@ -67,9 +68,10 @@ for (const roomId of roomIds) {
     await page.setViewportSize({ width: 1440, height: 960 })
     const before = await accounts.store.get(owner.household.id)
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const editor = await openRoomEditor(page)
     await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
-    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Speaker'
+    const name = roomId === 'kitchen' ? 'Dishwasher' : roomId === 'bathroom' ? 'Washing machine' : 'Wall art'
     await editor.getByRole('button', { name: `Preview ${name}`, exact: true }).click()
     const canvas = page.locator('.world-canvas canvas')
     await expect(canvas).toHaveAttribute('data-placement-arrow', 'true')
@@ -93,6 +95,7 @@ for (const roomId of roomIds) {
     const defaultId = roomId === 'kitchen' ? 'default-kitchen-shopping-bag' : roomId === 'bathroom' ? 'default-bathroom-sink' : 'default-living-room-sofa'
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     for (const id of [defaultId, added.id]) {
       const world = page.locator('.kitchen-world')
       await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
@@ -116,6 +119,7 @@ for (const roomId of roomIds) {
 test('room chore markers do not discard unsaved component edits', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const editor = await openRoomEditor(page)
   await editor.getByRole('button', { name: 'Edit Dining table', exact: true }).click()
   await editor.getByLabel('Object name', { exact: true }).fill('Keep this table draft')

@@ -1,17 +1,44 @@
 import { Group, LatheGeometry, Mesh, Vector2, Vector3 } from 'three'
 import type { MeshStandardMaterial } from 'three'
-import type { RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
+import type { ComponentKind, RoomComponent, RoomSlotId } from '../shared/roomComponents.ts'
 import type { AdditionalModelTools } from './additionalComponentModels.ts'
+import { buildBoxSpeaker } from './additionalComponentModels.ts'
 import { roomAccents } from './roomStyles.ts'
+import { roomRadialSegments } from './roomGeometry.ts'
+import { componentMaterialAppearance, componentMaterialColors } from './componentMaterials.ts'
+import { setComponentThumbnailRepresentative } from './componentPresentation.ts'
 
 type Position = [number, number, number]
-type Placement = { position: Position; scale?: number | Position; rotation?: number }
+type Placement = {
+  position: Position
+  scale?: number | Position
+  scaleByKind?: Partial<Record<ComponentKind, number | Position>>
+  rotation?: number
+}
+
+const livingRoomTableTopScales = {
+  plant: 0.62,
+  'tissue-box': 1.8,
+} satisfies Partial<Record<ComponentKind, number>>
+
+const livingRoomMediaAccessoryScales = {
+  plant: 0.58,
+  'record-player': 1.8,
+} satisfies Partial<Record<ComponentKind, number>>
+
+const livingRoomShelfAccessoryScales = {
+  plant: 0.58,
+} satisfies Partial<Record<ComponentKind, number>>
+
+const livingRoomWindowsillScales = {
+  plant: 0.48,
+} satisfies Partial<Record<ComponentKind, number>>
 
 export const livingRoomPlacements = {
   'living-room-sofa': { position: [-0.4, 0.022, -2.09] },
   'living-room-coffee-table': { position: [-0.95, 0.022, 0.35] },
   'living-room-media-unit': { position: [-4.08, 0.022, -0.85], rotation: Math.PI / 2 },
-  'living-room-tv': { position: [-4.08, 1.072, -0.4], rotation: Math.PI / 2 },
+  'living-room-tv': { position: [-4.734, 1.55, -0.85], rotation: Math.PI / 2 },
   'living-room-bookshelf': { position: [3.9, 0.022, -2.68] },
   'living-room-floor-lamp': { position: [2.78, 0.022, -1.26] },
   'living-room-rug': { position: [-0.35, 0.021, 0.25] },
@@ -20,12 +47,12 @@ export const livingRoomPlacements = {
   'living-room-supply-shelf': { position: [4.16, 0.022, 0.25] },
   'living-room-cleaning-caddy': { position: [2.55, 0.022, 2.64] },
   'living-room-bins': { position: [4.2, 0.022, 2.23], scale: 0.76 },
-  'living-room-table-top': { position: [-0.95, 0.855, 0.35], scale: 0.9 },
-  'living-room-media-accessory': { position: [-4.08, 1.075, -2.09], scale: 0.76, rotation: Math.PI / 2 },
-  'living-room-shelf-accessory': { position: [4.3, 1.345, -2.64], scale: 0.58 },
-  'living-room-wall-art': { position: [2.43, 3.55, -3.145], scale: 0.85 },
-  'living-room-cleaning-station': { position: [4.2, 0.022, 1.25], scale: 0.85 },
-  'living-room-windowsill': { position: [-0.95, 2.143, -2.98], scale: 0.43 },
+  'living-room-table-top': { position: [-0.95, 0.855, 0.35], scale: 1, scaleByKind: livingRoomTableTopScales },
+  'living-room-media-accessory': { position: [-4.08, 1.075, -2.09], scale: 1, scaleByKind: livingRoomMediaAccessoryScales, rotation: Math.PI / 2 },
+  'living-room-shelf-accessory': { position: [4.3, 1.345, -2.64], scale: 1, scaleByKind: livingRoomShelfAccessoryScales },
+  'living-room-wall-art': { position: [2.43, 3.55, -3.122], scale: 0.85 },
+  'living-room-cleaning-station': { position: [4.2, 0.022, 1.25], scale: 1 },
+  'living-room-windowsill': { position: [-0.95, 2.143, -2.98], scale: 0.7, scaleByKind: livingRoomWindowsillScales },
 } satisfies Partial<Record<RoomSlotId, Placement>>
 
 export const livingRoomWindow = { left: -2.65, right: 1.55, bottom: 2.14, top: 4.08, wallZ: -3.23 } as const
@@ -34,7 +61,7 @@ export const livingRoomLampPosition: Position = [2.78, 2.382, -1.26]
 export function buildLivingRoomComponentModel(
   component: RoomComponent, tools: AdditionalModelTools,
 ): { contactSize?: [number, number] } | null {
-  const { root, box, cylinder, material, finishes } = tools
+  const { root, box, cylinder, material, finishes, surface, variant } = tools
   const { paint, edge, wood, lightWood, cream, linen, dark, silver, tomato } = tools.palette
   const fittedOriginal = component.roomId === 'living-room' && component.variant === 'original'
   const repaint = (...surfaces: MeshStandardMaterial[]) => finishes.splice(0, finishes.length, ...surfaces)
@@ -50,20 +77,22 @@ export function buildLivingRoomComponentModel(
     const group = new Group()
     group.position.set(...position)
     root.add(group)
-    box(size, [0, 0, 0], cover, 0.012, group)
+    box(size, [0, 0, 0], variant(cover, 'paper'), 0.012, group)
     box(upright ? [size[0] * 0.7, size[1] * 0.89, size[2] + 0.006]
-      : [size[0] * 0.94, size[1] * 0.55, size[2] + 0.006], [0, 0, 0.005], linen, 0, group)
+      : [size[0] * 0.94, size[1] * 0.55, size[2] + 0.006], [0, 0, 0.005], variant(linen, 'paper'), 0, group)
     return group
   }
   const bottle = (position: Position, height: number, color: MeshStandardMaterial) => {
     const [x, y, z] = position
-    cylinder(0.09, height, [x, y + height / 2, z], color, 0.073)
-    cylinder(0.035, 0.075, [x, y + height + 0.0375, z], cream)
-    box([0.12, height * 0.36, 0.015], [x, y + height * 0.52, z + 0.088], linen, 0.005)
+    cylinder(0.09, height, [x, y + height / 2, z], variant(color, 'paint'), 0.073)
+    cylinder(0.035, 0.075, [x, y + height + 0.0375, z], variant(cream, 'paint'))
+    box([0.12, height * 0.36, 0.015], [x, y + height * 0.52, z + 0.088], variant(linen, 'paper'), 0.005)
   }
 
   switch (component.kind) {
     case 'sofa': {
+      surface(paint, 'fabric')
+      surface(edge, 'fabric')
       repaint(paint, edge)
       const corner = component.variant !== 'straight'
       for (const x of [-1.95, 1.95]) for (const z of [-0.57, 0.57]) {
@@ -85,7 +114,7 @@ export function buildLivingRoomComponentModel(
         const cushion = box([1.3, 0.68, 0.29], [x, 1.225, -0.415], paint, 0.085)
         cushion.rotation.x = -0.11
       }
-      const warmCushion = box([0.54, 0.5, 0.24], [-1.39, 1.12, -0.11], tomato, 0.09)
+      const warmCushion = box([0.54, 0.5, 0.24], [-1.39, 1.12, -0.11], variant(tomato, 'fabric'), 0.09)
       warmCushion.rotation.set(-0.2, 0.05, 0.18)
       const paleCushion = box([0.49, 0.48, 0.23], [0.48, 1.105, -0.1], linen, 0.08)
       paleCushion.rotation.set(-0.18, -0.1, -0.18)
@@ -122,14 +151,11 @@ export function buildLivingRoomComponentModel(
     }
     case 'tv': {
       repaint(dark)
-      const screen = material('TV off screen', roomAccents.ink, 0.32)
+      const screen = material('TV off screen', componentMaterialColors.screen, 0.18, 'glass')
       box([2.08, 1.22, 0.105], [0, 0.82, 0], dark, 0.035)
       box([1.94, 1.075, 0.014], [0, 0.837, 0.059], screen, 0.015)
-      for (const x of [-0.69, 0.69]) {
-        rod([x, 0.25, -0.018], [x - 0.13, 0.027, 0.23], 0.025, dark)
-        rod([x, 0.25, -0.018], [x + 0.1, 0.027, -0.2], 0.025, dark)
-        box([0.34, 0.035, 0.075], [x - 0.09, 0.022, 0.23], dark, 0.012)
-      }
+      box([1.02, 0.62, 0.018], [0, 0.82, -0.115], dark, 0.006)
+      box([0.68, 0.4, 0.05], [0, 0.82, -0.079], dark, 0.012)
       return {}
     }
     case 'media-unit': {
@@ -137,7 +163,7 @@ export function buildLivingRoomComponentModel(
       for (const x of [-1.39, 1.39]) for (const z of [-0.32, 0.32]) {
         cylinder(0.065, 0.23, [x, 0.125, z], wood, 0.05)
       }
-      box([3.4, 0.1, 0.97], [0, 1, 0], lightWood, 0.03)
+      box([3.4, 0.1, 0.97], [0, 1, 0], lightWood, 0.03).name = 'Media cabinet top'
       box([3.28, 0.075, 0.88], [0, 0.28, 0], wood, 0.012)
       box([3.28, 0.67, 0.055], [0, 0.615, -0.414], paint, 0.012)
       for (const x of [-1.61, -0.55, 0.55, 1.61]) {
@@ -151,6 +177,18 @@ export function buildLivingRoomComponentModel(
       box([1.04, 0.045, 0.81], [0, 0.61, 0.01], wood, 0.01)
       book([-0.08, 0.369, 0.03], [0.76, 0.1, 0.52], tomato)
       book([-0.04, 0.738, 0.025], [0.72, 0.16, 0.51], linen)
+      const speakerAppearance = componentMaterialAppearance({ kind: 'speaker', variant: 'original' })
+      if (!speakerAppearance?.textile) throw new Error('The media speakers need their natural enclosure and grille materials.')
+      const speakerPaint = material('Stereo speaker enclosure', speakerAppearance.body.color, 1, speakerAppearance.body.surface)
+      const speakerFabric = material('Stereo speaker grille', speakerAppearance.textile, 1, 'fabric')
+      for (const x of [-0.56, 0.56]) {
+        const speaker = new Group()
+        speaker.name = x < 0 ? 'Left media speaker' : 'Right media speaker'
+        speaker.position.set(x, 1.05, 0)
+        speaker.scale.setScalar(1.1)
+        root.add(speaker)
+        buildBoxSpeaker(speaker, tools, { paint: speakerPaint, linen: speakerFabric, dark })
+      }
       // Contact shadows are room-aligned; this console faces across the room.
       return { contactSize: [3.55, 1.12] }
     }
@@ -179,17 +217,18 @@ export function buildLivingRoomComponentModel(
       return { contactSize: [1.92, 1.1] }
     }
     case 'floor-lamp': {
+      surface(cream, 'fabric')
       repaint(cream)
       cylinder(0.33, 0.065, [0, 0.042, 0], wood, 0.28)
       cylinder(0.035, 2.39, [0, 1.25, 0], dark)
       cylinder(0.064, 0.17, [0, 2.37, 0], silver)
       const shade = new Mesh(new LatheGeometry([
         [0.48, 2.32], [0.28, 2.92], [0.255, 2.92], [0.455, 2.32], [0.48, 2.32],
-      ].map(([x, y]) => new Vector2(x, y)), 12), cream)
+      ].map(([x, y]) => new Vector2(x, y)), roomRadialSegments(0.48)), cream)
       shade.castShadow = true
       shade.receiveShadow = true
       root.add(shade)
-      const glow = material('Reading lamp glow', roomAccents.cream, 0.6)
+      const glow = material('Reading lamp glow', roomAccents.cream, 0.6, 'light')
       glow.emissive.set(roomAccents.gold)
       glow.emissiveIntensity = 0.12
       cylinder(0.09, 0.12, [0, 2.36, 0], glow, 0.07)
@@ -197,6 +236,8 @@ export function buildLivingRoomComponentModel(
     }
     case 'rug':
       if (!fittedOriginal) return null
+      surface(paint, 'fabric')
+      surface(edge, 'fabric')
       repaint(paint, edge)
       box([5.0, 0.014, 3.5], [0, 0.008, 0], linen, 0.025)
       box([4.83, 0.006, 3.33], [0, 0.018, 0], paint, 0.02)
@@ -213,12 +254,14 @@ export function buildLivingRoomComponentModel(
       rod([-2.44, 4.32, 0.13], [2.44, 4.32, 0.13], 0.027)
       for (const side of [-1, 1]) {
         cylinder(0.052, 0.12, [side * 2.44, 4.32, 0.13], wood).rotation.z = Math.PI / 2
+        const panel: Mesh[] = []
         for (let i = 0; i < 5; i++) {
           const x = side * (1.8 + i * 0.145)
-          box([0.155, 2.08 - i * 0.012, 0.055], [x, 3.23 + i * 0.006, i % 2 ? 0.09 : 0.04], linen, 0.016)
-          box([0.085, 0.1, 0.05], [x, 4.282, 0.105], linen, 0.012)
+          panel.push(box([0.155, 2.08 - i * 0.012, 0.055], [x, 3.23 + i * 0.006, i % 2 ? 0.09 : 0.04], linen, 0.016))
+          panel.push(box([0.085, 0.1, 0.05], [x, 4.282, 0.105], linen, 0.012))
         }
-        box([0.71, 0.072, 0.1], [side * 2.09, 2.66, 0.105], tomato, 0.018)
+        panel.push(box([0.71, 0.072, 0.1], [side * 2.09, 2.66, 0.105], variant(tomato, 'fabric'), 0.018))
+        if (side === -1) setComponentThumbnailRepresentative(root, ...panel)
       }
       return {}
     case 'supply-shelf':
@@ -234,7 +277,7 @@ export function buildLivingRoomComponentModel(
       bottle([0, 1.16, -0.02], 0.34, tomato)
       bottle([0.27, 1.16, -0.02], 0.49, cream)
       box([0.83, 0.1, 0.57], [0, 2.19, 0], linen, 0.028)
-      box([0.7, 0.085, 0.51], [0, 2.2825, 0], paint, 0.025)
+      box([0.7, 0.085, 0.51], [0, 2.2825, 0], variant(paint, 'fabric'), 0.025)
       return { contactSize: [1.38, 1.04] }
     case 'cleaning-caddy':
       if (!fittedOriginal) return null

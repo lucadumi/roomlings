@@ -46,7 +46,7 @@ import type { ChoreFilter, ChoreView } from './Chores.tsx'
 import { RestockPanel } from './Restock.tsx'
 import { RoomPicker, RoomPreviewPreloader } from './RoomPicker.tsx'
 import { Dropdown } from './Dropdown.tsx'
-import { componentCatalog, componentChoreArea, getRoomComponents, roomSlots } from '../shared/roomComponents.ts'
+import { componentCatalog, componentChoreArea, componentChoreIsPaused, getRoomComponents, roomSlots } from '../shared/roomComponents.ts'
 import type { ComponentChoreSuggestion, RoomComponent } from '../shared/roomComponents.ts'
 import { roomAccessSchema } from '../shared/roomAccess.ts'
 import type { RoomAccess } from '../shared/roomAccess.ts'
@@ -149,8 +149,9 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const [stockEvent, setStockEvent] = useState<{ id: string; category: Category } | null>(null)
   const [focusRequest, setFocusRequest] = useState<FocusRequest>({ target: 'room', id: 0 })
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null)
+  const [editorDetailOpen, setEditorDetailOpen] = useState(false)
   const [cancelPlacementRequest, setCancelPlacementRequest] = useState(0)
-  const [initialObjectRemoval, setInitialObjectRemoval] = useState<string | null>(null)
+  const [initialObjectStorage, setInitialObjectStorage] = useState<string | null>(null)
   const [componentPreview, setComponentPreview] = useState<{
     householdId: string; roomId: RoomId; components: readonly RoomComponent[]; placement: RoomComponent | null
   } | null>(null)
@@ -162,9 +163,14 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     && roomAccess.role !== 'member' && !roomAccessError
   const previewComponents = useCallback((components: readonly RoomComponent[] | null, placement: RoomComponent | null = null) => {
     const householdId = session?.household.id
-    setComponentPreview((previous) => components && householdId ? { householdId, roomId: currentRoom, components, placement }
+    setComponentPreview((previous) => components && householdId
+      ? previous?.householdId === householdId && previous.roomId === currentRoom && previous.components === components && previous.placement === placement
+        ? previous : { householdId, roomId: currentRoom, components, placement }
       : previous && previous.householdId === householdId && previous.roomId === currentRoom ? null : previous)
   }, [session?.household.id, currentRoom])
+  const focusEditorObject = useCallback(() => {
+    setFocusRequest((previous) => ({ target: 'room', id: previous.id + 1 }))
+  }, [])
 
   const changeSavedKitchen = useCallback((token: string, change: SavedKitchenChange) => {
     setSaved((previous) => previous.map((kitchen) => kitchen.token === token ? { ...kitchen, ...change } : kitchen))
@@ -647,20 +653,21 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setSelectedComponentId(id)
     visit('objects')
   }
-  const editRoom = (id: string | null = null, remove = false) => {
+  const editRoom = (id: string | null = null, store = false) => {
     if (!canEditRooms) {
       if (!roomAccessError) setError('Ask an admin for room editing access.')
       return
     }
-    if (remove) {
+    if (store) {
       const component = savedComponents.find((component) => component.id === id && component.roomId === currentRoom && component.installed)
       if (!component || !roomSlots.find((slot) => slot.id === component.slotId)?.removable) {
-        setError('That object cannot be removed from this room.')
+        setError('That object cannot be put in Storage.')
         return
       }
     }
     if (page !== 'room-edit') pendingRoomMutation.current = null
-    setInitialObjectRemoval(remove ? id : null)
+    setInitialObjectStorage(store ? id : null)
+    setEditorDetailOpen(!store && id !== null)
     setSelectedComponentId(id)
     setFormError('')
     setError('')
@@ -723,6 +730,9 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
+  const accountIntent = dialog !== null && typeof dialog === 'object' && 'account' in dialog ? dialog.account
+    : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
+      ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
   const renderDialog = () => {
     if (!dialog) return null
     const close = () => {
@@ -743,9 +753,6 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       setDialog(null)
     }
     const footerError = formError && <Feedback>{formError}</Feedback>
-    const accountIntent = typeof dialog === 'object' && 'account' in dialog ? dialog.account
-      : (account?.configured || account?.account) && (dialog === 'create' || dialog === 'join' || dialog === 'invite')
-        ? dialog === 'create' ? 'create' : dialog === 'join' ? 'join' : 'manage' : null
     if (accountIntent) return <AccountDialog key={`account:${accessRouteVersion}`} autoEnter={enteringRoom.current}
       intent={accountIntent} initialState={account} initialInvite={accountInvitation || invitation} legacySession={session && session.token !== null ? session : null}
       savedLegacy={saved} onChange={handleAccountChange} onClose={close} onRecover={() => openDialog('recover')}
@@ -810,7 +817,10 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       const completing = 'completeChore' in dialog
       const snapshot = completing ? dialog.completeChore : dialog.archiveChore
       const chore = household.chores.items.find((item) => item.id === snapshot.id)
-      const allowed = !!chore && chore.version === snapshot.version && (!completing || (!chore.archived && chore.dueDate !== null))
+      const paused = !!chore && componentChoreIsPaused(chore, savedComponents)
+      const unavailableObject = !!chore?.componentId && !savedComponents.some((component) => component.id === chore.componentId && component.installed)
+      const allowed = !!chore && chore.version === snapshot.version
+        && (completing ? !chore.archived && chore.dueDate !== null && !paused : !snapshot.archived || !unavailableObject)
       const assignee = chore ? choreAssignee(chore, household.members) : null
       const label = completing ? 'Record completion' : snapshot.archived ? 'Restore chore' : 'Archive chore'
       return <Modal title={completing ? 'Mark this chore done?' : snapshot.archived ? 'Restore this chore?' : 'Archive this chore?'}
@@ -821,9 +831,10 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           {snapshot.dueDate && <p>Scheduled for {dateTitle(snapshot.dueDate, billingDate(household.billingTimeZone))}.</p>}
           {completing && <p>{assignee ? `Assigned to ${assignee.name}. ` : 'Unassigned. '}Completion will be recorded by {memberName(session.memberId)}.</p>}
         </div>
-        {!allowed ? <Feedback>Chore changed. Close this dialog and review it.</Feedback> : footerError}
+        {!allowed ? <Feedback>{paused || unavailableObject ? 'This object is in Storage or unavailable. Bring it back before completing or restoring its care. Dates and history are kept.' : 'Chore changed. Close this dialog and review it.'}</Feedback> : footerError}
         <div className="button-row"><button className="button secondary" disabled={busy} onClick={close}>Cancel</button>
           <button className="button primary" disabled={busy || !allowed} onClick={() => {
+            if (!allowed) return
             if (completing) void action(`/chores/${snapshot.id}/complete`, { choreVersion: snapshot.version }, 'Chore completed.')
             else void action(`/chores/${snapshot.id}/archive`, { choreVersion: snapshot.version, archived: !snapshot.archived }, snapshot.archived ? 'Chore restored.' : 'Chore archived.', 'PATCH')
           }}>{label}</button>
@@ -844,10 +855,18 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         </div>
       </Modal>
     }
-    if (typeof dialog === 'object' && 'restockItem' in dialog) return <Modal title="Restock a household supply." subtitle="Review the quantity before adding it to the shared shopping list." onClose={close} busy={busy}>
-      <ShoppingItemForm household={household} memberId={session.memberId} initialItem={dialog.restockItem} preventDuplicate busy={busy} error={footerError}
-        onSubmit={(body) => { void action('/shopping/items', body, 'Supply added to shopping list.') }} />
-    </Modal>
+    if (typeof dialog === 'object' && 'restockItem' in dialog) {
+      const sourceId = dialog.restockItem.componentSource?.componentId
+      const paused = !!sourceId && !savedComponents.some((component) => component.id === sourceId && component.installed)
+      return <Modal title="Restock a household supply." subtitle="Review the quantity before adding it to the shared shopping list." onClose={close} busy={busy}>
+        {paused && <Feedback tone="info">This shortcut is paused in Storage. Bring back its object before restocking. Existing shopping entries are kept.</Feedback>}
+        <fieldset className="room-editor-fields" disabled={paused}>
+          <legend className="sr-only">Supply shortcut</legend>
+          <ShoppingItemForm household={household} memberId={session.memberId} initialItem={dialog.restockItem} preventDuplicate busy={busy} error={footerError}
+            onSubmit={(body) => { if (!paused) void action('/shopping/items', body, 'Supply added to shopping list.') }} />
+        </fieldset>
+      </Modal>
+    }
     if (dialog === 'access' && session.token !== null) return <AccessDialog key={session.token} token={session.token} memberName={memberName(session.memberId)} householdName={household.name}
       onClose={close} onRecover={() => openDialog('recover')} onExpired={(message) => expireSession(session, message)} />
     if (dialog === 'expense') return <Modal title="What is in the bag?" subtitle="Unpack a grocery run. We will take care of the splitting." onClose={close} busy={busy}>
@@ -957,6 +976,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const transfers = suggestedTransfers(household)
   const today = billingDate(household.billingTimeZone)
   const roomDue = household.chores.items.filter((chore) => chore.roomId === currentRoom
+    && !componentChoreIsPaused(chore, savedComponents)
     && ['due', 'overdue'].includes(choreStatus(chore, today)))
   const dueChores: Partial<Record<ChoreArea, number>> = {}
   for (const chore of roomDue) if (chore.area) dueChores[chore.area] = (dueChores[chore.area] ?? 0) + 1
@@ -995,14 +1015,16 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   const activeComponentPreview = page === 'room-edit' && componentPreview?.householdId === household.id
     && componentPreview.roomId === currentRoom ? componentPreview : null
   const activePlacement = activeComponentPreview?.placement
-  return <div className="game-app" data-page={page} data-component-panel={page === 'objects' || page === 'room-edit'} data-placement-preview={!!activePlacement}>
-    <RoomPreviewPreloader householdId={household.id} components={savedComponents} roomStyle={household.roomStyle}
+  return <div className="game-app" data-page={page} data-component-panel={page === 'objects' || page === 'room-edit'}
+    data-component-detail={page === 'objects' ? selectedComponentId !== null : page === 'room-edit' && editorDetailOpen}
+    data-placement-preview={!!activePlacement}>
+    <RoomPreviewPreloader householdId={household.id} components={savedComponents} roomStyle={household.roomStyle} suspended={accountIntent !== null || dialog === 'rooms'}
       ledger={{ counts, memberCount: household.members.filter((member) => !member.inactive).length, expenseCount: household.expenses.length, fundFraction: remaining / household.budget }} />
     <GameHome roomId={currentRoom}
       household={household} memberId={session.memberId} counts={counts} selected={filter}
       remaining={remaining} yourBalance={yourBalance} transferCount={transfers.length}
       receiptCount={household.expenses.length} monthControls={monthControls} monthLabel={monthTitle(month)}
-      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null && dialog !== 'rooms'}
+      stockEvent={stockEvent} focusRequest={focusRequest} syncState={syncState} inert={dialog !== null && dialog !== 'rooms'} deferColdStart={accountIntent !== null || dialog === 'rooms'}
       overviewFocus={page !== 'overview' && (dialog === 'room-style' || dialog === 'help' || dialog === 'settings' || dialog === 'room-admins')}
       busy={busy} roomsOpen={dialog === 'rooms'} onRooms={(anchor) => {
         setRoomMenuAnchor(anchor)
@@ -1035,17 +1057,16 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       suspended={dialog !== null && dialog !== 'rooms'} busy={page === 'room-edit' && busy}
       side={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
       compact={!!activePlacement}
-      badge={page === 'objects' || page === 'room-edit' ? <span className={`room-panel-mode ${page === 'room-edit' ? 'editing' : 'live'}`}>{page === 'room-edit' ? 'Private preview' : 'Live room'}</span> : undefined}
       onClose={() => activePlacement ? setCancelPlacementRequest((request) => request + 1) : visit('overview')}
     ><div className="game-panel-content">
         {page === 'room-edit' && <RoomEditor key={`${household.id}:${currentRoom}`} household={household} roomId={currentRoom} busy={busy} canEdit={canEditRooms}
           error={formError ? <Feedback>{formError}</Feedback> : !canEditRooms ? <Feedback>Editing access unavailable. Your draft is still here; ask an admin to restore access.</Feedback> : null}
-          selectedComponentId={selectedComponentId} cancelPlacementRequest={cancelPlacementRequest} initialRemovalId={initialObjectRemoval}
-          onSelect={setSelectedComponentId} onPreview={previewComponents}
+          selectedComponentId={selectedComponentId} cancelPlacementRequest={cancelPlacementRequest} initialStorageId={initialObjectStorage}
+          onSelect={setSelectedComponentId} onPreview={previewComponents} onFocus={focusEditorObject} onDetailChange={setEditorDetailOpen}
           onSubmit={(patch) => action('/household/room-components', patch, 'Room saved.', 'PATCH')}
           onBack={() => openRoomObjects()} onClose={() => visit('overview')} onManageAdmins={() => openDialog('room-admins')} onRoomColors={() => openDialog('room-style')} />}
         {page === 'objects' && <RoomObjectsPanel household={household} roomId={currentRoom} selectedComponentId={selectedComponentId} busy={busy} canEdit={canEditRooms}
-          onSelect={setSelectedComponentId} onEdit={editRoom} onRemove={(id) => editRoom(id, true)} onRestock={(item) => openDialog({ restockItem: item })}
+          onSelect={setSelectedComponentId} onEdit={editRoom} onStore={(id) => editRoom(id, true)} onRestock={(item) => openDialog({ restockItem: item })}
           onShopping={() => { setShoppingView('list'); visit('shopping') }} onCreateChore={createComponentChore} onOpenChores={openComponentChores}
           onState={(component, state) => { void action(`/room-components/${component.id}/state`, { componentVersion: component.version, state }, 'Object state saved.', 'PATCH', true) }}
           onUse={useRoomComponent} onHelp={() => openDialog('help')} />}

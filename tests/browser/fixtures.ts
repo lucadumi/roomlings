@@ -6,6 +6,15 @@ import { roomCatalog } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import type { Store } from '../../server/store.ts'
 
+export async function waitForRoomReady(page: Page, room = page.locator('.kitchen-world')) {
+  // Canvas insertion precedes cold shader work, the first draw and hotspot projection.
+  await expect(room.locator('.world-canvas canvas')).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+}
+
+export async function waitForTourReady(page: Page) {
+  await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready', { timeout: 15_000 })
+}
+
 export async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
     let draws = 0

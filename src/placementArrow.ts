@@ -1,6 +1,6 @@
 import { ExtrudeGeometry, Mesh, MeshStandardMaterial, Shape, Vector3 } from 'three'
 import type { Box3, Object3D } from 'three'
-import { baseCameraOffset, cameraFraming, projectRoomBounds } from './camera.ts'
+import { baseCameraOffset, cameraFraming, projectRoomOrbitBounds } from './camera.ts'
 import { roomAccents } from './roomStyles.ts'
 
 const triangleTop = 0.12
@@ -19,7 +19,7 @@ export function placementPreviewCenter(bounds: Box3, target: Vector3): Vector3 {
   return target
 }
 
-export function placementPreviewSize(bounds: Box3, width: number, height: number, zoom: number, rotation = 0, pitch = 0) {
+export function placementPreviewSize(bounds: Box3, width: number, height: number, zoom: number) {
   if (!Number.isFinite(zoom) || zoom <= 0) throw new Error('Placement framing needs a positive finite zoom.')
   const center = placementPreviewCenter(bounds, new Vector3())
   const framed = bounds.clone()
@@ -29,7 +29,7 @@ export function placementPreviewSize(bounds: Box3, width: number, height: number
   framed.min.z = Math.min(framed.min.z, center.z - radius)
   framed.max.z = Math.max(framed.max.z, center.z + radius)
   framed.max.y += markerGap + triangleTop + bobAmplitude
-  const { horizontal, vertical } = projectRoomBounds(framed, rotation, pitch)
+  const { horizontal, vertical } = projectRoomOrbitBounds(framed)
   const pixelsPerUnit = height * zoom / (2 * cameraFraming(width, height, 'room', false).halfHeight)
   return { width: horizontal * 2 * pixelsPerUnit + 4, height: vertical * 2 * pixelsPerUnit + 4 }
 }
@@ -43,7 +43,7 @@ export function createPlacementArrow(room: Object3D) {
   const geometry = new ExtrudeGeometry(outline, { depth: triangleDepth, bevelEnabled: false, steps: 1, curveSegments: 1 })
   geometry.translate(0, 0, -triangleDepth / 2)
   const material = new MeshStandardMaterial({
-    name: 'Placement triangle red', color: roomAccents.tomato, roughness: 0.8, flatShading: true,
+    name: 'Placement triangle red', color: roomAccents.tomato, roughness: 1, flatShading: true,
   })
   const object = new Mesh(geometry, material)
   object.name = 'Placement triangle'
@@ -58,10 +58,10 @@ export function createPlacementArrow(room: Object3D) {
 
   return {
     object,
-    update(bounds: Box3 | null, now: number, animate: boolean): boolean {
+    update(bounds: Box3 | null, now: number, animate: boolean, cameraRotation = 0): boolean {
       if (disposed) throw new Error('The disposed placement triangle cannot be updated.')
       if (!bounds) { object.visible = false; return false }
-      if (bounds.isEmpty() || ![...bounds.min.toArray(), ...bounds.max.toArray(), now].every(Number.isFinite)) {
+      if (bounds.isEmpty() || ![...bounds.min.toArray(), ...bounds.max.toArray(), now, cameraRotation].every(Number.isFinite)) {
         throw new Error('The placement triangle needs finite object bounds and animation time.')
       }
       const bob = animate ? Math.sin(now * Math.PI * 2 / 1600) * bobAmplitude : 0
@@ -70,6 +70,7 @@ export function createPlacementArrow(room: Object3D) {
       room.localToWorld(position)
       object.parent?.worldToLocal(position)
       object.position.copy(position)
+      object.rotation.y = Math.atan2(baseCameraOffset[0], baseCameraOffset[2]) - cameraRotation
       object.visible = true
       return animate
     },

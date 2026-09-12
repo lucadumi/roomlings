@@ -1,6 +1,6 @@
 import { BufferGeometry, InstancedMesh, Mesh, Object3D, SkinnedMesh } from 'three'
 import type { Material } from 'three'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 
 export function batchStaticMeshes(root: Object3D, preserved: ReadonlySet<Object3D>): void {
   const retired = new Set<BufferGeometry>()
@@ -43,6 +43,9 @@ export function batchStaticMeshes(root: Object3D, preserved: ReadonlySet<Object3
         geometries.forEach((part) => part.dispose())
       }
       if (!geometry) throw new Error('Static room geometry could not be combined.')
+      const indexed = mergeVertices(geometry, 0.000001)
+      geometry.dispose()
+      geometry = indexed
       geometry.computeBoundingSphere()
       const first = meshes[0]
       const combined = new Mesh(geometry, first.material)

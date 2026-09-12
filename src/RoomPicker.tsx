@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowRight, Check } from 'lucide-react'
+import { ArrowRight, Check, LoaderCircle } from 'lucide-react'
 import type { RoomStyle } from '../shared/domain.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { roomCatalog, roomIds } from '../shared/rooms.ts'
 import type { RoomId } from '../shared/rooms.ts'
-import { cachedHouseholdRoomPreviews, householdRoomPreviews, roomSelectorPreviewSizes } from './roomPreviews.ts'
+import { cachedHouseholdRoomPreviews, householdRoomPreviews, preloadHouseholdRoomPreviews, roomSelectorPreviewSizes } from './roomPreviews.ts'
 import type { RoomPreviewLedger } from './householdRoomPreview.ts'
 import './roomPicker.css'
 
@@ -26,17 +26,21 @@ type SavedPreviewProps = {
   ledger?: RoomPreviewLedger
 }
 
-export function RoomPreviewPreloader({ householdId, components, roomStyle = 'original', roomStyles, ledger }: SavedPreviewProps) {
+export function RoomPreviewPreloader({ householdId, components, roomStyle = 'original', roomStyles, ledger, suspended = false }: SavedPreviewProps & { suspended?: boolean }) {
   const appearance = JSON.stringify([components, roomStyles, ledger])
-  useEffect(() => {
-    let cancelled = false
+  useLayoutEffect(() => {
+    if (suspended) return
+    const controller = new AbortController()
     let scheduled = false
     let idle: number | undefined
     let frame = 0
     const warm = () => {
-      if (cancelled) return
-      void householdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio) }, householdId)
-        .catch((error: unknown) => console.warn('Saved room previews could not be prepared:', error instanceof Error ? error.message : error))
+      if (controller.signal.aborted) return
+      void preloadHouseholdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio) }, householdId, controller.signal)
+        .catch((error: unknown) => {
+          if (controller.signal.aborted && error === controller.signal.reason) return
+          console.warn('Saved room previews could not be prepared:', error instanceof Error ? error.message : error)
+        })
     }
     const schedule = () => {
       if (scheduled || !document.querySelector('.world-canvas:not([hidden]) canvas')) return
@@ -50,12 +54,12 @@ export function RoomPreviewPreloader({ householdId, components, roomStyle = 'ori
     if (home) observer.observe(home, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] })
     schedule()
     return () => {
-      cancelled = true
+      controller.abort()
       observer.disconnect()
       if (idle !== undefined) window.cancelIdleCallback(idle)
       cancelAnimationFrame(frame)
     }
-  }, [householdId, roomStyle, appearance])
+  }, [householdId, roomStyle, appearance, suspended])
   return null
 }
 
@@ -168,7 +172,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
       }).catch((error: unknown) => {
         if (cancelled || request !== version) return
         console.warn('Saved room previews could not render:', error instanceof Error ? error.message : error)
-        if (!initialImages) setImages({})
+        setImages({})
         setStatus('unavailable')
       })
     }
@@ -208,10 +212,10 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
         <span ref={(area) => { if (area) areas.current.set(roomId, area); else areas.current.delete(roomId) }}
           className="room-menu-preview" data-room-preview={roomId}>
           <img src={images[roomId]} alt="" width={560} height={384} draggable={false}
-            hidden={!images[roomId]} style={{ visibility: images[roomId] ? 'visible' : 'hidden' }} />
-          {!images[roomId] && <small className="room-menu-preview-status">
-            {status === 'unavailable' ? '3D preview unavailable' : 'Loading preview'}
-          </small>}
+            hidden={!images[roomId] || status === 'loading'} style={{ visibility: images[roomId] && status !== 'loading' ? 'visible' : 'hidden' }} />
+          {status === 'loading' ? <span className="room-menu-preview-status" role="status" aria-label={`Loading ${roomCatalog[roomId].name} preview`}>
+            <LoaderCircle size={23} className="spin" aria-hidden="true" />
+          </span> : status === 'unavailable' && <small className="room-menu-preview-status">3D is unavailable.</small>}
         </span>
         <span className="room-preview-label"><strong>{roomCatalog[roomId].name}</strong><small>{roomId === currentRoom ? 'Current room' : 'Open room'}</small></span>
         {roomId === currentRoom ? <Check size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}

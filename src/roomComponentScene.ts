@@ -12,6 +12,7 @@ import { buildRoomComponentModel } from './roomComponentModels.ts'
 import type { ComponentBinding, ComponentBindings, ComponentFixtures, ComponentModel } from './roomComponentTypes.ts'
 import { applyRoomStyle, roomAccents, roomPresets } from './roomStyles.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
+import { cloneRoomMaterial } from './surfaceMaterials.ts'
 import { roomWallSide } from './roomCutaway.ts'
 import { componentDisplayName } from './componentNames.ts'
 
@@ -138,7 +139,7 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
     const sources = new Map<MeshStandardMaterial, MeshStandardMaterial>()
     const replacements = new Map<MeshStandardMaterial, MeshStandardMaterial>()
     for (const source of binding.finishes) {
-      const clone = source.clone()
+      const clone = cloneRoomMaterial(source)
       replacements.set(source, clone)
       sources.set(clone, source)
       clonedMaterials.set(clone, source)

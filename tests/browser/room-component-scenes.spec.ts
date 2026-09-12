@@ -6,19 +6,20 @@ import type { Box3 } from 'three'
 import type { Session } from '../../shared/domain.ts'
 import { componentPositionSupported, getRoomComponents } from '../../shared/roomComponents.ts'
 import type { RoomComponent } from '../../shared/roomComponents.ts'
-import { baseCameraOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
-import { roomIds } from '../../shared/rooms.ts'
+import { cameraOrbitOffset, cameraProjection, fitRoomBounds, roomCameraZoom, roomEntryFraming, roomFramingArea } from '../../src/camera.ts'
+import { roomCatalog, roomIds } from '../../shared/rooms.ts'
 import type { RoomId } from '../../shared/rooms.ts'
 import { createConfiguredRoomPreview } from '../../src/householdRoomPreview.ts'
 import { roomPath } from '../../src/roomNavigation.ts'
 import { componentPlacements, kitchenLayout } from '../../src/roomLayout.ts'
 import { completeRoomLayout } from '../room-layout-fixture.ts'
-import { chooseOption, openRoomEditor, openRoomObjects, trackDrawing } from './fixtures.ts'
+import { chooseOption, openRoomEditor, openRoomObjects, trackDrawing, waitForRoomReady } from './fixtures.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
 test('switching menus releases object focus and frames the newly selected menu', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   const objects = await openRoomObjects(page)
   await objects.getByRole('button', { name: 'Open Plant details', exact: true }).click()
@@ -42,13 +43,16 @@ test('switching menus releases object focus and frames the newly selected menu',
 for (const roomId of ['kitchen', 'bathroom'] as const) {
   test(`the compact ${roomId} preserves its ordinary installed room without filling optional positions`, { tag: '@room' }, async ({ page, accounts, emptyHousehold }, testInfo) => {
     const before = await accounts.store.get(emptyHousehold.household.id)
+    if (!before) throw new Error('The isolated household was not created.')
+    const installed = getRoomComponents(before).filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
-    await expect(world).toHaveAttribute('data-component-count', roomId === 'kitchen' ? '20' : '6')
+    await expect(world).toHaveAttribute('data-component-count', String(installed.length))
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-default-components.png`), animations: 'disabled' })
     expect((await accounts.store.get(emptyHousehold.household.id))?.roomComponents).toEqual(before?.roomComponents)
   })
@@ -56,6 +60,7 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
   test(`opening the palette from the ${roomId} editor frames the room and restores the draft focus`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const editor = await openRoomEditor(page)
     const name = roomId === 'kitchen' ? 'Plant' : 'Bathroom sink'
     const id = roomId === 'kitchen' ? 'default-kitchen-plant-floor' : 'default-bathroom-sink'
@@ -87,7 +92,9 @@ for (const roomId of ['kitchen', 'bathroom'] as const) {
 async function configureDesignedSlots(accounts: AccountHarness, session: Session, alternateModels = true) {
   const household = await accounts.store.get(session.household.id)
   if (!household) throw new Error('The isolated household was not created.')
-  const components = [...getRoomComponents(household), ...completeRoomLayout().filter((component) => !component.id.startsWith('default-'))]
+  const existing = getRoomComponents(household)
+  const occupied = new Set(existing.filter((component) => component.installed).map((component) => component.slotId))
+  const components = [...existing, ...completeRoomLayout().filter((component) => !occupied.has(component.slotId))]
     .map((component): RoomComponent => {
       const variant = !alternateModels ? component.variant : component.slotId === 'bathroom-bath' ? 'shower'
         : component.slotId === 'kitchen-table' ? 'round'
@@ -104,7 +111,7 @@ async function configureDesignedSlots(accounts: AccountHarness, session: Session
     })
   household.roomComponents = components.map((component) => componentPositionSupported(component.slotId, components) ? component : { ...component, installed: false })
   await accounts.store.save(household)
-  return household.roomComponents
+  return getRoomComponents(household)
 }
 
 async function roomPoint(page: Page, roomId: RoomId, position: [number, number, number], rotation = 0, roomBounds?: Box3, viewZoom = 1) {
@@ -128,12 +135,11 @@ async function roomPoint(page: Page, roomId: RoomId, position: [number, number, 
   const camera = new OrthographicCamera(projection.left, projection.right, projection.top, projection.bottom, 0.1, 100)
   camera.zoom = zoom
   camera.updateProjectionMatrix()
-  const axis = new Vector3(0, 1, 0)
   const center = new Vector3(...framing.center)
-  camera.position.copy(center).add(new Vector3(...baseCameraOffset))
+  camera.position.copy(center).add(cameraOrbitOffset(rotation))
   camera.lookAt(center)
   camera.updateMatrixWorld(true)
-  const projected = new Vector3(...position).applyAxisAngle(axis, rotation).project(camera)
+  const projected = new Vector3(...position).project(camera)
   return { x: layout.x + (projected.x * 0.5 + 0.5) * layout.width, y: layout.y + (-projected.y * 0.5 + 0.5) * layout.height }
 }
 
@@ -149,6 +155,7 @@ test('the inward-facing dishwasher stays reachable after turning the connected r
   }
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -178,6 +185,7 @@ test('the kettle on the relocated stove keeps its physical tea-break action', { 
   const before = await accounts.store.get(emptyHousehold.household.id)
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
   await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -194,6 +202,7 @@ test('the kettle on the relocated stove keeps its physical tea-break action', { 
 test('the live kitchen connects the sink counter to the right return and leaves the former island space open', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath('kitchen'))
+  await waitForRoomReady(page)
   const editor = await openRoomEditor(page)
   const world = page.locator('.kitchen-world')
   const model = createConfiguredRoomPreview('kitchen', 'original')
@@ -219,9 +228,11 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
   await page.clock.setFixedTime(new Date())
   const drawing = await trackDrawing(page)
   await page.goto(roomPath())
+  await waitForRoomReady(page)
   const world = page.locator('.kitchen-world')
   const canvas = world.locator('canvas')
-  await expect(world).toHaveAttribute('data-rendering', 'paused')
+  // Allow cold reflected-material shader preparation before checking idle behavior.
+  await expect(world).toHaveAttribute('data-rendering', 'paused', { timeout: 15_000 })
   await canvas.evaluate((element) => element.setAttribute('data-original-renderer', 'kept'))
   const originalComponents = getRoomComponents(populatedHousehold.household)
   await openRoomEditor(page)
@@ -249,8 +260,8 @@ test('Edit room keeps its canvas, isolates color-only changes and never runs the
 
   await editor.getByRole('button', { name: 'All room objects', exact: true }).click()
   await editor.getByRole('button', { name: 'Edit Kettle', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove object', exact: true }).click()
-  await editor.getByRole('button', { name: 'Remove from preview', exact: true }).click()
+  await editor.getByRole('button', { name: 'Put in storage', exact: true }).click()
+  await editor.getByRole('button', { name: 'Edit stored Kettle', exact: true }).click()
   await expect(world.locator('[data-component-id="default-kitchen-kettle"]')).toHaveCount(0)
   await expect(world).toHaveAttribute('data-component-count', String(originalComponents.filter((component) => component.roomId === 'kitchen').length - 1))
 
@@ -282,12 +293,13 @@ for (const roomId of roomIds) {
     const installed = components.filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
-    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 18)
+    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 17)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-all-components-original.png`), animations: 'disabled' })
   })
 
@@ -298,6 +310,7 @@ for (const roomId of roomIds) {
     const installed = components.filter((component) => component.roomId === roomId && component.installed)
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
@@ -324,9 +337,12 @@ for (const roomId of roomIds) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-designed-components-narrow.png`), animations: 'disabled' })
     await page.goto('/#tour')
-    await expect(page.locator('.welcome-preview-choice img')).toHaveCount(roomIds.length)
-    expect(await page.locator('.welcome-preview-choice img').evaluateAll((images) => images.every((image) =>
-      image instanceof HTMLImageElement && !image.src.startsWith('data:') && /\/(?:assets|src)\//.test(image.src)))).toBe(true)
+    const publicChoices = page.getByRole('group', { name: 'Preview a room', exact: true })
+    await expect(publicChoices.getByRole('radio')).toHaveCount(roomIds.length)
+    for (const publicRoomId of roomIds) {
+      await expect(publicChoices.getByRole('radio', { name: roomCatalog[publicRoomId].name, exact: true })).toHaveValue(publicRoomId)
+    }
+    await expect(publicChoices.locator('img')).toHaveCount(0)
     await expect(page.locator('[data-preview-source="saved"]')).toHaveCount(0)
     expect(failures).toEqual([])
   })
@@ -343,6 +359,7 @@ for (const roomId of roomIds) {
       .add(new Vector3(...placement.position)).toArray()
     await page.setViewportSize({ width: 1440, height: 960 })
     await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
     const world = page.locator('.kitchen-world')
     await world.getByRole('button', { name: 'Reset room view', exact: true }).click()
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
@@ -402,7 +419,7 @@ test('configured objects remain reachable without WebGL and saved previews never
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
   await page.getByRole('button', { name: 'Rooms', exact: true }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
-  await expect(picker.getByText('3D preview unavailable', { exact: true })).toHaveCount(roomIds.length)
+  await expect(picker.getByText('3D is unavailable.', { exact: true })).toHaveCount(roomIds.length)
   expect(await picker.locator('img').evaluateAll((images) => images.every((image) => !image.getAttribute('src')))).toBe(true)
   await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).focus()
   await page.keyboard.press('Enter')

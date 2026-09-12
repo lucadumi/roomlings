@@ -57,7 +57,9 @@ export function RestockPanel({ household, roomId, busy, onAdd, onShopping }: {
   onAdd: (item: ShoppingItemInput) => void; onShopping: () => void
 }) {
   const room = roomCatalog[roomId]
-  const components = getRoomComponents(household).filter((component) => component.roomId === roomId && component.installed)
+  const roomComponents = getRoomComponents(household).filter((component) => component.roomId === roomId)
+  const components = roomComponents.filter((component) => component.installed)
+  const stored = roomComponents.filter((component) => !component.installed && component.supplies.length)
   return <section aria-label={`${room.name} supplies`}>
     <p className="field-hint">These are shopping shortcuts for the objects in this room. Add supplies when they are running low. Nothing tracks stock or adds a debt.</p>
     <div className="restock-toolbar"><button className="button secondary small-button" disabled={busy} onClick={onShopping}><ShoppingBasket size={15} />Open shopping list</button>
@@ -65,5 +67,12 @@ export function RestockPanel({ household, roomId, busy, onAdd, onShopping }: {
     </div>
     {!components.some((component) => component.supplies.length) && <p className="field-hint">No supply shortcuts are configured in this room. An admin can add them in Edit room, or you can add other supplies above.</p>}
     <SupplyShortcuts household={household} components={components} busy={busy} onAdd={onAdd} />
+    {!!stored.length && <section aria-label="Supplies paused in Storage">
+      <h3>Paused in Storage</h3>
+      <p className="field-hint">These shortcuts resume when an admin brings back their object in Edit room. Quantities, settings and existing shopping entries are kept.</p>
+      <ul>{stored.map((component) => <li key={component.id}>
+        <strong>{component.name}</strong>: {component.supplies.map((supply) => `${supply.quantity} ${supply.name}`).join(', ')}
+      </li>)}</ul>
+    </section>}
   </section>
 }

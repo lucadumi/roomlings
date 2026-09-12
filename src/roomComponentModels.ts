@@ -1,8 +1,8 @@
 import {
-  Box3, BoxGeometry, CylinderGeometry, DodecahedronGeometry, DoubleSide, Group, LatheGeometry,
-  Mesh, MeshStandardMaterial, TorusGeometry, Vector2, Vector3,
+  Box3, CylinderGeometry, DodecahedronGeometry, DoubleSide, Group, LatheGeometry,
+  Mesh, MeshStandardMaterial, Shape, ShapeGeometry, Vector2, Vector3,
 } from 'three'
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import type { ColorRepresentation } from 'three'
 import type { RoomStyle } from '../shared/domain.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import type { ComponentModel } from './roomComponentTypes.ts'
@@ -11,6 +11,12 @@ import type { RoomStyleMaterials } from './roomStyles.ts'
 import { buildAdditionalComponentModel } from './additionalComponentModels.ts'
 import { componentPlacements } from './roomLayout.ts'
 import { buildLivingRoomComponentModel } from './livingRoomComponentModels.ts'
+import {
+  createRoomMaterial, createRoomMaterialVariant, prepareRoomSurfaceGeometry, roomMaterialSurface, setRoomMaterialSurface,
+} from './surfaceMaterials.ts'
+import type { RoomSurface } from './surfaceMaterials.ts'
+import { createRoomBoxGeometry, createRoomCupGeometry, createRoomTorusGeometry, roomRadialSegments } from './roomGeometry.ts'
+import { componentMaterialAppearance, componentMaterialColors } from './componentMaterials.ts'
 export { componentPlacements } from './roomLayout.ts'
 
 type Position = [number, number, number]
@@ -28,33 +34,54 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
   const materials: MeshStandardMaterial[] = []
   const styleSurfaces = new Map<MeshStandardMaterial, keyof RoomStyleMaterials>()
   const stateObjects: NonNullable<ComponentModel['stateObjects']>[number][] = []
-  const material = (name: string, color: string, roughness = 0.8) => {
-    const result = new MeshStandardMaterial({ name, color, roughness, flatShading: true })
+  const material = (name: string, color: ColorRepresentation, roughness = 0.8, finish: RoomSurface = 'paint') => {
+    const result = createRoomMaterial(color, roughness, finish, name)
     materials.push(result)
     return result
   }
-  const surface = (name: keyof RoomStyleMaterials) => {
-    const result = material(name, roomPresets[style].colors[name])
+  const surface = (name: keyof RoomStyleMaterials, finish: RoomSurface = 'paint') => {
+    const result = material(name, roomPresets[style].colors[name], 0.8, finish)
     styleSurfaces.set(result, name)
     return result
   }
-  const paint = surface('fridge')
-  const edge = surface('fridgeEdge')
-  const wood = surface('wood')
-  const lightWood = surface('lightWood')
-  const cream = material('Warm porcelain', roomAccents.cream, 0.6)
-  const linen = material('Soft linen', roomAccents.linen)
-  const dark = material('Appliance recess', roomAccents.ink, 0.65)
-  const silver = material('Brushed metal', roomAccents.metal, 0.35)
-  silver.metalness = 0.3
+  const appearance = componentMaterialAppearance(component)
+  const paint = appearance
+    ? material('Original body finish', appearance.body.color, 0.6, appearance.body.surface) : surface('fridge')
+  const edge = appearance
+    ? material('Original edge finish', appearance.edge?.color ?? componentMaterialColors.graphite, 0.7, appearance.edge?.surface ?? 'paint')
+    : surface('fridgeEdge')
+  const wood = surface('wood', 'wood')
+  const lightWood = surface('lightWood', 'wood')
+  const cream = material('Warm porcelain', componentMaterialColors.ceramic, 0.6, 'ceramic')
+  const linen = material('Soft linen', appearance?.textile ?? roomAccents.linen, 0.98, 'fabric')
+  const dark = material('Appliance recess', componentMaterialColors.rubber, 0.85, 'rubber')
+  const silver = material('Brushed metal', componentMaterialColors.steel, 0.35, 'metal')
   const tomato = material('Tomato detail', roomAccents.tomato)
-  const leaf = material('Leaf green', roomAccents.leaf)
-  const glass = material('Colored glass', roomAccents.water, 0.35)
+  const leaf = material('Leaf green', componentMaterialColors.foliage, 0.9, 'foliage')
+  const windowGlass = ['washing-machine', 'dryer', 'microwave'].includes(component.kind)
+  const glass = material(windowGlass ? 'Smoked appliance window' : 'Clear vessel glass',
+    windowGlass ? componentMaterialColors.screen : componentMaterialColors.glass, 0.18, windowGlass ? 'glass' : 'clear-glass')
   const finishes: MeshStandardMaterial[] = [paint]
+  const variants = new Map<MeshStandardMaterial, Map<RoomSurface, MeshStandardMaterial>>()
+  const variantSources = new Map<MeshStandardMaterial, MeshStandardMaterial>()
+  const variant = (source: MeshStandardMaterial, finish: RoomSurface) => {
+    if (roomMaterialSurface(source) === finish) return source
+    const cached = variants.get(source)?.get(finish)
+    if (cached) return cached
+    const result = createRoomMaterialVariant(source, finish)
+    materials.push(result)
+    const binding = styleSurfaces.get(source)
+    if (binding) styleSurfaces.set(result, binding)
+    const choices = variants.get(source) ?? new Map<RoomSurface, MeshStandardMaterial>()
+    choices.set(finish, result)
+    variants.set(source, choices)
+    variantSources.set(result, source)
+    return result
+  }
   let indicator: MeshStandardMaterial | undefined
   let contactSize: [number, number] | undefined
   const box = (size: Position, position: Position, mat = paint, radius = 0.015, parent = root) => {
-    const mesh = new Mesh(radius ? new RoundedBoxGeometry(...size, 1, radius) : new BoxGeometry(...size), mat)
+    const mesh = new Mesh(createRoomBoxGeometry(size, radius), mat)
     mesh.position.set(...position)
     mesh.castShadow = !mat.transparent && Math.min(...size) > 0.018
     mesh.receiveShadow = true
@@ -62,7 +89,7 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     return mesh
   }
   const cylinder = (radius: number, height: number, position: Position, mat = paint, top = radius, parent = root) => {
-    const mesh = new Mesh(new CylinderGeometry(top, radius, height, 12), mat)
+    const mesh = new Mesh(new CylinderGeometry(top, radius, height, roomRadialSegments(Math.max(top, radius))), mat)
     mesh.position.set(...position)
     mesh.castShadow = !mat.transparent && radius > 0.02 && height > 0.018
     mesh.receiveShadow = true
@@ -74,8 +101,8 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     mesh.rotation.x = Math.PI / 2
     return mesh
   }
-  const ring = (radius: number, tube: number, position: Position, mat = silver, parent = root) => {
-    const mesh = new Mesh(new TorusGeometry(radius, tube, 5, 16), mat)
+  const ring = (radius: number, tube: number, position: Position, mat = silver, parent = root, arc = Math.PI * 2) => {
+    const mesh = new Mesh(createRoomTorusGeometry(radius, tube, arc), mat)
     mesh.position.set(...position)
     mesh.castShadow = tube > 0.018
     mesh.receiveShadow = true
@@ -91,17 +118,22 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     return mesh
   }
   const statusLight = (position: Position) => {
-    indicator = material('Manual appliance state', roomAccents.ink)
+    indicator = material('Manual appliance state', roomAccents.ink, 0.8, 'light')
     indicator.emissive.set(roomAccents.ink)
     indicator.emissiveIntensity = 0.15
     disc(0.025, 0.009, position, indicator)
   }
   const cup = (position: Position) => {
     const [x, y, z] = position
-    cylinder(0.09, 0.15, [x, y + 0.075, z], cream, 0.105)
-    cylinder(0.085, 0.008, [x, y + 0.153, z], dark)
-    const handle = ring(0.06, 0.016, [x + 0.12, y + 0.082, z], cream)
-    handle.rotation.y = Math.PI / 2
+    const vessel = new Mesh(createRoomCupGeometry(0.09, 0.105, 0.15, 0.012), cream)
+    vessel.name = 'Cup bowl'
+    vessel.position.set(x, y, z)
+    vessel.castShadow = vessel.receiveShadow = true
+    root.add(vessel)
+    cylinder(0.085, 0.006, [x, y + 0.127, z], variant(dark, 'glass')).name = 'Cup contents'
+    const handle = ring(0.06, 0.016, [x + 0.097, y + 0.082, z], cream, root, Math.PI)
+    handle.name = 'Cup handle'
+    handle.rotation.z = -Math.PI / 2
   }
   const clothGroup = (states: readonly string[]) => {
     const group = new Group()
@@ -118,7 +150,7 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
   }
 
   const tools = {
-    root, box, cylinder, material, finishes,
+    root, box, cylinder, material, finishes, variant, surface: setRoomMaterialSurface,
     palette: { paint, edge, wood, lightWood, cream, linen, dark, silver, tomato, leaf, glass },
   }
   const additional = buildLivingRoomComponentModel(component, tools) ?? buildAdditionalComponentModel(component, tools)
@@ -138,7 +170,7 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     case 'dryer': {
       feet(1.04, 0.95, 0.04)
       box([1.3, 1.46, 1.2], [0, 0.75, 0], paint, 0.055)
-      box([1.2, 0.21, 0.035], [0, 1.31, 0.615], cream)
+      box([1.2, 0.21, 0.035], [0, 1.31, 0.615], variant(cream, 'paint'))
       box([0.4, 0.1, 0.025], [-0.32, 1.32, 0.643], paint)
       disc(0.078, 0.045, [0.17, 1.31, 0.65], silver)
       box([0.16, 0.058, 0.014], [0.39, 1.31, 0.646], dark)
@@ -148,7 +180,8 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       ring(0.363, 0.03, [0, 0.73, 0.707], cream)
       box([0.075, 0.23, 0.075], [0.335, 0.74, 0.717], dark, 0.03)
       const fabric = clothGroup(['running', 'ready-to-unload'])
-      const fold = box([0.37, 0.19, 0.013], [-0.035, 0.57, 0.715], component.kind === 'dryer' ? tomato : cream, 0.025, fabric)
+      const fold = box([0.37, 0.19, 0.013], [-0.035, 0.57, 0.715],
+        variant(component.kind === 'dryer' ? tomato : cream, 'fabric'), 0.025, fabric)
       fold.rotation.z = 0.2
       if (component.kind === 'dryer') {
         for (let i = 0; i < 4; i++) box([0.44, 0.016, 0.025], [-0.26, 0.12 + i * 0.033, 0.62], dark, 0)
@@ -166,8 +199,7 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
         cylinder(0.20, 0.3, [0.09, 0.26, 0.065], glass, 0.155)
         cylinder(0.17, 0.14, [0.09, 0.18, 0.065], dark, 0.155)
         cylinder(0.155, 0.035, [0.09, 0.425, 0.065], cream)
-        const handle = ring(0.12, 0.026, [0.29, 0.27, 0.065], dark)
-        handle.rotation.y = Math.PI / 2
+        ring(0.12, 0.026, [0.275, 0.27, 0.065], dark, root, Math.PI).rotation.z = -Math.PI / 2
       } else if (component.variant === 'capsule') {
         box([0.42, 0.59, 0.47], [-0.04, 0.365, -0.08], paint, 0.13)
         box([0.23, 0.12, 0.045], [-0.04, 0.47, 0.177], dark, 0.015)
@@ -186,15 +218,20 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       }
       statusLight([-0.24, 0.11, 0.315])
       break
-    case 'grinder':
+    case 'grinder': {
       box([0.31, 0.08, 0.34], [0, 0.04, 0], dark, 0.02)
       cylinder(0.13, 0.29, [0, 0.225, -0.025], paint)
       cylinder(0.10, 0.07, [0, 0.405, -0.025], silver, 0.155)
       cylinder(0.155, 0.22, [0, 0.55, -0.025], glass, 0.18)
       cylinder(0.184, 0.035, [0, 0.678, -0.025], dark)
       box([0.1, 0.11, 0.12], [0, 0.31, 0.13], silver)
-      cylinder(0.08, 0.12, [0, 0.14, 0.14], cream)
+      const cup = new Mesh(createRoomCupGeometry(0.08, 0.08, 0.12, 0.01), cream)
+      cup.name = 'Grounds cup'
+      cup.position.set(0, 0.08, 0.14)
+      cup.castShadow = cup.receiveShadow = true
+      root.add(cup)
       break
+    }
     case 'microwave':
       feet(0.49, 0.42, 0.025)
       box([0.66, 0.45, 0.59], [0, 0.24, 0], paint, 0.035)
@@ -205,63 +242,91 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       box([0.097, 0.056, 0.013], [0.248, 0.342, 0.312], dark)
       break
     case 'air-fryer':
-      feet(0.34, 0.39, 0.025)
-      box([0.53, 0.58, 0.58], [0, 0.305, 0], paint, 0.11)
-      box([0.44, 0.31, 0.043], [0, 0.207, 0.28], dark, 0.05)
-      box([0.4, 0.25, 0.023], [0, 0.203, 0.307], paint, 0.045)
-      box([0.085, 0.19, 0.085], [0, 0.244, 0.349], dark, 0.025)
-      box([0.22, 0.074, 0.019], [0, 0.466, 0.281], dark, 0.012)
-      disc(0.035, 0.02, [0, 0.467, 0.298], silver)
+      for (const x of [-0.13, 0.13]) for (const z of [-0.15, 0.15]) {
+        const foot = cylinder(0.029, 0.04, [x, 0.02, z], dark)
+        foot.name = 'Air fryer small foot'
+      }
+      box([0.53, 0.58, 0.58], [0, 0.305, 0], paint, 0.065).name = 'Air fryer body'
+      {
+        const doorFrame = disc(0.178, 0.044, [0, 0.27, 0.284], paint)
+        doorFrame.name = 'Air fryer round door frame'
+        doorFrame.scale.y = 1.16
+        const doorGlass = disc(0.142, 0.012, [0, 0.27, 0.304], glass)
+        doorGlass.name = 'Air fryer round door window'
+        doorGlass.scale.y = 1.18
+        for (const x of [-0.115, 0.115]) {
+          box([0.04, 0.04, 0.07], [x, 0.35, 0.32], paint, 0.01).name = 'Air fryer handle mount'
+        }
+        const handle = box([0.29, 0.055, 0.052], [0, 0.35, 0.355], paint, 0.02)
+        handle.name = 'Air fryer basket handle'
+      }
+      box([0.18, 0.04, 0.02], [0, 0.513, 0.287], dark, 0.012).name = 'Air fryer inset controls'
+      disc(0.025, 0.02, [0, 0.513, 0.305], silver)
       break
     case 'toaster':
-      feet(0.36, 0.27, 0.016)
-      box([0.5, 0.31, 0.43], [0, 0.185, 0], paint, 0.07)
-      box([0.5, 0.045, 0.43], [0, 0.033, 0], dark, 0.012)
-      for (const z of [-0.092, 0.092]) {
-        box([0.33, 0.012, 0.07], [0, 0.342, z], dark, 0.018)
-        box([0.27, 0.025, 0.012], [0, 0.343, z + 0.04], silver, 0)
+      for (const x of [-0.125, 0.125]) for (const z of [-0.13, 0.13]) {
+        const foot = cylinder(0.018, 0.045, [x, 0.0225, z], dark)
+        foot.name = 'Toaster small foot'
       }
-      box([0.03, 0.11, 0.038], [0.26, 0.17, 0], dark)
-      box([0.095, 0.045, 0.075], [0.285, 0.2, 0], silver)
+      box([0.39, 0.29, 0.4], [0, 0.173, 0], paint, 0.065).name = 'Toaster narrow body'
+      for (const z of [-0.083, 0.083]) {
+        const slot = box([0.25, 0.012, 0.067], [0, 0.324, z], dark, 0.018)
+        slot.name = 'Toaster toast slot'
+        box([0.21, 0.022, 0.012], [0, 0.326, z + 0.039], silver, 0)
+      }
+      box([0.028, 0.105, 0.035], [0.21, 0.164, 0], dark)
+      box([0.071, 0.043, 0.069], [0.232, 0.195, 0], silver)
       break
     case 'water-filter': {
       const profile = [[0, 0], [0.15, 0], [0.19, 0.1], [0.17, 0.48], [0.17, 0.52], [0, 0.52]]
-      const jug = new Mesh(new LatheGeometry(profile.map(([x, y]) => new Vector2(x, y)), 12), glass)
-      jug.castShadow = true
+      const jug = new Mesh(new LatheGeometry(profile.map(([x, y]) => new Vector2(x, y)), roomRadialSegments(0.19)), glass)
+      jug.castShadow = false
       jug.receiveShadow = true
       root.add(jug)
       cylinder(0.18, 0.08, [0, 0.5, 0], paint, 0.185)
       cylinder(0.186, 0.028, [0, 0.555, 0], cream)
-      const handle = ring(0.16, 0.033, [0.16, 0.3, 0], paint)
-      handle.rotation.y = Math.PI / 2
+      ring(0.16, 0.033, [0.17, 0.3, 0], paint, root, Math.PI).rotation.z = -Math.PI / 2
       box([0.1, 0.055, 0.15], [0, 0.51, 0.145], paint)
       break
     }
     case 'dish-rack': {
-      box([0.5, 0.034, 0.45], [0, 0.017, 0], paint)
-      for (const x of [-0.22, 0.22]) rod([x, 0.08, -0.18], [x, 0.08, 0.18])
-      for (const x of [-0.22, 0.22]) for (const z of [-0.18, 0.18]) rod([x, 0.025, z], [x, 0.08, z])
+      box([0.52, 0.018, 0.39], [0, 0.009, 0], variant(glass, 'rubber'), 0.012)
+      for (const z of [-0.19, 0.19]) rod([-0.26, 0.06, z], [0.26, 0.06, z], 0.014, paint)
+      for (const x of [-0.26, 0.26]) rod([x, 0.06, -0.19], [x, 0.06, 0.19], 0.014, paint)
+      for (const x of [-0.24, 0.24]) for (const z of [-0.17, 0.17]) rod([x, 0.02, z], [x, 0.22, z], 0.013, paint)
+      for (const z of [-0.17, 0.17]) rod([-0.24, 0.22, z], [0.24, 0.22, z], 0.014, paint)
       const dishes = clothGroup(['dishes-drying', 'ready-to-put-away'])
       for (let i = 0; i < 4; i++) {
-        const z = -0.135 + i * 0.09
-        rod([-0.22, 0.08, z], [0.22, 0.08, z], 0.012)
-        rod([-0.18, 0.08, z], [-0.18, 0.21, z])
-        rod([0.18, 0.08, z], [0.18, 0.21, z])
-        const plate = disc(0.16, 0.014, [0, 0.2, z], cream, dishes)
-        plate.rotation.x -= 0.13
+        const z = -0.125 + i * 0.083
+        rod([-0.18, 0.06, z - 0.028], [-0.18, 0.18, z + 0.018], 0.011, paint)
+        rod([0.18, 0.06, z - 0.028], [0.18, 0.18, z + 0.018], 0.011, paint)
+        rod([-0.08, 0.05, z - 0.03], [-0.08, 0.095, z + 0.018], 0.01, paint)
+        rod([0.08, 0.05, z - 0.03], [0.08, 0.095, z + 0.018], 0.01, paint)
+        const plate = disc(0.135, 0.012, [0, 0.195, z], cream, dishes)
+        plate.name = 'Dish rack seated plate'
+        plate.rotation.x -= 0.16
       }
+      const cupInRack = new Mesh(createRoomCupGeometry(0.055, 0.067, 0.09, 0.008), cream)
+      cupInRack.name = 'Dish rack drying cup'
+      cupInRack.position.set(-0.145, 0.075, 0.15)
+      cupInRack.rotation.z = -0.32
+      cupInRack.castShadow = cupInRack.receiveShadow = true
+      dishes.add(cupInRack)
+      ring(0.04, 0.009, [-0.081, 0.095, 0.151], cream, dishes, Math.PI).rotation.z = -Math.PI / 2
       break
     }
     case 'bins':
       if (component.variant === 'compost') {
-        cylinder(0.29, 0.55, [0, 0.275, 0], paint, 0.34)
-        cylinder(0.35, 0.07, [0, 0.585, 0], edge)
-        box([0.16, 0.04, 0.075], [0, 0.642, 0], wood)
+        cylinder(0.29, 0.55, [0, 0.275, 0], paint, 0.34).name = 'Bin body'
+        cylinder(0.338, 0.07, [0, 0.585, 0], paint, 0.33).name = 'Bin joined lid'
+        cylinder(0.312, 0.018, [0, 0.628, 0], edge, 0.306)
+        box([0.15, 0.035, 0.068], [0, 0.657, 0], wood, 0.02)
         const handle = ring(0.36, 0.022, [0, 0.31, 0], silver)
         handle.scale.y = 0.74
       } else {
-        box([0.65, 0.88, 0.66], [0, 0.44, 0], paint, 0.065)
-        box([0.71, 0.09, 0.72], [0, 0.92, 0], edge, 0.03)
+        box([0.65, 0.88, 0.66], [0, 0.44, 0], paint, 0.065).name = 'Bin body'
+        box([0.66, 0.086, 0.67], [0, 0.913, 0], paint, 0.055).name = 'Bin joined lid'
+        box([0.59, 0.018, 0.6], [0, 0.965, 0], edge, 0.045)
         box([0.2, 0.04, 0.16], [0, 0.07, 0.37], silver)
         if (component.variant === 'recycling') {
           for (let i = 0; i < 3; i++) {
@@ -269,29 +334,38 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
             const stripe = box([0.13, 0.035, 0.012], [Math.sin(angle) * 0.09, 0.6 + Math.cos(angle) * 0.09, 0.335], cream, 0)
             stripe.rotation.z = -angle
           }
-          box([0.35, 0.02, 0.17], [0, 0.97, 0], dark, 0.04)
-        } else box([0.24, 0.045, 0.075], [0, 0.985, 0], wood)
+          box([0.34, 0.024, 0.16], [0, 0.988, 0], dark, 0.04)
+        } else box([0.22, 0.038, 0.068], [0, 0.988, 0], wood, 0.018)
       }
       contactSize = [0.88, 0.88]
       break
     case 'vacuum':
-      box([0.72, 0.14, 0.43], [0, 0.1, 0.06], paint, 0.035)
-      for (const x of [-0.26, 0.26]) {
-        const wheel = disc(0.115, 0.09, [x, 0.12, -0.05], dark)
+      box([0.62, 0.28, 0.42], [-0.08, 0.205, -0.03], paint, 0.09).name = 'Canister vacuum body'
+      box([0.3, 0.045, 0.22], [-0.11, 0.365, -0.03], edge, 0.03)
+      cylinder(0.1, 0.38, [0.18, 0.235, -0.03], dark, 0.08).rotation.z = Math.PI / 2
+      for (const x of [-0.35, 0.12]) {
+        const wheel = disc(0.09, 0.055, [x, 0.105, -0.165], dark)
+        wheel.name = 'Canister vacuum wheel'
         wheel.rotation.y = Math.PI / 2
       }
-      rod([0, 0.18, -0.04], [0, 1.53, -0.26], 0.055)
-      cylinder(0.16, 0.49, [0, 0.95, -0.16], paint, 0.19)
-      cylinder(0.15, 0.24, [0, 0.69, -0.115], glass)
-      ring(0.13, 0.04, [0, 1.6, -0.26], dark)
+      disc(0.075, 0.035, [0.215, 0.255, 0.14], dark).name = 'Canister vacuum hose port'
+      const hoseArc = ring(0.145, 0.026, [0.245, 0.36, 0.14], dark, root, Math.PI * 0.96)
+      hoseArc.name = 'Canister vacuum hose'
+      hoseArc.rotation.z = 0.42
+      rod([0.155, 0.31, 0.14], [0.2, 0.34, 0.14], 0.026, dark).name = 'Canister vacuum hose'
+      rod([0.37, 0.37, 0.14], [0.43, 0.42, 0.185], 0.023, dark).name = 'Canister vacuum hose'
+      rod([0.42, 0.41, 0.185], [0.28, 0.14, 0.33], 0.025, silver).name = 'Canister vacuum wand'
+      box([0.38, 0.055, 0.15], [0.28, 0.055, 0.39], paint, 0.035).name = 'Canister vacuum floor head'
+      cylinder(0.035, 0.39, [0.28, 0.088, 0.315], silver).rotation.z = Math.PI / 2
       contactSize = [0.87, 0.67]
       break
     case 'plant': {
-      const terracotta = material('Terracotta planter', roomAccents.terracotta)
+      const terracotta = material('Terracotta planter', componentMaterialColors.terracotta, 0.95, 'clay')
+      const soil = material('Potting soil', componentMaterialColors.soil, 1, 'clay')
       finishes.splice(0, finishes.length, terracotta)
       cylinder(0.24, 0.5, [0, 0.25, 0], terracotta, 0.32)
       cylinder(0.31, 0.06, [0, 0.51, 0], terracotta)
-      cylinder(0.28, 0.025, [0, 0.546, 0], dark)
+      cylinder(0.28, 0.025, [0, 0.546, 0], soil)
       if (component.variant === 'cactus') {
         cylinder(0.12, 0.57, [0, 0.85, 0], leaf, 0.10)
         disc(0.10, 0.13, [0, 1.14, 0], leaf).rotation.x = 0
@@ -329,13 +403,13 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     case 'bath': {
       finishes.splice(0, finishes.length, cream)
       box([2.02, 0.2, 3.02], [0, 0.13, 0], cream, 0.075)
-      box([1.83, 0.025, 2.81], [0, 0.244, 0], linen, 0.035)
+      box([1.83, 0.025, 2.81], [0, 0.244, 0], variant(linen, 'rubber'), 0.035)
       cylinder(0.095, 0.015, [0.37, 0.265, -1.06], silver)
       rod([-0.59, 0.3, -1.36], [-0.59, 3.48, -1.36], 0.035)
       rod([-0.59, 3.48, -1.36], [-0.59, 3.48, -0.9], 0.035)
       cylinder(0.22, 0.055, [-0.59, 3.46, -0.82], silver)
       rod([-0.78, 1.22, -1.35], [-0.32, 1.22, -1.35], 0.035)
-      const screen = material('Clear shower screen', roomAccents.water, 0.3)
+      const screen = material('Clear shower screen', roomAccents.water, 0.3, 'glass')
       screen.transparent = true
       screen.opacity = 0.22
       screen.depthWrite = false
@@ -347,8 +421,15 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       break
     }
     case 'laundry-basket': {
-      cylinder(0.34, 0.67, [0, 0.335, 0], paint, 0.44)
-      cylinder(0.395, 0.02, [0, 0.68, 0], dark)
+      setRoomMaterialSurface(paint, 'fabric')
+      const basket = new Mesh(createRoomCupGeometry(0.27, 0.42, 0.67, 0.035), paint)
+      basket.name = 'Laundry basket hollow body'
+      basket.position.set(0, 0, 0)
+      basket.castShadow = basket.receiveShadow = true
+      root.add(basket)
+      cylinder(0.236, 0.012, [0, 0.041, 0], variant(linen, 'fabric'), 0.233).name = 'Laundry basket deep interior'
+      const baseRing = ring(0.31, 0.018, [0, 0.055, 0], dark)
+      baseRing.rotation.x = Math.PI / 2
       const rim = ring(0.425, 0.029, [0, 0.69, 0], wood)
       rim.rotation.x = Math.PI / 2
       for (let i = 0; i < 12; i++) {
@@ -357,8 +438,8 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
           [Math.sin(angle) * 0.425, 0.65, Math.cos(angle) * 0.425], 0.014, linen)
       }
       const clothes = clothGroup(['filling-up', 'ready-for-washing'])
-      box([0.38, 0.08, 0.4], [-0.08, 0.71, 0], cream, 0.05, clothes)
-      box([0.27, 0.1, 0.35], [0.15, 0.745, 0.13], tomato, 0.04, clothes).rotation.z = 0.24
+      box([0.38, 0.08, 0.4], [-0.08, 0.71, 0], variant(cream, 'fabric'), 0.05, clothes)
+      box([0.27, 0.1, 0.35], [0.15, 0.745, 0.13], variant(tomato, 'fabric'), 0.04, clothes).rotation.z = 0.24
       contactSize = [1, 1]
       break
     }
@@ -371,8 +452,8 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
       for (const z of [-0.54, 0.54]) rod([-0.95, rackHeight, z], [0.95, rackHeight, z], 0.024, paint).name = 'Drying rack top rail'
       for (let i = 0; i < 7; i++) rod([-0.85 + i * 0.28, rackHeight, -0.54], [-0.85 + i * 0.28, rackHeight, 0.54])
       const clothes = clothGroup(['drying', 'ready-to-fold'])
-      box([0.47, 0.58, 0.025], [-0.43, rackHeight - 0.3, 0.06], cream, 0, clothes)
-      box([0.4, 0.44, 0.025], [0.27, rackHeight - 0.23, 0.09], tomato, 0, clothes)
+      box([0.47, 0.58, 0.025], [-0.43, rackHeight - 0.3, 0.06], variant(cream, 'fabric'), 0, clothes)
+      box([0.4, 0.44, 0.025], [0.27, rackHeight - 0.23, 0.09], variant(tomato, 'fabric'), 0, clothes)
       contactSize = [1.95, 1.38]
       break
     }
@@ -382,31 +463,57 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
         rod([x, 0, 0.025], [x, 0, 0.21], 0.03, silver)
       }
       rod([-0.47, 0, 0.21], [0.47, 0, 0.21], 0.028, silver)
-      box([0.63, 0.75, 0.04], [0, -0.36, 0.23], paint, 0.014)
+      box([0.63, 0.75, 0.04], [0, -0.36, 0.23], variant(paint, 'fabric'), 0.014)
       box([0.58, 0.032, 0.008], [0, -0.67, 0.255], linen, 0)
       break
     case 'wall-art':
       finishes.splice(0, finishes.length, wood)
       box([0.96, 1.1, 0.07], [0, 0, 0.04], wood, 0.015)
-      box([0.82, 0.96, 0.015], [0, 0, 0.086], cream, 0)
-      if (component.variant === 'geometric') {
-        disc(0.22, 0.007, [-0.14, 0.19, 0.1], tomato)
-        box([0.32, 0.41, 0.01], [0.2, -0.14, 0.105], leaf, 0)
-        box([0.46, 0.035, 0.015], [-0.07, -0.29, 0.11], wood, 0)
-      } else {
-        rod([0, -0.37, 0.103], [0.02, 0.35, 0.103], 0.014, wood)
-        for (let i = 0; i < 5; i++) {
-          const foliage = disc(0.14, 0.007, [i % 2 ? -0.13 : 0.13, -0.22 + i * 0.12, 0.11], leaf)
-          foliage.scale.x = 0.5
-          foliage.rotation.z = i % 2 ? 0.7 : -0.7
+      box([0.82, 0.96, 0.015], [0, 0, 0.086], variant(cream, 'paper'), 0).name = 'Wall art flat canvas'
+      {
+        const splash = (x: number, y: number, radius: number, mat: MeshStandardMaterial, seed: number) => {
+          const shape = new Shape()
+          for (let i = 0; i < 11; i++) {
+            const angle = i / 11 * Math.PI * 2
+            const wobble = 0.66 + (((i * 37 + seed * 19) % 23) / 22) * 0.48
+            const px = Math.cos(angle) * radius * wobble
+            const py = Math.sin(angle) * radius * (0.72 + (((i * 17 + seed * 11) % 19) / 18) * 0.43)
+            if (i === 0) shape.moveTo(px, py)
+            else shape.lineTo(px, py)
+          }
+          shape.closePath()
+          const mesh = new Mesh(new ShapeGeometry(shape), mat)
+          mesh.name = 'Organic paint splash on canvas'
+          mesh.position.set(x, y, 0.098)
+          mesh.castShadow = false
+          mesh.receiveShadow = true
+          root.add(mesh)
+          return mesh
         }
+        const droplet = (x: number, y: number, radius: number, mat: MeshStandardMaterial) => {
+          const mesh = disc(radius, 0.002, [x, y, 0.1], mat)
+          mesh.name = 'Paint splash droplet on canvas'
+          mesh.castShadow = false
+          return mesh
+        }
+        const splashMaterials = component.variant === 'geometric'
+          ? [variant(tomato, 'paper'), variant(leaf, 'paper'), variant(wood, 'paper')]
+          : [variant(leaf, 'paper'), variant(tomato, 'paper'), variant(wood, 'paper')]
+        splash(-0.15, 0.16, 0.16, splashMaterials[0], 2)
+        splash(0.17, -0.06, 0.14, splashMaterials[1], 5).scale.set(0.85, 1.18, 1)
+        splash(-0.02, -0.26, 0.105, splashMaterials[2], 8).scale.set(1.45, 0.7, 1)
+        for (const [x, y, radius, mat] of [
+          [-0.29, -0.06, 0.035, splashMaterials[0]],
+          [0.31, 0.18, 0.028, splashMaterials[1]],
+          [0.24, -0.3, 0.024, splashMaterials[0]],
+          [-0.08, 0.34, 0.022, splashMaterials[2]],
+        ] as const) droplet(x, y, radius, mat)
       }
       break
     case 'soap-dispenser':
-      cylinder(0.095, 0.26, [0, 0.135, 0], paint, 0.08)
-      cylinder(0.033, 0.075, [0, 0.302, 0], silver)
-      box([0.14, 0.035, 0.04], [0.043, 0.35, 0], silver)
-      box([0.105, 0.085, 0.009], [0, 0.15, 0.098], cream, 0.01)
+      cylinder(0.095, 0.26, [0, 0.135, 0], paint, 0.08).name = 'Soap dispenser bottle'
+      cylinder(0.033, 0.075, [0, 0.302, 0], silver).name = 'Soap dispenser pump stem'
+      box([0.14, 0.035, 0.04], [0.043, 0.35, 0], silver).name = 'Soap dispenser pump spout'
       break
     case 'shower-shelf':
       for (const y of [-0.42, 0]) {
@@ -437,5 +544,9 @@ export function buildRoomComponentModel(component: RoomComponent, style: RoomSty
     position: [placement.position[0], placement.position[1] + 0.003, placement.position[2]] as Position,
     size: [contactWidth * cosine + contactDepth * sine, contactWidth * sine + contactDepth * cosine] as [number, number],
   }] : []
+  for (const [copy, source] of variantSources) {
+    if (finishes.includes(source)) finishes.push(copy)
+  }
+  prepareRoomSurfaceGeometry(root)
   return { root, materials, finishes, styleSurfaces, contacts, indicator, stateObjects }
 }
