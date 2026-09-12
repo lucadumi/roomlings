@@ -67,12 +67,20 @@ The living room has a sofa, coffee table, wall-mounted TV above a media unit, bo
 The original [Sage and clay palette from Coolors](https://coolors.co/ffffff-3d405b-81b29a-f2cc8f-e07a5f) supplies slate text, sage, honey and clay details. Primary buttons retain the original brick red (`#b8533b`). Pages, panels and modals stay white rather than using different colors for each feature. The house pot keeps its warm accent. Branding uses the flat Patchwork icon, including a static mark for loading states, and avatars use saved member colors. The hero illustration has no backdrop; Explore scenes have white backgrounds and a divider beside the illustration.
 
 The closing invitation is a white outlined letter with a line-only folded
-corner, the app's shared raised shadow and a small tree illustration. Its red **Start sharing** button opens the
-existing account flow.
+corner, the app's shared raised shadow and a small tree illustration. On desktop,
+its red **Start sharing** button opens the existing account flow. iPhone and
+iPad keep the same letter, but its button and the hero's **Download** button
+are temporarily disabled while the iOS-only mobile app is in development. The iOS
+header has no app link and keeps only the divider below its three navigation
+links. **Explore rooms**, direct household links and saved access continue to work.
+iPads keep this app landing in both orientations, including desktop-mode Safari
+with a mouse or trackpad. Android and desktop browsers retain the web entry flow.
 
-The normal-flow header and centered hero fill the first screen, with extra space
-before the next section. Short viewports allow the content to grow without
-clipping. The spending summary stays white; the house-pot button keeps its accent.
+The normal-flow header and centered hero fill the first screen, except on
+portrait iPads, where the side-by-side hero uses its content height to avoid
+large empty gaps. Extra space remains before the next section. Short viewports
+allow the content to grow without clipping. The spending summary stays white;
+the house-pot button keeps its accent.
 
 Form dropdowns use the same white and sage styling throughout. Open one to choose an option, use arrow keys or type to find a choice, and press Escape to close just the menu without losing the form. Saved household data and individual finish selections are unchanged.
 
@@ -250,7 +258,7 @@ Sign in to create a household or link an existing roommate identity. Old `/kitch
 
 The short kitchen tour supports native scrolling, keyboard navigation and reduced motion. If 3D is unavailable, its message and chapter controls remain, without a replacement illustration. The hero is a conceptual home illustration, not an exact floor plan.
 
-The landing page's **Explore the rooms** section uses one shared template for all three rooms. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. Use the page's Sign in or Get started actions when you want to enter a real household. Existing kitchen chapter links remain supported; `/#tour-bathroom` and `/#tour-living-room` open their explorations directly.
+The landing page's **Explore the rooms** section uses one shared template for all three rooms. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. On desktop and Android, use **Sign in** in the header or **Get started** in the hero to enter a real household. Existing kitchen chapter links remain supported; `/#tour-bathroom` and `/#tour-living-room` open their explorations directly.
 
 All rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They share a camera angle and fit their measured scene areas throughout the scroll tours. A loading indicator stays visible until the renderer is ready; a text-only message replaces an unavailable scene. The room remains stationary while its camera and descriptions change. Only the hero and closing letter use standalone 2D illustrations. The closing invitation retains one direct Start sharing CTA.
 

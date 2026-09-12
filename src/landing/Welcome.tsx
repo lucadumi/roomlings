@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUpRight, Plus } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
+import { isIosDevice } from './device.ts'
 import invitationPlant from '../assets/garden/left.png'
 import { roomPath } from '../roomNavigation.ts'
 import './welcome.css'
@@ -24,6 +25,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
   const page = useRef<HTMLDivElement>(null)
   const header = useRef<HTMLElement>(null)
   const systemReduced = useSyncExternalStore(subscribeToMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches, () => false)
+  const mobileApp = isIosDevice(navigator)
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
   const createPath = `${roomPath()}#account=create`
@@ -49,11 +51,13 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
       ? saved.roomlingsTourScroll : null
     void document.fonts.ready.then(() => {
       if (cancelled) return
+      const returningToEntry = location.hash === '#home-sign-in' || location.hash === '#home-start'
+      const anchor = document.getElementById(location.hash.slice(1))
+      const target = returningToEntry && (!anchor || anchor.matches(':disabled'))
+        ? document.getElementById('welcome-content') : anchor
       if (scroll !== null) window.scrollTo({ top: scroll, behavior: 'instant' })
-      else document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'instant' })
-      if (location.hash === '#home-sign-in' || location.hash === '#home-start') {
-        document.getElementById(location.hash.slice(1))?.focus({ preventScroll: true })
-      }
+      else target?.scrollIntoView({ behavior: 'instant' })
+      if (returningToEntry) target?.focus({ preventScroll: true })
     })
     const rememberPosition = () => {
       const previous: unknown = history.state
@@ -72,7 +76,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
     }
   }, [])
 
-  return <div className="welcome" ref={page} data-motion={reducedMotion ? 'reduced' : 'full'} data-edition="journal" id="welcome-top">
+  return <div className="welcome" ref={page} data-motion={reducedMotion ? 'reduced' : 'full'} data-mobile-app={mobileApp} data-edition="journal" id="welcome-top">
     <a className="welcome-skip" href="#welcome-content">Skip to content</a>
     <header className="welcome-header welcome-container" ref={header}>
       <a className="brand" href="#welcome-top" aria-label="Roomlings, back to the beginning">
@@ -83,10 +87,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <a href="#tour">Explore rooms</a>
         <a href="#questions">Questions</a>
       </nav>
-      <div className="welcome-header-actions">
+      {!mobileApp && <div className="welcome-header-actions">
         <a className="welcome-sign-in" id="home-sign-in" href={roomPath()}>Sign in <ArrowRight size={15} /></a>
-        <a className="button primary welcome-enter" href={createPath}>Get started</a>
-      </div>
+      </div>}
     </header>
     {accessNotice && <div className="welcome-access-notice welcome-container">{accessNotice}</div>}
     <main id="welcome-content" tabIndex={-1}>
@@ -94,10 +97,12 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <div className="welcome-hero-copy">
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
           <div className="welcome-actions">
-            <a className="button primary welcome-enter" id="home-start" href={createPath}>Create our household <ArrowRight size={18} /></a>
+            {mobileApp
+              ? <button className="button primary welcome-enter" id="home-start" type="button" disabled aria-describedby="welcome-action-note">Download <ArrowRight size={18} /></button>
+              : <a className="button primary welcome-enter" id="home-start" href={createPath}>Get started <ArrowRight size={18} /></a>}
             <a className="welcome-text-link" href="#tour">Explore rooms <ArrowUpRight size={16} /></a>
           </div>
-          <p className="welcome-action-note">Less chasing. More time together.</p>
+          <p className="welcome-action-note" id="welcome-action-note">{mobileApp ? 'For iPhone and iPad. Currently in development.' : 'Less chasing. More time together.'}</p>
         </div>
         <div className="welcome-home-frame">
           <figure className="welcome-vignette" role="img" aria-label="Illustration of a shared home">
@@ -125,8 +130,12 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <div className="welcome-faq">
           <details><summary><span>Does Roomlings send money?</span><Plus size={19} /></summary><p>No. Roomlings never moves money. Choose who shares a paid receipt or bill, and it splits the cost equally in exact cents. Pay roommates outside the app, then record or correct repayments here. Shopping plans and unpaid bills create no debt.</p></details>
           <details><summary><span>What do the rooms share?</span><Plus size={19} /></summary><p>The kitchen, bathroom and living room belong to one household, with the same shopping list, people and financial ledger. Chores can cover a room or the whole home, with one-off tasks, recurring schedules and rotating turns. The fridge shows purchases, not how much food is left.</p></details>
-          <details><summary><span>How do roommates join and return?</span><Plus size={19} /></summary><p>Each roommate signs in to their own account with an email code and accepts an invitation from the household owner. Single-use account recovery codes provide another way back in. You can also link an older kitchen without replacing its history, or <a href="/#recover">recover browser-only access</a> with its separate private kitchen code. These are different kinds of recovery code.</p></details>
-          <details><summary><span>Can I use it without 3D?</span><Plus size={19} /></summary><p>Yes. Every household tool is also available from the toolbar, on desktop and phone browsers. Your account opens the same home on each device, including your saved chores, shopping, bills and repayments. No separate app is needed.</p></details>
+          <details><summary><span>How do roommates join and return?</span><Plus size={19} /></summary>{mobileApp
+            ? <p>A household owner invites each roommate to join with their own account. Everyone shares the same rooms, chores, shopping and financial records.</p>
+            : <p>Each roommate signs in to their own account with an email code and accepts an invitation from the household owner. Single-use account recovery codes provide another way back in. You can also link an older kitchen without replacing its history, or <a href="/#recover">recover browser-only access</a> with its separate private kitchen code. These are different kinds of recovery code.</p>}</details>
+          <details><summary><span>{mobileApp ? 'When can I download the mobile app?' : 'Can I use it without 3D?'}</span><Plus size={19} /></summary>{mobileApp
+            ? <p>The Roomlings app for iPhone and iPad is still in development and is not available to download yet. In the meantime, you can explore the rooms here.</p>
+            : <p>Yes. Every household tool is also available from the toolbar, on desktop and phone browsers. Your account opens the same home on each device, including your saved chores, shopping, bills and repayments. No separate app is needed.</p>}</details>
         </div>
       </section>
 
@@ -134,8 +143,13 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <section className="welcome-invitation" id="get-started" aria-labelledby="invitation-title">
           <img className="welcome-invitation-plant" src={invitationPlant} alt="" aria-hidden="true"
             width={600} height={1000} loading="lazy" decoding="async" draggable={false} />
-          <div className="welcome-invitation-copy"><h2 id="invitation-title">Make room for your people.</h2><p>Create a household, invite your roommates and give everyone their own way back in.</p></div>
-          <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>
+          <div className="welcome-invitation-copy">
+            <h2 id="invitation-title">Make room for your people.</h2>
+            <p>Create a household, invite your roommates and give everyone their own way back in.</p>
+          </div>
+          {mobileApp
+            ? <button className="button primary welcome-enter" type="button" disabled aria-describedby="welcome-action-note">Start sharing <ArrowRight size={18} /></button>
+            : <a className="button primary welcome-enter" href={createPath}>Start sharing <ArrowRight size={18} /></a>}
         </section>
       </div>
     </main>

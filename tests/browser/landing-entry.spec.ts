@@ -37,10 +37,10 @@ test('the home page does not read account access, create a household or open a s
   expect(requests).toEqual([])
 })
 
-test('the landing carries a new account through sign-in, kitchen creation, return and sign-out', async ({ page, accounts }) => {
-  await page.setViewportSize({ width: 390, height: 844 })
+test('the desktop landing carries a new account through sign-in, kitchen creation, return and sign-out', async ({ page, accounts }) => {
+  await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto('/')
-  const start = page.locator('.welcome-hero').getByRole('link', { name: 'Create our household', exact: true })
+  const start = page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true })
   await start.click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email address', { exact: true }).fill('landing@example.com')
@@ -48,7 +48,7 @@ test('the landing carries a new account through sign-in, kitchen creation, retur
   await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
   await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('landing@example.com'))
   await dialog.getByLabel('Account display name', { exact: true }).fill('Robin')
-  await dialog.getByLabel('Name this browser', { exact: true }).fill('My phone')
+  await dialog.getByLabel('Name this browser', { exact: true }).fill('My laptop')
   await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
   await expect(dialog.getByLabel('What do you call home?', { exact: true })).toBeVisible()
   await dialog.getByLabel('What do you call home?', { exact: true }).fill('A home from the landing')
