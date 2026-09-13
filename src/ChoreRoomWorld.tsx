@@ -98,7 +98,7 @@ type ChoreRoomHit<Target extends string> = Target | { componentId: string } | { 
 
 export type ChoreRoomWorldProps<Target extends string> = Pick<RoomWorldProps,
   'roomStyle' | 'paused' | 'deferColdStart' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'
-  | 'components' | 'editMode' | 'selectedComponentId' | 'placementPreviewId' | 'onComponentSelect' | 'overviewFocus'> & {
+  | 'components' | 'editMode' | 'wholeRoomView' | 'selectedComponentId' | 'placementPreviewId' | 'onComponentSelect' | 'overviewFocus'> & {
   focusRequest: { target: SceneFocus | ChoreRoomFocus<Target>; id: number }
   preview?: boolean
   motionReduced?: boolean
@@ -121,15 +121,15 @@ function availableFocus<Target extends string>(config: ChoreRoomConfig<Target>, 
 
 export default function ChoreRoomWorld<Target extends string>({
   config, roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
-  preview = false, motionReduced, onStatus, tour, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
+  preview = false, motionReduced, onStatus, tour, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: ChoreRoomWorldProps<Target> & { config: ChoreRoomConfig<Target> }) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<Target, HTMLButtonElement>())
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<ChoreRoomControls<Target> | null>(null)
-  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
-  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
+  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
+  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
   const installed = installedRoomComponents(components, config.roomId)
   const requestedFocus = (target: SceneFocus | ChoreRoomFocus<Target>) =>
     !preview && target === 'room' && config.entryFocus ? config.entryFocus : config.focusForRequest(target)
@@ -420,6 +420,7 @@ export default function ChoreRoomWorld<Target extends string>({
       const closeRoom = usesRoomEntryFraming({
         focus: atEntryFocus ? 'room' : framedFocus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
         overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, publicPreview: preview,
+        wholeRoomView: latest.wholeRoomView,
       })
       const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
       const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom, config.roomId) : displayedZoom
@@ -443,7 +444,7 @@ export default function ChoreRoomWorld<Target extends string>({
       if (configuredEntry) {
         configuredEntry.halfHeight = Math.max(config.minimumFocusHalfHeight ?? 0, configuredEntry.halfHeight) * frameArea.height / viewport.height
       }
-      const framing = latest.editMode && !preview && !latest.tour && !closeRoom
+      const framing = latest.wholeRoomView && !preview && !latest.tour && !closeRoom
         ? fitRoomOrbitBounds(frameArea.width, frameArea.height, selectedBounds ?? bounds)
         : selectedBounds
         ? fitRoomBounds(frameArea.width, frameArea.height, selectedBounds, orbitRotation, pitch)
@@ -749,7 +750,7 @@ export default function ChoreRoomWorld<Target extends string>({
     return cleanup
   }, [], deferColdStart)
 
-  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, selectedComponentId, placementPreviewId, overviewFocus])
+  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, overviewFocus])
 
   const changeZoom = (direction: -1 | 1) => {
     const current = controls.current

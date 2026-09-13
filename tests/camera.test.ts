@@ -195,6 +195,24 @@ describe('room-first camera framing', () => {
       assert.equal(usesRoomEntryFraming({
         focus: 'room', selectedComponentId: 'candidate', placementPreview: true, resetView,
       }), true)
+      assert.equal(usesRoomEntryFraming({
+        focus: 'room', selectedComponentId: 'candidate', placementPreview: true, resetView, wholeRoomView: true,
+      }), true)
+    }
+  })
+  it('frames the whole room beside the object panels instead of the entry close-up', () => {
+    const bounds = new Box3(new Vector3(-5, 0, -4), new Vector3(5, 5, 4))
+    const beside = { x: 620, y: 80, width: 740, height: 800 }
+    for (const resetView of [false, true]) {
+      assert.equal(usesRoomEntryFraming({ focus: 'room', resetView, wholeRoomView: true }), false)
+    }
+    const whole = fitRoomOrbitBounds(beside.width, beside.height, bounds)
+    assert.ok(whole.halfHeight > roomEntryFraming(1440, 960, beside).halfHeight)
+    for (const rotation of [0, 0.9, 2.4, -1.7]) for (const pitch of [roomPitchLimits.min, 0, roomPitchLimits.max]) {
+      const { horizontal, vertical } = projectRoomBounds(bounds, rotation, pitch)
+      // Every reachable angle still fits, so orbiting never resizes or reframes the room.
+      assert.ok(vertical <= whole.halfHeight)
+      assert.ok(horizontal <= whole.halfHeight * beside.width / beside.height)
     }
   })
   it('pans the entry view into the space beside an open panel instead of shrinking the room', () => {

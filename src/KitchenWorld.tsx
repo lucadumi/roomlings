@@ -58,13 +58,13 @@ type WorldControls = {
 
 export default function KitchenWorld({
   roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
-  onSelect, onAction, onOpenChores, onRestock, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
+  onSelect, onAction, onOpenChores, onRestock, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: RoomWorldProps) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<WorldControls | null>(null)
-  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
+  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -77,7 +77,7 @@ export default function KitchenWorld({
   const [renderingPaused, setRenderingPaused] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [brewing, setBrewing] = useState(false)
-  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
+  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
   hoverRef.current = hovered
   const installed = installedRoomComponents(components, 'kitchen')
   const placementLabelsHidden = editMode && !!placementPreviewId
@@ -511,7 +511,7 @@ export default function KitchenWorld({
       const focus = currentControls.focus
       const closeRoom = usesRoomEntryFraming({
         focus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
-        overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate,
+        overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, wholeRoomView: latest.wholeRoomView,
       })
       const desiredZoom = roomCameraZoom(latest.overviewFocus ? 1 : currentControls.zoom, closeRoom, 'kitchen')
       const placementBounds = placementCandidate ? visibleRoomBounds(room, placementCandidate) : null
@@ -528,7 +528,7 @@ export default function KitchenWorld({
         : focusedObject ? componentScene.getBounds(focusedObject.id)
           : focus === 'floor' ? visibleRoomBounds(room, scenery.utilityActors.get('floor')!) : undefined
       const objectBounds = selectedBounds ?? focusedBounds
-      const framing = latest.editMode && !closeRoom
+      const framing = latest.wholeRoomView && !closeRoom
         ? fitRoomOrbitBounds(area.width, area.height, objectBounds ?? roomBounds)
         : objectBounds
         ? fitRoomBounds(area.width, area.height, objectBounds, orbitRotation, cameraPitch)
@@ -736,7 +736,7 @@ export default function KitchenWorld({
   }, [], deferColdStart)
 
   // The loop detects component content changes; refreshed copies must not wake a paused scene.
-  useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, selectedComponentId, placementPreviewId, overviewFocus])
+  useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, wholeRoomView, selectedComponentId, placementPreviewId, overviewFocus])
 
   const toggle = () => {
     if (editMode) {

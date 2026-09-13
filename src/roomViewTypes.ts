@@ -24,6 +24,7 @@ export type RoomWorldProps = {
   dueChores: Partial<Record<ChoreArea, number>>
   components?: readonly RoomComponent[]
   editMode?: boolean
+  wholeRoomView?: boolean
   selectedComponentId?: string | null
   placementPreviewId?: string | null
   onComponentSelect?: (id: string) => void

@@ -43,6 +43,7 @@ type Props = {
   activeTool: KitchenAction | 'chores' | 'objects' | 'room-edit' | null
   components?: readonly RoomComponent[]
   editMode: boolean
+  wholeRoomView: boolean
   selectedComponentId: string | null
   placementPreviewId?: string | null
   onComponentSelect: (id: string) => void
@@ -71,7 +72,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 export function GameHome({
   roomId, onRooms, roomsOpen, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, deferColdStart = false, panelOpen, activeTool, onAction, onInvite, onSelect,
-  components, editMode, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
+  components, editMode, wholeRoomView, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
   panelSide = 'right',
   overviewFocus = false,
 }: Props) {
@@ -125,7 +126,7 @@ export function GameHome({
     <SceneBoundary key={`${roomId}:${household.id}`}>
       <Suspense fallback={<SceneLoading label={`Opening ${roomCatalog[roomId].label.toLowerCase()}...`} />}>
         <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || roomsOpen || (panelOpen && !editMode)} panelOpen={panelOpen && !overviewFocus} overviewFocus={overviewFocus} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
-          components={components ?? getRoomComponents(household)} editMode={editMode} selectedComponentId={selectedComponentId} deferColdStart={deferColdStart}
+          components={components ?? getRoomComponents(household)} editMode={editMode} wholeRoomView={wholeRoomView && !overviewFocus} selectedComponentId={selectedComponentId} deferColdStart={deferColdStart}
           placementPreviewId={placementPreviewId} onComponentSelect={onComponentSelect} />
       </Suspense>
     </SceneBoundary>

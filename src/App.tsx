@@ -1035,7 +1035,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       panelSide={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
       components={activeComponentPreview?.components ?? savedComponents}
       placementPreviewId={activePlacement?.id ?? null}
-      editMode={page === 'room-edit'} selectedComponentId={selectedComponentId} onComponentSelect={selectRoomComponent}
+      editMode={page === 'room-edit'} wholeRoomView={page === 'objects' || page === 'room-edit'} selectedComponentId={selectedComponentId} onComponentSelect={selectRoomComponent}
       onObjects={() => { if (page === 'room-edit') setSelectedComponentId(null); else openRoomObjects() }}
       canEditRooms={canEditRooms} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')} onSettings={() => openDialog('settings')}
       onAction={interact} onInvite={() => openDialog('invite')}
