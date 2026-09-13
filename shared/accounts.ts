@@ -5,6 +5,9 @@ import { recoveryCodeSchema } from './access.ts'
 
 const id = z.string().uuid()
 const timestamp = z.string().datetime()
+export const nativeClientHeader = 'X-Roomlings-Client'
+export const nativeClientSchema = z.literal('ios')
+export const accountAccessTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/)
 export const accountEmailSchema = z.string().trim().toLowerCase().email().max(254)
 export const accountRoleSchema = z.enum(['owner', 'admin', 'member'])
 export const accountSchema = z.object({
@@ -50,6 +53,10 @@ export const accountStateSchema = z.object({
     || !session.household.members.some((member) => member.id === session.memberId))) {
     context.addIssue({ code: 'custom', message: 'The selected kitchen must belong to this account.' })
   }
+})
+export const nativeAccountSignInSchema = accountStateSchema.safeExtend({
+  account: accountSchema,
+  accessToken: accountAccessTokenSchema,
 })
 export const accountMemberSchema = z.object({
   memberId: id, name: nameSchema, role: accountRoleSchema,
@@ -126,6 +133,7 @@ export const transferOwnershipSchema = accountVersionSchema.extend({ memberId: i
 export const deleteAccountSchema = z.object({ confirmation: accountEmailSchema })
 
 export type AccountState = z.infer<typeof accountStateSchema>
+export type NativeAccountSignIn = z.infer<typeof nativeAccountSignInSchema>
 export type Account = z.infer<typeof accountSchema>
 export type AccountMembership = z.infer<typeof accountMembershipSchema>
 export type AccountDevice = z.infer<typeof accountDeviceSchema>

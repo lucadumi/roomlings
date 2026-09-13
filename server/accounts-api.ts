@@ -2,8 +2,9 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Express, Request, RequestHandler, Response } from 'express'
 import { z } from 'zod'
 import {
-  acceptAccountInvitationSchema, accountRecoverySignInSchema, accountVersionSchema, createAccountInvitationSchema,
-  createAccountHouseholdSchema, deleteAccountSchema, linkAccountSchema, sendAccountCodeSchema, transferOwnershipSchema, verifyAccountCodeSchema,
+  acceptAccountInvitationSchema, accountAccessTokenSchema, accountRecoverySignInSchema, accountVersionSchema, createAccountInvitationSchema,
+  createAccountHouseholdSchema, deleteAccountSchema, linkAccountSchema, nativeAccountSignInSchema, nativeClientHeader, nativeClientSchema,
+  sendAccountCodeSchema, transferOwnershipSchema, verifyAccountCodeSchema,
 } from '../shared/accounts.ts'
 import { nameSchema } from '../shared/domain.ts'
 import type { AccountState } from '../shared/accounts.ts'
@@ -22,6 +23,19 @@ export const accountCookieName = 'roomlings_session'
 const isMutation = (req: Request) => !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
 const unavailable = () => new ApiError(503, 'Sign-in is not configured. Contact the server owner.', 'AUTH_NOT_CONFIGURED')
 const noSession = () => new ApiError(401, 'Sign in to your account to continue.', 'ACCOUNT_SESSION_REQUIRED')
+
+export function isNativeAccountRequest(req: Request): boolean {
+  const client = req.get(nativeClientHeader)
+  if (client === undefined) return false
+  if (!nativeClientSchema.safeParse(client).success) {
+    throw new ApiError(400, 'This Roomlings client is not supported. Update the app and try again.', 'CLIENT_UNSUPPORTED')
+  }
+  // The client header selects a transport, not an identity or a way around browser protections.
+  if (req.get('origin') !== undefined || req.get('sec-fetch-site') !== undefined) {
+    throw new ApiError(403, 'Native account access must come from the Roomlings app, not a browser.', 'NATIVE_CLIENT_REQUIRED')
+  }
+  return true
+}
 
 function limit(maximum: number, duration: number, key: (req: Request) => string): RequestHandler {
   const attempts = new Map<string, { count: number; expires: number }>()
@@ -51,14 +65,17 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     allowedOrigins.add('http://127.0.0.1:5173')
   }
   const cookieOptions = { httpOnly: true, secure: origin.protocol === 'https:', sameSite: 'lax' as const, path: '/api' }
-  const clearCookie = (res: Response) => res.clearCookie(accountCookieName, cookieOptions)
+  const clearCookie = (req: Request, res: Response) => {
+    if (!isNativeAccountRequest(req)) res.clearCookie(accountCookieName, cookieOptions)
+  }
   const signedOut = (): AccountState => ({
     configured: !!provider, account: null, memberships: [], devices: [], csrfToken: null, session: null,
   })
   const respondSignedIn = async (req: Request, res: Response, issue: () => Promise<{ token: string; session: AccountSession }>) => {
+    const native = isNativeAccountRequest(req)
     const { issued, state } = await store.transaction(async () => {
       const previous = await current(req, res, false)
-      // A failed sign-in rolls this browser's session revocation back with the new session.
+      // A failed sign-in rolls this device's session revocation back with the new session.
       if (previous) await store.accounts.logout(previous, false)
       const issued = await issue()
       const initial = await store.accounts.state(issued.session)
@@ -67,9 +84,9 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
         && householdId !== issued.session.selectedHouseholdId
         && initial.memberships.some((membership) => membership.householdId === householdId)
         ? await store.accounts.select(issued.session, householdId) : initial
-      return { issued, state }
+      return { issued, state: native ? nativeAccountSignInSchema.parse({ ...state, accessToken: issued.token }) : state }
     })
-    res.cookie(accountCookieName, issued.token, { ...cookieOptions, maxAge: accountAbsoluteLifetime })
+    if (!native) res.cookie(accountCookieName, issued.token, { ...cookieOptions, maxAge: accountAbsoluteLifetime })
     res.json(state)
   }
   const browserRequest = (req: Request) => {
@@ -81,12 +98,16 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     }
   }
   const current = async (req: Request, res: Response, clearInvalid = true) => {
+    if (isNativeAccountRequest(req)) {
+      const token = accountAccessTokenSchema.safeParse(/^Bearer (.+)$/i.exec(req.get('authorization') ?? '')?.[1])
+      return token.success ? await store.accounts.authenticate(token.data) : null
+    }
     const cookies = (req.headers.cookie ?? '').split(';').map((entry) => entry.trim())
       .filter((entry) => entry.startsWith(`${accountCookieName}=`))
     if (!cookies.length) return null
     const token = cookies.length === 1 ? cookies[0].slice(accountCookieName.length + 1) : ''
-    const session = /^[A-Za-z0-9_-]{43}$/.test(token) ? (await store.accounts.authenticate(token)) : null
-    if (!session && clearInvalid) clearCookie(res)
+    const session = accountAccessTokenSchema.safeParse(token).success ? (await store.accounts.authenticate(token)) : null
+    if (!session && clearInvalid) clearCookie(req, res)
     return session
   }
   const csrf = (req: Request, session: AccountSession) => {
@@ -99,7 +120,7 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
   const authenticated = async (req: Request, res: Response, allowDeleting = false) => {
     const session = (await current(req, res))
     if (!session) throw noSession()
-    if (isMutation(req)) csrf(req, session)
+    if (isMutation(req) && !isNativeAccountRequest(req)) csrf(req, session)
     if (session.deleting && !allowDeleting) {
       throw new ApiError(409, apiMessages.deletionPending, 'ACCOUNT_DELETION_PENDING')
     }
@@ -113,7 +134,7 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
   }
   const configured: RequestHandler = (req, _res, next) => {
     if (!provider) return next(unavailable())
-    if (isMutation(req)) browserRequest(req)
+    if (!isNativeAccountRequest(req) && isMutation(req)) browserRequest(req)
     next()
   }
   app.get('/api/account', async (req, res) => {
@@ -171,13 +192,13 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     const session = (await authenticated(req, res, true))
     const { all } = z.object({ all: z.boolean() }).parse(req.body)
     await store.accounts.logout(session, all)
-    clearCookie(res)
+    clearCookie(req, res)
     res.json(signedOut())
   })
   app.delete('/api/account/devices/:id', async (req, res) => {
     const session = (await authenticated(req, res))
     const state = (await store.accounts.revokeDevice(session, z.string().uuid().parse(req.params.id)))
-    if (!state) clearCookie(res)
+    if (!state) clearCookie(req, res)
     res.json(state ?? signedOut())
   })
   app.post('/api/account/link', async (req, res) => {
@@ -236,7 +257,7 @@ export function installAccounts(app: Express, store: Store, options: AccountOpti
     } catch {
       throw new ApiError(503, `${apiMessages.deletionPending} Retry deletion to finish sooner.`, 'ACCOUNT_DELETION_PENDING')
     }
-    clearCookie(res)
+    clearCookie(req, res)
     res.json(signedOut())
   })
   return {
