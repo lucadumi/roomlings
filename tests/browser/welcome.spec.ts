@@ -73,7 +73,7 @@ test('the public welcome page explains the product without opening or changing a
   await expect(page.locator('.welcome-faq details').nth(2)).toContainText('separate private kitchen code')
   await expect(page.getByRole('link', { name: 'recover browser-only access', exact: true })).toHaveAttribute('href', '/#recover')
   await page.getByText('Can I use it without 3D?', { exact: true }).click()
-  await expect(page.locator('.welcome-faq details').nth(3)).toContainText('desktop and phone browsers')
+  await expect(page.locator('.welcome-faq details').nth(3)).toContainText('the same home in any desktop browser')
   expect(requests).toEqual([])
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
   expect(errors).toEqual([])

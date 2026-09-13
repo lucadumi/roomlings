@@ -6,6 +6,7 @@ import { SceneLoading } from './Branding.tsx'
 import './style.css'
 import './game.css'
 import { resolveEntry } from './roomNavigation.ts'
+import { landingDevice } from './landing/device.ts'
 import { Feedback } from './Feedback.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
@@ -22,8 +23,10 @@ function subscribeLocation(change: () => void) {
 function Entry() {
   const url = new URL(useSyncExternalStore(subscribeLocation, () => location.href))
   const entry = resolveEntry(url.pathname, url.hash)
+  // Phones and tablets stay on the landing; the household is the iOS app, not a mobile browser.
+  const handheld = landingDevice(navigator) !== 'desktop'
   return <Suspense fallback={<SceneLoading label="Opening Roomlings..." />}>
-    {entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
+    {handheld || entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
       ? <Welcome accessNotice={<Feedback>Room unavailable. Sign in to open your home.</Feedback>} />
       : <App roomId={entry.roomId} />}
   </Suspense>

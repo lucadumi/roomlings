@@ -6,11 +6,9 @@ Shared chores, shopping, bills and repayments in an interactive 3D home. Roomlin
 
 - Plan grocery runs with a shared list and individual shopping baskets.
 - Assign one-off or recurring chores across the kitchen, bathroom, living room and whole home.
-- Split paid groceries and recurring bills between the people sharing them.
-- Track the monthly grocery budget and record roommate repayments.
+- Split paid groceries and recurring bills, follow the monthly grocery budget and record repayments.
 - Share a household through verified-email accounts, invitations and saved access.
-- Customize all three rooms with optional appliances, furniture and decorations across compatible, live-previewed positions.
-- Keep rooms clear with zone filters, placement limits and reversible object storage.
+- Customize all three rooms with optional appliances, furniture and decorations, kept tidy by zone filters, placement limits and reversible storage.
 - Give room admins editing access while everyone uses the same supplies, chores and manually recorded object states.
 
 ## Run locally
@@ -22,9 +20,7 @@ npm install
 npm run preview:local
 ```
 
-Open http://localhost:5173 (API: port 4311). Explore the rooms on the public landing page. Desktop and Android visitors can use **Get started** in the hero or **Sign in** in the header to create or join a household.
-
-On iPhone and iPad, the landing promotes the iOS-only mobile app, which is still in development, instead of showing web signup or sign-in links. Its **Download** and closing **Start sharing** buttons are temporarily disabled. Device detection also recognizes iPadOS desktop mode, regardless of orientation or mouse input. Android and desktop browsers keep web signup and sign-in, even in narrow windows. Public room exploration and existing direct household links remain available.
+Open http://localhost:5173 (API: port 4311). Explore the rooms on the public landing page, then use **Get started** in the hero or **Sign in** in the header to create or join a household.
 
 | Entry | Purpose |
 | --- | --- |
@@ -33,20 +29,17 @@ On iPhone and iPad, the landing promotes the iOS-only mobile app, which is still
 
 Email sign-in needs [Supabase setup](docs/accounts.md). Existing real browser access and recovery remain supported. Public room previews do not create households or anonymous sessions.
 
+## Devices
+
+Households run in desktop browsers. Phones and tablets always get the landing page instead, whatever the address, and their saved access stays stored. iPhone and iPad see the Roomlings app, which is still in development, so its **Download** and **Start sharing** buttons are disabled. Android and other handhelds see the same page with a note that Roomlings is for iPhone and iPad only. Detection follows device identity, including iPadOS desktop mode, so narrow desktop windows keep web signup and sign-in. Room exploration stays open everywhere.
+
+Inside a household, toolbars and panels adapt to the window's width and height. Smaller windows use tighter padding and controls, while object markers retain a larger invisible hit area around their smaller visible circles. Panels stay clear of the dock and camera controls, and in short, narrow windows the panel heading scrolls with its content so actions remain reachable.
+
 ## Development
 
 TypeScript, React and Three.js power the client. Express serves the API, with SQLite by default and optional Postgres storage. All rooms share household access, chores, shopping and financial history.
 
-`src/surfaceMaterials.ts` shares deterministic, DOM-free room textures and releases
-them when their last material owner is disposed. Use its material/clone helpers
-for textured room surfaces, and keep physical finish roles separate from palette
-color bindings. Surface preparation changes texture coordinates, not model shapes.
-`src/roomGeometry.ts` controls bounded bevels and circular detail while preserving
-dimensions and crisp thin details. Static batches index identical vertices without
-merging distinct normals or texture coordinates.
-`src/roomEnvironment.ts` owns each renderer's reusable reflection map. Preview
-rendering yields between offscreen images, and material warmup does not leave
-uncancellable shader polling behind when a room unmounts.
+Text, icons, controls, padding, margins, panels and artwork share a bounded `rem` scale driven by both window width and height, with readable minimums for body text, fields and touch targets. The scale respects the browser's base font size; device identity, not window size, selects the landing.
 
 | Command | Purpose |
 | --- | --- |
@@ -61,9 +54,7 @@ Restart `preview:local` after server, schema or `.env` changes. Browser tests ne
 
 ## Data and configuration
 
-Use [.env.example](.env.example) for configuration. Keep credentials and databases out of Git, back up `data/kitchen.sqlite`, and follow the [migration guide](docs/storage.md) before switching storage engines. Production requires HTTPS and complete account configuration.
-
-Existing browser identities and `coldshare.*` storage remain supported. Linking an account preserves the original household history.
+Use [.env.example](.env.example) for configuration. Keep credentials and databases out of Git, back up `data/kitchen.sqlite`, and follow the [migration guide](docs/storage.md) before switching storage engines. Production requires HTTPS and complete account configuration. Existing browser identities and `coldshare.*` storage remain supported, and linking an account preserves the original household history.
 
 ## Guides
 

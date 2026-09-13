@@ -68,13 +68,15 @@ The original [Sage and clay palette from Coolors](https://coolors.co/ffffff-3d40
 
 The closing invitation is a white outlined letter with a line-only folded
 corner, the app's shared raised shadow and a small tree illustration. On desktop,
-its red **Start sharing** button opens the existing account flow. iPhone and
-iPad keep the same letter, but its button and the hero's **Download** button
-are temporarily disabled while the iOS-only mobile app is in development. The iOS
-header has no app link and keeps only the divider below its three navigation
-links. **Explore rooms**, direct household links and saved access continue to work.
-iPads keep this app landing in both orientations, including desktop-mode Safari
-with a mouse or trackpad. Android and desktop browsers retain the web entry flow.
+its red **Start sharing** button opens the existing account flow. Phones and
+tablets keep the same letter, but its button and the hero's **Download** button
+are disabled: the Roomlings app for iPhone and iPad is still in development, and
+handhelds have no browser household at all. Their header has no sign-in link and
+keeps only the divider below its three navigation links. **Explore rooms** still
+works, and saved access stays stored. iPads keep this app landing in both
+orientations, including desktop-mode Safari with a mouse or trackpad. Android and
+other handhelds get the same landing with a note that Roomlings is for iPhone and
+iPad only. Desktop browsers retain the web entry flow.
 
 The normal-flow header and centered hero fill the first screen, except on
 portrait iPads, where the side-by-side hero uses its content height to avoid
@@ -194,7 +196,7 @@ history while pausing linked care. They cannot be placed or restored in the livi
 room; new bins belong in the kitchen or bathroom.
 
 Individual object details and Edit room settings use a narrower side panel than
-the full components browser on desktop. Constrained phone layouts keep their
+the full components browser on desktop. Constrained narrow windows keep their
 usable full-width forms.
 
 Change an object's name, finish, supported model and supply suggestions. **Default materials** restores its natural material colors and any room-palette bindings. Model controls appear only when there is a real choice, such as a rectangular or round table, bath or shower, different plants, or different coffee machines. Supplies have editable names and suggested quantities, not stock counts.
@@ -258,7 +260,7 @@ Sign in to create a household or link an existing roommate identity. Old `/kitch
 
 The short kitchen tour supports native scrolling, keyboard navigation and reduced motion. If 3D is unavailable, its message and chapter controls remain, without a replacement illustration. The hero is a conceptual home illustration, not an exact floor plan.
 
-The landing page's **Explore the rooms** section uses one shared template for all three rooms. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. On desktop and Android, use **Sign in** in the header or **Get started** in the hero to enter a real household. Existing kitchen chapter links remain supported; `/#tour-bathroom` and `/#tour-living-room` open their explorations directly.
+The landing page's **Explore the rooms** section uses one shared template for all three rooms. Choose a room with the preview cards or arrow keys, then scroll through its objects or use the chapter controls. Previewing reads no household access and creates no data. In a desktop browser, use **Sign in** in the header or **Get started** in the hero to enter a real household. Existing kitchen chapter links remain supported; `/#tour-bathroom` and `/#tour-living-room` open their explorations directly.
 
 All rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They share a camera angle and fit their measured scene areas throughout the scroll tours. A loading indicator stays visible until the renderer is ready; a text-only message replaces an unavailable scene. The room remains stationary while its camera and descriptions change. Only the hero and closing letter use standalone 2D illustrations. The closing invitation retains one direct Start sharing CTA.
 

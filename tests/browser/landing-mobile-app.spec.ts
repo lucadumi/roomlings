@@ -6,13 +6,16 @@ import { roomPath } from '../../src/roomNavigation.ts'
 
 test.use({ reducedMotion: 'reduce' })
 
-async function expectMobileAppLanding(page: Page) {
+async function expectMobileAppLanding(page: Page, device: 'ios' | 'mobile' = 'ios') {
   await expect(page.locator('.welcome')).toHaveAttribute('data-mobile-app', 'true')
+  await expect(page.locator('.welcome')).toHaveAttribute('data-device', device)
   const start = page.locator('.welcome-hero').getByRole('button', { name: 'Download', exact: true })
   await expect(start).toBeVisible()
   await expect(start).toBeDisabled()
   await expect(start).not.toHaveAttribute('href')
-  await expect(start).toHaveAccessibleDescription('For iPhone and iPad. Currently in development.')
+  await expect(start).toHaveAccessibleDescription(device === 'ios'
+    ? 'For iPhone and iPad. Currently in development.'
+    : 'For iPhone and iPad only. Not available on Android.')
   await expect(page.locator('.welcome-header-actions')).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Mobile app', exact: true })).toHaveCount(0)
   await expect(page.locator('.welcome-navigation').getByRole('link')).toHaveText(['Your home', 'Explore rooms', 'Questions'])
@@ -32,6 +35,7 @@ async function expectMobileAppLanding(page: Page) {
 
 async function expectWebLanding(page: Page) {
   await expect(page.locator('.welcome')).toHaveAttribute('data-mobile-app', 'false')
+  await expect(page.locator('.welcome')).toHaveAttribute('data-device', 'desktop')
   await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveAttribute('href', roomPath())
   await expect(page.locator('.welcome-header-actions').getByRole('link')).toHaveText(['Sign in'])
   await expect(page.locator('.welcome-header').getByRole('link', { name: 'Get started', exact: true })).toHaveCount(0)
@@ -123,7 +127,7 @@ for (const [name, width, height] of [
 
 test('desktop browsers keep web entry at phone, tablet and desktop viewport sizes', async ({ page }) => {
   await page.goto('/')
-  for (const width of [1440, 1024, 1025, 390, 1366]) {
+  for (const width of [3840, 2560, 1920, 1440, 1366, 1051, 1050, 1025, 1024, 801, 800, 760, 759, 561, 560, 390, 320, 1366]) {
     await page.setViewportSize({ width, height: 960 })
     await expectWebLanding(page)
     await expect(page.locator('.welcome-navigation')).toHaveCSS('border-top-width', width <= 1050 ? '1px' : '0px')
@@ -171,14 +175,28 @@ for (const maxTouchPoints of [0, 5]) {
 test.describe('Android', () => {
   test.use({ userAgent: devices['Pixel 7'].userAgent, isMobile: true, hasTouch: true })
 
-  test('Android keeps working web entry instead of an iOS mobile app download', async ({ page }) => {
+  test('Android phones and tablets get the iOS-only notice instead of browser access', async ({ page }) => {
     await page.goto('/')
     for (const viewport of [{ width: 412, height: 839 }, { width: 839, height: 412 }, { width: 800, height: 1280 }, { width: 1280, height: 800 }]) {
       await page.setViewportSize(viewport)
-      await expectWebLanding(page)
+      await expectMobileAppLanding(page, 'mobile')
     }
-    await page.locator('.welcome-hero').getByRole('link', { name: 'Get started', exact: true }).click()
-    await expect(page.getByRole('dialog').getByLabel('Email address', { exact: true })).toBeVisible()
+    await page.getByText('When can I download the mobile app?', { exact: true }).click()
+    await expect(page.locator('.welcome-faq details[open]')).toContainText('There is no Android app')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
+  })
+
+  test('Android cannot open a household through a direct room link', async ({ page, populatedHousehold }) => {
+    const requests: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url())
+    })
+    await page.goto(`${roomPath()}#join=${encodeURIComponent(populatedHousehold.household.inviteCode)}`)
+    await expectMobileAppLanding(page, 'mobile')
+    await expect(page.locator('.game-house')).toHaveCount(0)
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(requests).toEqual([])
   })
 })
 
@@ -190,34 +208,30 @@ test.describe('iPhone entry', () => {
     hasTouch: true,
   })
 
-  test('the mobile app landing preserves saved household access through direct room links', async ({ page, populatedHousehold }) => {
+  test('the mobile app landing replaces the browser household and keeps saved access stored', async ({ page, populatedHousehold }) => {
+    const requests: string[] = []
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url())
+    })
+    await page.goto('/')
+    await page.evaluate((token) => localStorage.setItem('roomlings.session', token), populatedHousehold.token)
     await page.goto(roomPath())
-    await expect(page.locator('.game-house')).toContainText(populatedHousehold.household.name)
-    const saved = await page.evaluate(() => ({ ...localStorage }))
-    await page.getByRole('link', { name: 'Roomlings home', exact: true }).click()
     await expectMobileAppLanding(page)
-    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual(saved)
     await expect(page.locator('.game-house')).toHaveCount(0)
-    await page.goto(roomPath())
-    await expect(page.locator('.game-house')).toContainText(populatedHousehold.household.name)
-    await expect(page.locator('.welcome')).toHaveCount(0)
+    await page.goto('/')
+    await expectMobileAppLanding(page)
     expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(populatedHousehold.token)
+    expect(requests).toEqual([])
   })
 
-  test('closing direct account entry restores focus to the mobile app landing content', async ({ page }) => {
-    for (const [hash, target] of [['', 'home-sign-in'], ['#account=create', 'home-start']]) {
-      await page.goto(`${roomPath()}${hash}`)
-      await expect(page.getByRole('dialog').getByLabel('Email address', { exact: true })).toBeVisible()
-      await page.keyboard.press('Escape')
-      await expect(page).toHaveURL(new RegExp(`/#${target}$`))
+  test('direct account entry links stay on the mobile app landing', async ({ page }) => {
+    for (const url of [roomPath(), `${roomPath()}#account=create`, '/#recover', '/kitchen', '/rooms/bathroom']) {
+      await page.goto(url)
       await expectMobileAppLanding(page)
-      await expect(page.locator('#welcome-content')).toBeFocused()
-      await page.keyboard.press('Tab')
-      const explore = page.locator('.welcome-hero').getByRole('link', { name: 'Explore rooms', exact: true })
-      await expect(explore).toBeFocused()
-      await expect(explore).toBeInViewport({ ratio: 1 })
       await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect(page.getByLabel('Email address', { exact: true })).toHaveCount(0)
     }
+    expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
   })
 
   test('the mobile app landing keeps public room exploration working', { tag: '@room' }, async ({ page }) => {

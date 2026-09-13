@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { isIosDevice } from '../src/landing/device.ts'
+import { isIosDevice, landingDevice } from '../src/landing/device.ts'
 
 const mac = {
   userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15',
@@ -46,6 +46,41 @@ describe('iOS landing device detection', () => {
       { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7)', platform: 'MacIntel', maxTouchPoints: 5 },
     ]) {
       assert.equal(isIosDevice(device), false)
+    }
+  })
+})
+
+describe('landing device kinds', () => {
+  it('sends iPhones, iPads and desktop-mode iPads to the iOS app landing', () => {
+    for (const device of [
+      { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5 },
+      { userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)', platform: 'iPad', maxTouchPoints: 5 },
+      { userAgent: 'Mozilla/5.0 (iPod touch; CPU iPhone OS 15_0 like Mac OS X) Mobile/15E148', platform: 'iPhone', maxTouchPoints: 5 },
+      { ...mac, maxTouchPoints: 5 },
+    ]) {
+      assert.equal(landingDevice(device), 'ios')
+    }
+  })
+
+  it('keeps Android and other handhelds off the browser household without offering them the app', () => {
+    for (const device of [
+      { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) Chrome/128.0 Mobile Safari/537.36', platform: 'Linux armv8l', maxTouchPoints: 5 },
+      { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel Tablet) Chrome/128.0 Safari/537.36', platform: 'Linux armv8l', maxTouchPoints: 10 },
+      { userAgent: 'Mozilla/5.0 (Android 14; Tablet; rv:130.0) Gecko/130.0 Firefox/130.0', platform: 'Linux armv8l', maxTouchPoints: 10 },
+      { userAgent: 'Mozilla/5.0 (Windows Phone 10.0; Android 6.0.1; Lumia 950)', platform: 'Win32', maxTouchPoints: 5 },
+    ]) {
+      assert.equal(landingDevice(device), 'mobile')
+    }
+  })
+
+  it('keeps desktop browsers on the web landing, including touch laptops', () => {
+    for (const device of [
+      mac,
+      { ...mac, maxTouchPoints: 1 },
+      { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/128.0 Safari/537.36', platform: 'Win32', maxTouchPoints: 10 },
+      { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/128.0 Safari/537.36', platform: 'Linux x86_64', maxTouchPoints: 0 },
+    ]) {
+      assert.equal(landingDevice(device), 'desktop')
     }
   })
 })
