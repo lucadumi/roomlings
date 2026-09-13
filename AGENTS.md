@@ -23,6 +23,12 @@ Commit messages must be a short imperative sentence with no body or trailers. Do
 
 Do not rewrite history or discard unrelated changes. Keep the owner's existing kitchen data and browser sessions intact.
 
+## Documentation
+
+- Base the web and iOS root READMEs on [Make a README](https://www.makeareadme.com/).
+- Keep the templates very short, with brief sections and no big paragraphs. Link to detailed guides.
+- Update the existing templates in place as features land; do not replace them with long implementation summaries.
+
 ## Code and data
 
 - Use TypeScript, React and Three.js for the client, and the existing Express and SQLite server.
