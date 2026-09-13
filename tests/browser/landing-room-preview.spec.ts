@@ -82,11 +82,16 @@ test('the three-room hero cutaway stays contained through narrow sizing, orienta
   await expect(image).toBeVisible()
   await page.evaluate(() => document.fonts.ready)
   for (const viewport of [
+    { width: 3840, height: 2160 }, { width: 2560, height: 1440 },
+    { width: 1920, height: 1080 }, { width: 1366, height: 768 },
     { width: 1280, height: 960 }, { width: 1440, height: 1000 },
     { width: 320, height: 780 }, { width: 390, height: 844 },
     { width: 780, height: 320 }, { width: 320, height: 568 },
   ]) {
     await page.setViewportSize(viewport)
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
     if (viewport.height === 568) {
       await hero.getByRole('heading', { level: 1 }).evaluate((heading) => {
         heading.append(' A little more space for every roommate to feel at home.')
@@ -111,6 +116,7 @@ test('the three-room hero cutaway stays contained through narrow sizing, orienta
         proportional: matrix.a === matrix.d,
         separate: title.right <= artwork.left || title.bottom <= artwork.top,
         drawingWidth: bounds.width * matrix.a,
+        uiScale: parseFloat(getComputedStyle(document.documentElement).fontSize) / 16,
         frameRatio: artwork.width / columnWidth,
         centered: Math.abs(artwork.left + artwork.width / 2 - columnCenter) < 1,
         polygons: element.querySelectorAll('polygon').length,
@@ -123,8 +129,8 @@ test('the three-room hero cutaway stays contained through narrow sizing, orienta
     expect(artwork.frameRatio).toBeCloseTo(0.94, 2)
     expect(artwork.centered).toBe(true)
     if (viewport.width >= 1280) {
-      expect(artwork.drawingWidth).toBeGreaterThanOrEqual(570)
-      expect(artwork.drawingWidth).toBeLessThanOrEqual(600)
+      expect(artwork.drawingWidth).toBeGreaterThanOrEqual(570 * artwork.uiScale)
+      expect(artwork.drawingWidth).toBeLessThanOrEqual(600 * artwork.uiScale)
     }
     if (viewport.width === 320) {
       expect(artwork.drawingWidth).toBeGreaterThanOrEqual(250)
@@ -168,10 +174,12 @@ test('exploring either room leaves saved personal access unchanged', async ({ pa
   expect(access.mode).toBe('browser')
 })
 
-test('room choices and shared exploration controls remain contained through resizing', async ({ page }) => {
+test('room choices and shared exploration controls remain contained through resizing', { tag: '@room' }, async ({ page }) => {
   await page.goto('/#tour-bathroom')
   const explore = page.locator('#tour')
   for (const viewport of [
+    { width: 3840, height: 2160 }, { width: 1920, height: 1080 },
+    { width: 1051, height: 620 }, { width: 800, height: 621 }, { width: 561, height: 620 },
     { width: 1440, height: 960 }, { width: 320, height: 568 },
     { width: 390, height: 844 }, { width: 844, height: 390 },
   ]) {

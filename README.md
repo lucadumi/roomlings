@@ -33,7 +33,7 @@ Email sign-in needs [Supabase setup](docs/accounts.md). Existing real browser ac
 
 Households run in desktop browsers. Phones and tablets always get the landing page instead, whatever the address, and their saved access stays stored. iPhone and iPad see the Roomlings app, which is still in development, so its **Download** and **Start sharing** buttons are disabled. Android and other handhelds see the same page with a note that Roomlings is for iPhone and iPad only. Detection follows device identity, including iPadOS desktop mode, so narrow desktop windows keep web signup and sign-in. Room exploration stays open everywhere.
 
-Inside a household, toolbars and panels adapt to the window's width and height. Smaller windows use tighter padding and controls, while object markers retain a larger invisible hit area around their smaller visible circles. Panels stay clear of the dock and camera controls, and in short, narrow windows the panel heading scrolls with its content so actions remain reachable.
+Inside a household, toolbars and panels adapt to the window's width and height. Smaller windows use tighter controls, icon-only docks and toolbar actions with accessible names and tooltips. The household and room icons sit together in compact windows. Object markers retain a larger invisible hit area around their smaller visible circles. Camera controls remain vertical on the right and scroll when necessary. Form submission and confirmation buttons keep explicit labels.
 
 ## Development
 

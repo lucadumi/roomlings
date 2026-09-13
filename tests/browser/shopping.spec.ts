@@ -264,7 +264,7 @@ test.describe('shared shopping', () => {
     await page.getByLabel('Item name', { exact: true }).fill('Milk')
     await page.getByLabel('Quantity', { exact: true }).fill('2 cartons')
     await page.getByRole('textbox', { name: 'Notes', exact: true }).fill('No sugar\nSmall cartons')
-    await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveCSS('font-size', '16px')
+    await expect(page.getByRole('textbox', { name: 'Notes', exact: true })).toHaveCSS('font-size', '12px')
     expect(await page.getByRole('dialog').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     await page.getByRole('button', { name: 'Add to shopping list', exact: true }).click()
     await expect(page.getByRole('article', { name: 'Milk', exact: true })).toContainText('Small cartons')

@@ -42,6 +42,6 @@ export function ComponentPreview({ component, roomStyle }: { component: RoomComp
     data-preview-renderer={current?.image ? 'webgl' : undefined}>
     {current?.image ? <img src={current.image} alt="" width={320} height={240} draggable={false} />
       : current?.error ? <span className="component-preview-error" role="status" title={current.error}>3D is unavailable.</span>
-        : <span className="component-preview-loading" aria-hidden="true"><LoaderCircle size={23} className={rendering ? 'spin' : undefined} /></span>}
+        : <span className="component-preview-loading" aria-hidden="true"><LoaderCircle size="1.4375rem" className={rendering ? 'spin' : undefined} /></span>}
   </span>
 }

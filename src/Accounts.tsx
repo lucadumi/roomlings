@@ -453,21 +453,21 @@ export function AccountDialog({
                   history.replaceState(null, '', `${location.pathname}${location.search}`)
                   onClose()
                 }
-              }) }}><Home size={14} />Open</button>
+              }) }}><Home size="0.875rem" />Open</button>
               <button className="text-button" disabled={disabled} aria-label={`Manage ${membership.householdName}`} onClick={() => { void openHousehold(membership.householdId) }}>Membership</button>
             </li>)}</ul>
-            <button className="button secondary full" disabled={disabled} onClick={() => navigate('create')}><Plus size={16} />Create a kitchen</button>
-            <button className="button secondary full" disabled={disabled} onClick={() => navigate('join')}><Users size={16} />Accept an invitation</button>
-            <button className="text-button" disabled={disabled} onClick={() => navigate('link')}><KeyRound size={16} />Link existing kitchen access</button>
+            <button className="button secondary full" disabled={disabled} onClick={() => navigate('create')}><Plus size="1rem" />Create a kitchen</button>
+            <button className="button secondary full" disabled={disabled} onClick={() => navigate('join')}><Users size="1rem" />Accept an invitation</button>
+            <button className="text-button" disabled={disabled} onClick={() => navigate('link')}><KeyRound size="1rem" />Link existing kitchen access</button>
           </section>
           <section className="access-section">
-            <div className="access-heading"><h3>Account sessions</h3><button className="icon-button control-surface" aria-label="Refresh account sessions" disabled={disabled} onClick={() => { setError(''); setRefreshId((value) => value + 1) }}><RefreshCw size={16} /></button></div>
+            <div className="access-heading"><h3>Account sessions</h3><button className="icon-button control-surface" aria-label="Refresh account sessions" disabled={disabled} onClick={() => { setError(''); setRefreshId((value) => value + 1) }}><RefreshCw size="1rem" /></button></div>
             <ul className="device-list">{state.devices.map((device) => <li className="device-row" key={device.id}>
               <div><strong>{device.label}</strong>{device.current && <span className="device-current">This browser</span>}<small>Last active: {dateTime(device.lastUsedAt)}</small><small>Expires: {dateTime(device.expiresAt)}</small></div>
               {!device.current && <button className="button secondary small-button" disabled={disabled} aria-label={`Revoke ${device.label}`} onClick={() => confirm({
                 title: 'Sign out that account session?', description: `This signs out ${device.label}. It does not remove household membership or change the ledger.`,
                 button: 'Revoke session', action: async () => { await accountAction(`/account/devices/${device.id}`, {}, 'DELETE'); setNotice('Account session revoked.') },
-              })}><LogOut size={14} />Sign out</button>}
+              })}><LogOut size="0.875rem" />Sign out</button>}
             </li>)}</ul>
             <button className="button secondary full" disabled={disabled} onClick={() => confirm({
               title: 'Sign out this account?', description: 'This browser will need an email sign-in code or an unused account recovery code to return. Other devices remain signed in.',
@@ -481,7 +481,7 @@ export function AccountDialog({
           <section className="access-section">
             <h3>Recovery codes</h3>
             <p className="field-hint">Keep a way back into your account when email sign-in is unavailable. Save ten single-use codes in a private place.</p>
-            <button className="button secondary full" disabled={disabled} onClick={() => { void openRecovery() }}><KeyRound size={16} />Manage recovery codes</button>
+            <button className="button secondary full" disabled={disabled} onClick={() => { void openRecovery() }}><KeyRound size="1rem" />Manage recovery codes</button>
           </section>
           <section className="access-section">
             <h3>Account lifecycle</h3>
@@ -566,7 +566,7 @@ export function AccountDialog({
           })} />
         </>}
         {view === 'household' && access && <>
-          <div className="access-heading"><h3>{access.household.name}</h3><button className="icon-button control-surface" aria-label="Refresh membership settings" disabled={disabled} onClick={() => { void openHousehold(access.household.id) }}><RefreshCw size={16} /></button></div>
+          <div className="access-heading"><h3>{access.household.name}</h3><button className="icon-button control-surface" aria-label="Refresh membership settings" disabled={disabled} onClick={() => { void openHousehold(access.household.id) }}><RefreshCw size="1rem" /></button></div>
           <p className="field-hint">You are {access.role === 'owner' ? 'the owner' : access.role === 'admin' ? 'an admin' : 'a member'}. Owners and admins can configure rooms and manage admin rights. Only the owner manages invitations, removes roommates or transfers ownership. All active roommates can edit the shared ledger. Former roommates remain in financial history.</p>
           <ul className="device-list">{access.members.map((member) => <li className="device-row" key={member.memberId}>
             <div><strong>{member.name}</strong><small>{member.active ? `${roleLabels[member.role]}; ${member.linked ? 'account linked' : 'browser access only'}` : 'Former roommate'}</small></div>
@@ -670,7 +670,7 @@ function EmailSignIn({ busy, initialEmail, initialName, fixedEmail = false, onSe
       <p className="field-hint">The display name is used when creating a new account. Signing into an existing account keeps its saved name.</p>
     </>}
     {error && <Feedback>{error}</Feedback>}
-    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Mail size={17} />}{sent ? 'Verify and sign in' : 'Send sign-in code'}</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Mail size="1.0625rem" />}{sent ? 'Verify and sign in' : 'Send sign-in code'}</button>
     {sent && <div className="button-row">
       {!fixedEmail && <button type="button" className="text-button" disabled={busy} onClick={() => { setSent(false); setCode(''); setError('') }}>Use another email</button>}
       <button type="button" className="text-button" disabled={busy} onClick={() => { void onSend(email) }}>Send another code</button>
@@ -701,11 +701,11 @@ function AccountProfile({ name, label, busy, onName, onLabel }: {
   return <>
     <Form onSubmit={() => submit(draftName, onName)}>
       <label className="field">Account display name<input required maxLength={50} value={draftName} disabled={busy} onChange={(event) => setDraftName(event.target.value)} /></label>
-      <button className="button secondary full" disabled={busy || draftName.trim() === name}><Check size={15} />Save account name</button>
+      <button className="button secondary full" disabled={busy || draftName.trim() === name}><Check size="0.9375rem" />Save account name</button>
     </Form>
     <Form onSubmit={() => submit(draftLabel, onLabel)}>
       <label className="field">Name this account browser<input required maxLength={50} value={draftLabel} disabled={busy} onChange={(event) => setDraftLabel(event.target.value)} /></label>
-      <button className="button secondary full" disabled={busy || draftLabel.trim() === label}><Check size={15} />Save account browser name</button>
+      <button className="button secondary full" disabled={busy || draftLabel.trim() === label}><Check size="0.9375rem" />Save account browser name</button>
     </Form>
     {error && <Feedback>{error}</Feedback>}
   </>

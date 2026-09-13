@@ -782,7 +782,7 @@ export default function ChoreRoomWorld<Target extends string>({
       <div className={`chore-room-scene-area ${config.roomId}-scene-area`} ref={stage} aria-hidden="true" />
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable}
         aria-label={editMode ? config.copy.editing : config.copy.interactive} />
-      {unavailable ? <div className={`chore-room-unavailable ${config.roomId}-unavailable`} role="status"><RoomIcon size={34} /><strong>{config.copy.unavailable}</strong><p>You can still manage chores and restock supplies with the room controls.</p></div> : <>
+      {unavailable ? <div className={`chore-room-unavailable ${config.roomId}-unavailable`} role="status"><RoomIcon size="2.125rem" /><strong>{config.copy.unavailable}</strong><p>You can still manage chores and restock supplies with the room controls.</p></div> : <>
         {!placementLabelsHidden && <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label={config.copy.objects}>
           {!editMode && config.targets.filter((target) => !config.targetSlots[target]).map((target) => {
             const area = config.getTargetArea(target)
@@ -792,7 +792,7 @@ export default function ChoreRoomWorld<Target extends string>({
               className={`world-hotspot hotspot-${target}`} {...{ [`data-${config.roomId}-target`]: target }} data-selected={focused === target}
               aria-label={label} onClick={() => activate(target)} onMouseEnter={() => setHovered(target)} onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(target)} onBlur={() => setHovered(null)}>
-              <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span>
+              <span className="hotspot-dot"><Plus size="0.75rem" /></span><span className="hotspot-label">{label}</span>
             </button>
           })}
           {onComponentSelect && installed.map((component) => <button type="button" key={component.id}
@@ -802,22 +802,22 @@ export default function ChoreRoomWorld<Target extends string>({
             data-selected={!overviewFocus && selectedComponentId === component.id} aria-label={componentChoresLabel(component, installed)}
             onClick={() => activate({ componentId: component.id })} onMouseEnter={() => setHovered({ componentId: component.id })}
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
-            <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
+            <span className="hotspot-dot"><Plus size="0.75rem" /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
           </button>)}
         </div>}
         <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? config.copy.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? config.copy.room : config.labels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
-          <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
+          <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size="1.1875rem" /></button>
           <span>{Math.round(zoom * 100)}%</span>
-          <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
+          <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size="1.1875rem" /></button>
           <i />
-          <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size={18} /></button>
+          <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size="1.125rem" /></button>
           <button type="button" className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={placementLabelsHidden}
             aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'} aria-pressed={labelsShown}
-            title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size={18} /> : <EyeOff size={18} />}</button>
-          <button type="button" className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title={config.copy.lighting}>{evening ? <Moon size={18} /> : <Sun size={18} />}</button>
+            title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size="1.125rem" /> : <EyeOff size="1.125rem" />}</button>
+          <button type="button" className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title={config.copy.lighting}>{evening ? <Moon size="1.125rem" /> : <Sun size="1.125rem" />}</button>
         </div>
-        <div className="world-interaction-hint"><Move size={13} />{hovered && typeof hovered !== 'string'
+        <div className="world-interaction-hint"><Move size="0.8125rem" />{hovered && typeof hovered !== 'string'
           ? 'lighting' in hovered ? (evening ? 'Switch to daylight' : 'Switch to evening lighting')
             : hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores'
           : hoveredTarget === config.suppliesTarget ? config.copy.restockHint : hoveredTarget ? hoveredTarget === config.choresTarget ? 'Open room chores' : config.labels[hoveredTarget]
@@ -825,10 +825,10 @@ export default function ChoreRoomWorld<Target extends string>({
       </>}
       {!editMode && <div className="world-quick-actions chore-room-quick-actions" role="group" aria-label={`${roomCatalog[config.roomId].name} quick actions`}>
         <button type="button" className="world-fridge-toggle" aria-label="Room chores" onClick={() => activate(config.choresTarget)}>
-          <ClipboardList size={15} aria-hidden="true" /><span className="world-action-label">Room chores</span>
+          <ClipboardList size="0.9375rem" aria-hidden="true" /><span className="world-action-label">Room chores</span>
         </button>
         <button type="button" className="world-kettle-toggle" aria-label="Restock supplies" onClick={() => activate(config.suppliesTarget)}>
-          <PackagePlus size={16} aria-hidden="true" /><span className="world-action-label">Restock supplies</span>
+          <PackagePlus size="1rem" aria-hidden="true" /><span className="world-action-label">Restock supplies</span>
         </button>
       </div>}
     </div>

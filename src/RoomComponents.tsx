@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Archive, ArrowLeft, Check, CircleHelp, Eye, ListChecks, Palette, Pencil, Plus, RotateCcw, ShoppingBasket, Trash2, TriangleAlert, Users, X } from 'lucide-react'
+import { Archive, ArrowLeft, Boxes, Check, CircleHelp, Eye, ListChecks, Palette, Pencil, Plus, RotateCcw, ShoppingBasket, Trash2, TriangleAlert, Users, X } from 'lucide-react'
 import { billingDate, choreLimit } from '../shared/domain.ts'
 import type { Household, ShoppingItemInput } from '../shared/domain.ts'
 import { choreAssignee, choreStatus } from '../shared/chores.ts'
@@ -18,7 +18,7 @@ import type { RoomId } from '../shared/rooms.ts'
 import { componentSurfaces, roomZoneLabels, roomZoneUsage } from '../shared/roomZones.ts'
 import type { ComponentSurface } from '../shared/roomZones.ts'
 import { normalizeShoppingName } from '../shared/shopping.ts'
-import { DraftConflict, Form } from './components.tsx'
+import { CompactAction, DraftConflict, Form } from './components.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { SupplyShortcuts } from './Restock.tsx'
@@ -58,7 +58,7 @@ type PlacementPreview = {
 function AvailabilityBadge({ status, label }: Pick<ComponentAvailability, 'status' | 'label'>) {
   const Icon = status === 'available' ? Plus : status === 'placed' ? Check : status === 'preview' ? Pencil : TriangleAlert
   return <span className={`room-availability ${status}`} data-availability={status}
-    role="img" aria-label={label}><Icon size={12} aria-hidden="true" /></span>
+    role="img" aria-label={label}><Icon size="0.75rem" aria-hidden="true" /></span>
 }
 
 function objectName(component: RoomComponent): string {
@@ -480,8 +480,8 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
       <div className="room-placement-actions" role="group" aria-label="Placement preview">
         <button type="button" className="button primary small-button" ref={placeButton}
           disabled={locked || (inspection && swapChoices === null) || !!trialIssue || !!placement.identityReason || !!proposedPlacement?.error}
-          onClick={acceptPlacement}><Check size={15} />{Object.keys(swapChoices ?? {}).length ? 'Stage swap' : 'Place object'}</button>
-        <button type="button" className="button secondary small-button" ref={discardButton} disabled={busy || saving} onClick={discardPlacement}><X size={15} />Discard preview</button>
+          onClick={acceptPlacement}><Check size="0.9375rem" />{Object.keys(swapChoices ?? {}).length ? 'Stage swap' : 'Place object'}</button>
+        <button type="button" className="button secondary small-button" ref={discardButton} disabled={busy || saving} onClick={discardPlacement}><X size="0.9375rem" />Discard preview</button>
       </div>
       {inspection && swapChoices === null && !placement.identityReason && swapAvailability.positions.length > 0
         && <button type="button" className="text-button room-swap-start" disabled={locked || !!placementConflict || !!conflicts.length} onClick={() => {
@@ -521,17 +521,17 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
     }}>
       <div className="room-editor-toolbar">
         <div className="room-editor-navigation">
-          <button type="button" className="icon-button control-surface" disabled={busy || saving} onClick={() => discard(onBack)} aria-label="Back to room objects" title="Back to room objects"><ArrowLeft size={17} /></button>
+          <button type="button" className="icon-button control-surface" disabled={busy || saving} onClick={() => discard(onBack)} aria-label="Back to room objects" title="Back to room objects"><ArrowLeft size="1.0625rem" /></button>
           <nav className="receipt-tabs" aria-label="Room editor sections">
-            <button type="button" disabled={locked} aria-pressed={section === 'installed'} onClick={() => select(null)}>In this room <span>{groups.length}</span></button>
-            <button type="button" disabled={locked} aria-pressed={section === 'catalog'} onClick={() => select(selectedComponentId, 'catalog')}><Plus size={14} />Add objects</button>
-            <button type="button" disabled={locked} aria-label="Storage" aria-description={`${stored.length} stored objects`}
-              aria-pressed={section === 'storage'} onClick={() => select(null, 'storage')}><Archive size={14} />Storage <span aria-hidden="true">{stored.length}</span></button>
+            <CompactAction label="In this room" count={groups.length} disabled={locked} aria-pressed={section === 'installed'} onClick={() => select(null)}><Boxes className="compact-only-icon" size="1rem" /></CompactAction>
+            <CompactAction label="Add objects" disabled={locked} aria-pressed={section === 'catalog'} onClick={() => select(selectedComponentId, 'catalog')}><Plus size="0.875rem" /></CompactAction>
+            <CompactAction label="Storage" count={stored.length} disabled={locked} aria-label="Storage" aria-description={`${stored.length} stored objects`}
+              aria-pressed={section === 'storage'} onClick={() => select(null, 'storage')}><Archive size="0.875rem" /></CompactAction>
           </nav>
         </div>
         <div className="room-editor-tools">
-          <button type="button" className="icon-button control-surface" disabled={locked} onClick={onRoomColors} aria-label="Room colors" title="Room colors"><Palette size={17} /></button>
-          <button type="button" className="icon-button control-surface" disabled={locked} onClick={onManageAdmins} aria-label="Room admins" title="Room admins"><Users size={17} /></button>
+          <button type="button" className="icon-button control-surface" disabled={locked} onClick={onRoomColors} aria-label="Room colors" title="Room colors"><Palette size="1.0625rem" /></button>
+          <button type="button" className="icon-button control-surface" disabled={locked} onClick={onManageAdmins} aria-label="Room admins" title="Room admins"><Users size="1.0625rem" /></button>
         </div>
       </div>
       <fieldset className="room-editor-fields" disabled={locked}>
@@ -560,7 +560,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
         {section === 'storage' && <p className="field-hint">Stored objects keep their history. Supplies and linked chores resume when you bring them back.</p>}
         {(section === 'installed' || section === 'storage') && <>
           {selected ? <div className="room-object-settings" aria-label={`Settings for ${objectName(selected)}`}>
-            <button type="button" className="text-button" disabled={locked} onClick={() => select(null, section)}><ArrowLeft size={14} />{section === 'storage' ? 'All stored objects' : 'All room objects'}</button>
+            <CompactAction label={section === 'storage' ? 'All stored objects' : 'All room objects'} className="text-button" disabled={locked} onClick={() => select(null, section)}><ArrowLeft size="0.875rem" /></CompactAction>
             <h3>{objectName(selected)}</h3>
             {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${componentCatalog[selected.kind].name} objects`}>
               {selectedPositions.map((component) => <button type="button" key={component.id} className="control-surface" disabled={locked}
@@ -594,7 +594,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
                   ?? preferredComponentSlot(selected.kind, available.positions.filter((slot) => slot.id !== selected.slotId), preview)
                 if (!destination) { setLocalError('There are no offered positions for another object.'); return }
                 previewPlacement(selected.kind, destination.id)
-              }}><Plus size={14} />Add another</button>}
+              }}><Plus size="0.875rem" />Add another</button>}
             <label className="field">Object name<input ref={nameInput} required maxLength={50} value={selected.name} disabled={locked} onChange={(event) => update(selected, { name: event.target.value })} /></label>
             {componentCatalog[selected.kind].variants.length > 1
               ? <label className="field">Model<Dropdown label="Model" value={selected.variant} disabled={locked} onValueChange={(variant) => {
@@ -624,31 +624,31 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
                     supplies: selected.supplies.map((item) => item.id === supply.id ? { ...item, quantity: event.target.value } : item),
                   })} /></label>
                 </div>
-                <button type="button" className="text-button" disabled={locked} aria-label={`Remove supply ${index + 1}`} onClick={() => update(selected, { supplies: selected.supplies.filter((item) => item.id !== supply.id) })}><Trash2 size={14} />Remove shortcut</button>
+                <CompactAction label="Remove shortcut" className="text-button" disabled={locked} aria-label={`Remove supply ${index + 1}`} onClick={() => update(selected, { supplies: selected.supplies.filter((item) => item.id !== supply.id) })}><Trash2 size="0.875rem" /></CompactAction>
               </div>)}
               {!selected.supplies.length && <p className="field-hint">No supply shortcuts for this object.</p>}
               <div className="room-object-actions">
-                <button type="button" className="button secondary small-button" disabled={locked || selected.supplies.length >= componentSupplyLimit} onClick={() => {
+                <CompactAction label="Add supply shortcut" className="button secondary small-button" disabled={locked || selected.supplies.length >= componentSupplyLimit} onClick={() => {
                   if (!globalThis.crypto?.randomUUID) { setLocalError('Use HTTPS or localhost to safely add a supply shortcut.'); return }
                   const id = crypto.randomUUID()
                   update(selected, { supplies: [...selected.supplies, { id, name: '', quantity: '1' }] })
                   requestAnimationFrame(() => suppliesElement.current?.querySelector<HTMLInputElement>(`[data-supply-id="${id}"] input`)?.focus())
-                }}><Plus size={14} />Add supply shortcut</button>
-                <button type="button" className="text-button" disabled={locked || JSON.stringify(selected.supplies) === JSON.stringify(suggestedComponentSupplies(selected))}
-                  onClick={() => update(selected, { supplies: suggestedComponentSupplies(selected) })}><RotateCcw size={14} />Use suggested supplies</button>
+                }}><Plus size="0.875rem" /></CompactAction>
+                <CompactAction label="Use suggested supplies" className="text-button" disabled={locked || JSON.stringify(selected.supplies) === JSON.stringify(suggestedComponentSupplies(selected))}
+                  onClick={() => update(selected, { supplies: suggestedComponentSupplies(selected) })}><RotateCcw size="0.875rem" /></CompactAction>
               </div>
               {selected.supplies.length >= componentSupplyLimit && <p className="field-hint">An object can have up to {componentSupplyLimit} supply shortcuts.</p>}
             </fieldset>
             {selected.installed ? slotFor(selected)?.removable
               ? <button type="button" className="text-button room-store-object" disabled={locked} onClick={() => putInStorage(selected)}>
-                {currentById.has(selected.id) ? <Archive size={14} /> : <X size={14} />}{currentById.has(selected.id) ? 'Put in storage' : 'Discard trial object'}
+                {currentById.has(selected.id) ? <Archive size="0.875rem" /> : <X size="0.875rem" />}{currentById.has(selected.id) ? 'Put in storage' : 'Discard trial object'}
               </button>
               : <p className="field-hint">This fitted object stays in the room. Its name, finish and supply shortcuts can still be changed.</p>
               : <div className="room-storage-note">
                 <p>{currentById.get(selected.id)?.installed ? 'In Storage in your private draft. Apply for everyone to share this change.' : 'In Storage. Restock shortcuts and linked care are paused.'} Dates, names, settings and history are kept.</p>
                 {componentAllowedInRoom(selected.kind, roomId)
                   ? <button type="button" className="button secondary small-button" disabled={locked}
-                    data-bring-back={selected.id} aria-label={`Bring back ${choiceName(selected, stored)}`} onClick={() => bringBack(selected)}><RotateCcw size={14} />Bring back</button>
+                    data-bring-back={selected.id} aria-label={`Bring back ${choiceName(selected, stored)}`} onClick={() => bringBack(selected)}><RotateCcw size="0.875rem" />Bring back</button>
                   : <p className="field-hint">{componentPlacementReason(preview, roomId, selected.kind, selected.slotId, selected.id)}</p>}
               </div>}
           </div> : null}
@@ -689,7 +689,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
                   </button>
                   <ObjectCardInfo component={component} label={label} />
                   {offered ? <button type="button" className="button secondary small-button" disabled={locked}
-                    data-bring-back={component.id} aria-label={`Bring back ${label}`} onClick={() => bringBack(component)}><RotateCcw size={14} />Bring back</button>
+                    data-bring-back={component.id} aria-label={`Bring back ${label}`} onClick={() => bringBack(component)}><RotateCcw size="0.875rem" />Bring back</button>
                     : <p className="field-hint">{reason}</p>}
                 </li>
               })}</ul>
@@ -745,11 +745,11 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
               <ObjectCardInfo component={previewObject} label={definition.name} />
               <div className="room-catalog-card-content"><div className="room-catalog-card-title"><h3>{definition.name}</h3>
                 <AvailabilityBadge {...status} /></div>
-              <button type="button" className="button secondary small-button" data-placement-kind={kind} disabled={locked}
+              <CompactAction label="Preview" className="button secondary small-button" data-placement-kind={kind} disabled={locked}
                 aria-description={`${status.label}. ${placementNote}`}
                 aria-label={previewLabel} onClick={previewAction}>
-                <Eye size={14} />Preview
-              </button>
+                <Eye size="0.875rem" />
+              </CompactAction>
               </div>
             </article>
           })}</div></section>)}
@@ -762,7 +762,7 @@ function RoomEditorDraft({ household, roomId, busy, canEdit = true, error, selec
         <div className="button-row room-editor-actions">
           <button type="button" className="button secondary" disabled={busy || saving} onClick={() => discard(onClose)}>Cancel</button>
           <button className="button primary" disabled={locked || !!placement || !pending.length || !!conflicts.length || !!invalidLayout}>
-            {busy || saving ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{busy || saving ? 'Saving...' : 'Apply for everyone'}
+            {busy || saving ? <LoadingIcon size={17} tone="light" /> : <Check size="1.0625rem" />}{busy || saving ? 'Saving...' : 'Apply for everyone'}
           </button>
         </div>
       </div>
@@ -822,11 +822,11 @@ export function RoomObjectsPanel({
 
   return <section className="room-components room-objects-panel" aria-label={`${roomCatalog[roomId].name} objects`} aria-busy={busy || undefined}>
     {selected && description ? <>
-      <button type="button" className="text-button" disabled={busy} onClick={() => onSelect(null)}><ArrowLeft size={14} />All room objects</button>
+      <CompactAction label="All room objects" className="text-button" disabled={busy} onClick={() => onSelect(null)}><ArrowLeft size="0.875rem" /></CompactAction>
       <header className="room-object-heading"><h3>{selected.name}</h3>{canEdit && <div className="room-object-actions">
-        <button type="button" className="text-button" disabled={busy} onClick={() => onEdit(selected.id)}><Pencil size={14} />Edit this object</button>
-        {slotFor(selected)?.removable && <button type="button" className="text-button room-store-object" disabled={busy}
-          onClick={() => onStore(selected.id)}><Archive size={14} />Put in storage</button>}
+        <CompactAction label="Edit this object" className="text-button" disabled={busy} onClick={() => onEdit(selected.id)}><Pencil size="0.875rem" /></CompactAction>
+        {slotFor(selected)?.removable && <CompactAction label="Put in storage" className="text-button room-store-object" disabled={busy}
+          onClick={() => onStore(selected.id)}><Archive size="0.875rem" /></CompactAction>}
       </div>}</header>
       {selectedPositions.length > 1 && <div className="room-position-tabs" role="group" aria-label={`${description.name} objects`}>
         {selectedPositions.map((component) => <button type="button" key={component.id} className="control-surface" disabled={busy}
@@ -852,7 +852,7 @@ export function RoomObjectsPanel({
         {selected.supplies.length ? <>
           <p className="field-hint">Shared shopping shortcuts, not stock tracking.</p>
           <SupplyShortcuts household={household} components={[selected]} busy={busy} onAdd={onRestock} />
-          {selected.kind !== 'shopping-bag' && <button type="button" className="text-button" disabled={busy} onClick={onShopping}><ShoppingBasket size={14} />Open shopping list</button>}
+          {selected.kind !== 'shopping-bag' && <CompactAction label="Open shopping list" className="text-button" disabled={busy} onClick={onShopping}><ShoppingBasket size="0.875rem" /></CompactAction>}
         </> : <p className="field-hint">No supplies set. {canEdit ? 'Add them in Edit this object.' : 'An admin can add them.'}</p>}
       </section>
       <section className="room-object-section" aria-label={`Chores for ${selected.name}`}>
@@ -867,22 +867,22 @@ export function RoomObjectsPanel({
           </li>
         })}</ul> : <p className="field-hint">No chores yet. Add one or choose a routine.</p>}
         <div className="room-object-actions">
-          {!!chores.length && <button type="button" className="button secondary small-button" disabled={busy} onClick={() => onOpenChores(selected)}><ListChecks size={14} />Open object chores</button>}
-          <button type="button" className="button secondary small-button" disabled={busy || household.chores.items.length >= choreLimit} onClick={() => onCreateChore(selected)}><Plus size={14} />Add chore</button>
+          {!!chores.length && <CompactAction label="Open object chores" className="button secondary small-button" disabled={busy} onClick={() => onOpenChores(selected)}><ListChecks size="0.875rem" /></CompactAction>}
+          <CompactAction label="Add chore" className="button secondary small-button" disabled={busy || household.chores.items.length >= choreLimit} onClick={() => onCreateChore(selected)}><Plus size="0.875rem" /></CompactAction>
         </div>
         {!!description.chores.filter((suggestion) => !chores.some((chore) => normalizeShoppingName(chore.title) === normalizeShoppingName(suggestion.title))).length && <div className="room-chore-suggestions">
           <h5>Suggested routines</h5>
           {description.chores.filter((suggestion) => !chores.some((chore) => normalizeShoppingName(chore.title) === normalizeShoppingName(suggestion.title))).map((suggestion) =>
             <button type="button" className="text-button" key={suggestion.title} disabled={busy || household.chores.items.length >= choreLimit}
-              aria-label={`Add ${suggestion.title}`} onClick={() => onCreateChore(selected, suggestion)}><Plus size={14} />{suggestion.title}</button>)}
+              aria-label={`Add ${suggestion.title}`} onClick={() => onCreateChore(selected, suggestion)}><Plus size="0.875rem" />{suggestion.title}</button>)}
         </div>}
         {household.chores.items.length >= choreLimit && <p className="field-hint">This home has reached its {choreLimit}-chore limit.</p>}
       </section>
     </> : <>
       {selectedComponentId && <Feedback tone="info">This object is in Storage or unavailable. Shopping entries and chore history are kept.</Feedback>}
       <div className="room-object-heading room-objects-tools">
-        <button type="button" className="icon-button control-surface room-objects-help" disabled={busy} onClick={onHelp} aria-label="How to play" title="How to play"><CircleHelp size={17} /></button>
-        {canEdit && <button type="button" className="button secondary small-button" disabled={busy} onClick={() => onEdit(null)}><Pencil size={14} />Edit room</button>}
+        <button type="button" className="icon-button control-surface room-objects-help" disabled={busy} onClick={onHelp} aria-label="How to play" title="How to play"><CircleHelp size="1.0625rem" /></button>
+        {canEdit && <CompactAction label="Edit room" className="button secondary small-button" disabled={busy} onClick={() => onEdit(null)}><Pencil size="0.875rem" /></CompactAction>}
       </div>
       <ul className="room-object-list" aria-label="Installed room objects">{groups.map((group) => {
         const component = group.items[0]

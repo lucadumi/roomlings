@@ -2,4 +2,4 @@
 .roomlings-brand-icon { display: block; flex: 0 0 auto; width: 1.45em; height: 1.45em; object-fit: contain; }
 .roomlings-wordmark { display: block; flex: 0 0 auto; width: auto; height: 1em; }
 .roomlings-loader { display: inline-block; flex: 0 0 auto; object-fit: contain; vertical-align: middle; }
-.loading-status { display: flex; align-items: center; gap: 8px; }
+.loading-status { display: flex; align-items: center; gap: 0.5rem; }

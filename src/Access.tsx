@@ -156,7 +156,7 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
       {access && mode === 'main' && <>
         <Form onSubmit={() => { void mutate('name') }}>
           <label className="field">Name this browser<input required maxLength={50} value={label} disabled={busy || loading} autoComplete="off" onChange={(event) => setLabel(event.target.value)} /></label>
-          <button className="button secondary full" disabled={busy || loading || !label.trim() || label.trim() === currentDevice(access).label}><Check size={15} />Save browser name</button>
+          <button className="button secondary full" disabled={busy || loading || !label.trim() || label.trim() === currentDevice(access).label}><Check size="0.9375rem" />Save browser name</button>
         </Form>
         <section className="access-section">
           <h3>Recovery code</h3>
@@ -164,14 +164,14 @@ export function AccessDialog({ token, memberName, householdName, onClose, onReco
           <button className="button primary full" disabled={busy || loading} onClick={() => {
             if (access.recovery.enabled) { setError(''); setRevokeOthers(true); setMode('replace') }
             else void mutate('code')
-          }}><KeyRound size={16} />{access.recovery.enabled ? 'Replace recovery code' : 'Generate recovery code'}</button>
+          }}><KeyRound size="1rem" />{access.recovery.enabled ? 'Replace recovery code' : 'Generate recovery code'}</button>
         </section>
         <section className="access-section">
-          <div className="access-heading"><h3>Signed-in browsers</h3><button className="icon-button control-surface" aria-label="Refresh browser sessions" disabled={busy || loading} onClick={() => { setError(''); setNotice(''); setRefreshId((value) => value + 1) }}>{loading ? <LoadingIcon size={16} /> : <RefreshCw size={16} />}</button></div>
+          <div className="access-heading"><h3>Signed-in browsers</h3><button className="icon-button control-surface" aria-label="Refresh browser sessions" disabled={busy || loading} onClick={() => { setError(''); setNotice(''); setRefreshId((value) => value + 1) }}>{loading ? <LoadingIcon size={16} /> : <RefreshCw size="1rem" />}</button></div>
           <ul className="device-list">
             {access.devices.map((device) => <li key={device.id} className="device-row">
               <div><strong>{device.label}</strong>{device.current && <span className="device-current">This browser</span>}<small>Last active: {activityTime(device.lastUsedAt)}</small><small>Added: {activityTime(device.createdAt)}</small></div>
-              {!device.current && <button className="button secondary small-button" disabled={busy || loading} aria-label={`Sign out ${device.label}`} onClick={() => { setError(''); setTarget(device); setMode('revoke') }}><LogOut size={14} />Sign out</button>}
+              {!device.current && <button className="button secondary small-button" disabled={busy || loading} aria-label={`Sign out ${device.label}`} onClick={() => { setError(''); setTarget(device); setMode('revoke') }}><LogOut size="0.875rem" />Sign out</button>}
             </li>)}
           </ul>
         </section>
@@ -197,6 +197,6 @@ export function RecoveryForm({ busy, error, onSubmit }: {
     <label className="field">Name this browser<input required maxLength={50} value={label} onChange={(event) => setLabel(event.target.value)} disabled={busy} autoComplete="off" /></label>
     <p className="field-hint">Use the private code saved from your original roommate profile. It is not a kitchen invitation.</p>
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size={17} />}{busy ? 'Restoring access...' : 'Recover my access'}</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size="1.0625rem" />}{busy ? 'Restoring access...' : 'Recover my access'}</button>
   </Form>
 }

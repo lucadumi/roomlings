@@ -1,37 +1,37 @@
-.receipt-tabs { display: flex; gap: 6px; margin-bottom: 18px; padding: 4px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--control-surface); }
-.receipt-tabs > button { flex: 1; min-width: 0; min-height: var(--control-height); padding: 8px 12px; border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--control-ink); font-size: 0.75rem; font-weight: 550; overflow-wrap: anywhere; }
+.receipt-tabs { display: flex; gap: 0.375rem; margin-bottom: 1.125rem; padding: 0.25rem; border: 1px solid var(--control-border); border-radius: 0.625rem; background: var(--control-surface); }
+.receipt-tabs > button { flex: 1; min-width: 0; min-height: var(--control-height); padding: 0.5rem 0.75rem; border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--control-ink); font-size: max(12px, 0.75rem); font-weight: 550; overflow-wrap: anywhere; }
 .receipt-tabs > button[aria-pressed="true"] { border-color: var(--section-border); background: var(--section-soft); color: var(--section-ink); }
 .receipt-tabs > button:hover:not(:disabled) { background: var(--section-soft); color: var(--section-ink); }
-.bills-panel > .field-hint { margin-bottom: 18px; }
-.bill-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; margin-bottom: 16px; }
-.bill-totals > span { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--control-surface); }
-.bill-totals small { color: var(--muted); font-size: 0.5625rem; line-height: 1.5; letter-spacing: 0.6px; }
+.bills-panel > .field-hint { margin-bottom: 1.125rem; }
+.bill-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.bill-totals > span { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.8125rem; border: 1px solid var(--line); border-radius: 0.625rem; background: var(--control-surface); }
+.bill-totals small { color: var(--muted); font-size: max(9px, 0.5625rem); line-height: 1.5; letter-spacing: 0.6px; }
 .bill-totals strong { color: var(--ink); font-size: 1.1875rem; overflow-wrap: anywhere; }
-.bill-card { padding: 16px; margin-bottom: 12px; border: 1px solid var(--section-border); border-radius: 10px; background: var(--control-surface); }
-.bill-card > header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.bill-card { padding: 1rem; margin-bottom: 0.75rem; border: 1px solid var(--section-border); border-radius: 0.625rem; background: var(--control-surface); }
+.bill-card > header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 0.625rem; }
 .bill-card > header > div { min-width: 0; flex: 1; }
-.bill-card h3 { margin: 0 0 7px; color: var(--section-ink); font-size: 1.1875rem; line-height: 1.25; overflow-wrap: anywhere; }
-.bill-card p { margin: 0 0 12px; color: var(--muted); font-size: 0.75rem; line-height: 1.7; overflow-wrap: anywhere; }
-.bill-status { display: inline-flex; align-items: center; min-height: 25px; padding: 3px 7px; border-radius: 6px; background: var(--sky-soft); color: var(--sky-ink); font-size: 0.625rem; font-weight: 550; }
+.bill-card h3 { margin: 0 0 0.4375rem; color: var(--section-ink); font-size: 1.1875rem; line-height: 1.25; overflow-wrap: anywhere; }
+.bill-card p { margin: 0 0 0.75rem; color: var(--muted); font-size: max(12px, 0.75rem); line-height: 1.7; overflow-wrap: anywhere; }
+.bill-status { display: inline-flex; align-items: center; min-height: 1.5625rem; padding: 0.1875rem 0.4375rem; border-radius: 0.375rem; background: var(--sky-soft); color: var(--sky-ink); font-size: max(10px, 0.625rem); font-weight: 550; }
 .bill-status.overdue, .bill-status.due { background: var(--tomato-soft); color: var(--tomato-ink); }
 .bill-status.paid { background: var(--leaf-soft); color: var(--leaf-ink); }
-.bill-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin: 0 0 12px; color: var(--muted); }
+.bill-amount { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.625rem; margin: 0 0 0.75rem; color: var(--muted); }
 .bill-amount > strong { font-size: 1.3125rem; color: var(--leaf-ink); overflow-wrap: anywhere; }
-.bill-amount > span { font-size: 0.6875rem; }
-.bill-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.bill-overdue-note { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--tomato-border); border-radius: var(--control-radius); background: var(--tomato-soft); }
-.bill-overdue-note p { margin: 0; font-size: 0.75rem; color: var(--tomato-ink); }
+.bill-amount > span { font-size: max(11px, 0.6875rem); }
+.bill-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.bill-overdue-note { margin-bottom: 1rem; padding: 0.75rem 0.875rem; border: 1px solid var(--tomato-border); border-radius: var(--control-radius); background: var(--tomato-soft); }
+.bill-overdue-note p { margin: 0; font-size: max(12px, 0.75rem); color: var(--tomato-ink); }
 .bill-overdue-note .text-button { color: var(--tomato-ink); }
-.bill-schedules { margin: 24px 0; }
-.bill-schedules > .section-heading { margin-bottom: 12px; }
-.bill-schedules > .field-hint { margin-bottom: 16px; }
-.bill-payment-summary { display: flex; flex-direction: column; gap: 7px; padding: 14px; margin-bottom: 20px; border-radius: 9px; background: var(--surface-muted); color: var(--ink); }
+.bill-schedules { margin: 1.5rem 0; }
+.bill-schedules > .section-heading { margin-bottom: 0.75rem; }
+.bill-schedules > .field-hint { margin-bottom: 1rem; }
+.bill-payment-summary { display: flex; flex-direction: column; gap: 0.4375rem; padding: 0.875rem; margin-bottom: 1.25rem; border-radius: 0.5625rem; background: var(--surface-muted); color: var(--ink); }
 .bill-payment-summary strong { font-size: 1.125rem; overflow-wrap: anywhere; }
-.bill-payment-summary span { font-size: 0.75rem; }
+.bill-payment-summary span { font-size: max(12px, 0.75rem); }
 @media (max-width: 560px) {
   .room-panel:has(.receipt-tabs) .room-panel-subtitle { display: none; }
 }
 @media (max-width: 365px) {
-  .bill-card { padding: 13px; }
+  .bill-card { padding: 0.8125rem; }
   .bills-panel .new-monthly-bill { order: -1; }
 }

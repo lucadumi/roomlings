@@ -34,6 +34,13 @@ async function expectSeparateTitleAndClose(container: Locator) {
   expect(title).not.toBeNull()
   expect(close).not.toBeNull()
   expect(title!.x + title!.width).toBeLessThanOrEqual(close!.x - 10)
+  expect(Math.abs(title!.y + title!.height / 2 - close!.y - close!.height / 2)).toBeLessThan(1)
+  const centeredIcon = await container.getByRole('button', { name: /^Close (dialog|panel)$/ }).evaluate((element) => {
+    const button = element.getBoundingClientRect()
+    const icon = element.querySelector('svg')!.getBoundingClientRect()
+    return Math.abs(button.top + button.height / 2 - icon.top - icon.height / 2) < 0.5
+  })
+  expect(centeredIcon).toBe(true)
   expect(await container.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
 }
 
@@ -168,6 +175,7 @@ test.describe('UI consistency', () => {
         const dialog = page.getByRole('dialog')
         await expect(dialog).toBeVisible()
         await expect(dialog).not.toContainText('A LITTLE HOUSEKEEPING')
+        if (button === 'How to play') await expect(dialog).not.toContainText('Drag to turn the room.')
         await expectSeparateTitleAndClose(dialog)
         await page.keyboard.press('Escape')
         await expect(trigger).toBeFocused()
@@ -259,6 +267,10 @@ test.describe('UI consistency', () => {
     const fixture = page.locator('.access-spacing-fixture')
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 960 })
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }))
+      const scale = await fixture.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize) / 16)
       expect(await fixture.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
       for (const content of await fixture.locator('.access-content, .access-heading, .field-hint, .modal-subtitle, form').all()) {
         expect(await content.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
@@ -267,8 +279,8 @@ test.describe('UI consistency', () => {
       const refresh = await fixture.getByRole('button', { name: 'Refresh access', exact: true }).boundingBox()
       expect(heading).not.toBeNull()
       expect(refresh).not.toBeNull()
-      expect(heading!.x + heading!.width).toBeLessThanOrEqual(refresh!.x - 12)
-      expect(refresh!.width).toBeGreaterThanOrEqual(36)
+      expect(heading!.x + heading!.width).toBeLessThanOrEqual(refresh!.x - 12 * scale + 0.1)
+      expect(refresh!.width).toBeGreaterThanOrEqual(width <= 1024 ? 32 : 36)
       const gaps = await fixture.locator('.access-content, .access-section').evaluateAll((groups) => groups.flatMap((group) =>
         [...group.children].flatMap((element) => {
           const next = element.nextElementSibling
@@ -278,7 +290,7 @@ test.describe('UI consistency', () => {
       ))
       expect(gaps).toHaveLength(9)
       for (const { first, second, gap } of gaps) {
-        expect(gap, `${first} / ${second} at ${width}px`).toBeGreaterThanOrEqual(12)
+        expect(gap + 0.1, `${first} / ${second} at ${width}px`).toBeGreaterThanOrEqual(12 * scale)
       }
       // Read every stack box in one layout pass. Separate reads let the room settling
       // above the fixture move an element between two measurements.
@@ -300,15 +312,15 @@ test.describe('UI consistency', () => {
         }
       })
       expect(stack.forms).toHaveLength(2)
-      expect(stack.forms[1].top - stack.forms[0].bottom).toBeGreaterThanOrEqual(24)
+      expect(stack.forms[1].top - stack.forms[0].bottom + 0.1).toBeGreaterThanOrEqual(24 * scale)
       expect(stack.section).not.toBeNull()
       expect(stack.backFromForm).not.toBeNull()
       expect(stack.backFromSection).not.toBeNull()
       expect(stack.verify).not.toBeNull()
       expect(stack.resendRow).not.toBeNull()
-      expect(stack.backFromForm!.top - stack.forms[1].bottom).toBeGreaterThanOrEqual(12)
-      expect(stack.backFromSection!.top - stack.section!.bottom).toBeGreaterThanOrEqual(12)
-      expect(stack.resendRow!.top - stack.verify!.bottom).toBeGreaterThanOrEqual(12)
+      expect(stack.backFromForm!.top - stack.forms[1].bottom + 0.1).toBeGreaterThanOrEqual(12 * scale)
+      expect(stack.backFromSection!.top - stack.section!.bottom + 0.1).toBeGreaterThanOrEqual(12 * scale)
+      expect(stack.resendRow!.top - stack.verify!.bottom + 0.1).toBeGreaterThanOrEqual(12 * scale)
       const rows = await fixture.locator('.button-row').evaluateAll((rows) => rows.map((row) => {
         const buttons = [...row.querySelectorAll('button')]
         const first = buttons[0]?.getBoundingClientRect()
@@ -322,7 +334,7 @@ test.describe('UI consistency', () => {
         }
       }))
       for (const row of rows) {
-        expect(row.gap).toBeGreaterThanOrEqual(10)
+        expect(row.gap + 0.1).toBeGreaterThanOrEqual(10 * scale)
         expect(row.alignment).toBeLessThan(1)
         expect(row.marginTop).toBe('0px')
       }

@@ -59,7 +59,7 @@ export function Dropdown({ label, value, onValueChange, disabled = false, requir
       <Select.Trigger className="dropdown-trigger" aria-label={label} aria-required={required || undefined}
         aria-invalid={!!error || undefined} aria-describedby={error ? errorId : undefined} data-value={value}>
         <span className="dropdown-value"><Select.Value>{selected?.label ?? 'Choose an option'}</Select.Value></span>
-        <Select.Icon asChild><ChevronDown size={16} /></Select.Icon>
+        <Select.Icon asChild><ChevronDown size="1rem" /></Select.Icon>
       </Select.Trigger>
       <Select.Portal>
         <Select.Content className="dropdown-content" position="popper" sideOffset={6} collisionPadding={12} aria-label={label}
@@ -75,7 +75,7 @@ export function Dropdown({ label, value, onValueChange, disabled = false, requir
             {options.map((option) => <Select.Item key={option.value} value={`option:${option.value}`} textValue={option.label}
               disabled={option.disabled} data-option-value={option.value} className="dropdown-option">
               <Select.ItemText>{option.label}</Select.ItemText>
-              <Select.ItemIndicator className="dropdown-check"><Check size={15} /></Select.ItemIndicator>
+              <Select.ItemIndicator className="dropdown-check"><Check size="0.9375rem" /></Select.ItemIndicator>
             </Select.Item>)}
           </Select.Viewport>
         </Select.Content>

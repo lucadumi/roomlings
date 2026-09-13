@@ -5,7 +5,7 @@ import { billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, bil
 import type { Bill, Expense, Household } from '../shared/domain.ts'
 import { addMonths, earlierOverdueBills, latestBillRevision, monthlyBills } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
-import { DraftConflict, Form, SplitParticipants } from './components.tsx'
+import { CompactAction, DraftConflict, Form, SplitParticipants } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { dateTitle, monthTitle } from './format.ts'
 import './bills.css'
@@ -41,17 +41,17 @@ export function BillsPanel({ household, month, onMonth, onCreate, onEdit, onPay,
   return <section className="bills-panel" aria-label="Monthly household bills">
     <div className="panel-period">
       <div className="month-control">
-        <button className="icon-button" aria-label="Previous bill month" disabled={busy || month <= firstMonth} onClick={() => onMonth(addMonths(month, -1))}><ChevronLeft size={16} /></button>
+        <button className="icon-button" aria-label="Previous bill month" disabled={busy || month <= firstMonth} onClick={() => onMonth(addMonths(month, -1))}><ChevronLeft size="1rem" /></button>
         <span>{monthTitle(month, true)}</span>
-        <button className="icon-button" aria-label="Next bill month" disabled={busy || month === '9999-12'} onClick={() => onMonth(addMonths(month, 1))}><ChevronRight size={16} /></button>
+        <button className="icon-button" aria-label="Next bill month" disabled={busy || month === '9999-12'} onClick={() => onMonth(addMonths(month, 1))}><ChevronRight size="1rem" /></button>
       </div>
-      <button className="button primary small-button new-monthly-bill" aria-label="New monthly bill" title="New monthly bill" disabled={busy || household.bills.length >= 100} onClick={onCreate}><Plus size={15} /><span>New monthly bill</span></button>
+      <CompactAction label="New monthly bill" className="button primary small-button new-monthly-bill" aria-label="New monthly bill" title="New monthly bill" disabled={busy || household.bills.length >= 100} onClick={onCreate}><Plus size="0.9375rem" /></CompactAction>
     </div>
-    {month !== currentMonth && <button className="text-button" onClick={() => onMonth(currentMonth)}>Back to this month</button>}
+    {month !== currentMonth && <CompactAction label="Back to this month" className="text-button" onClick={() => onMonth(currentMonth)}><CalendarDays className="compact-only-icon" size="0.9375rem" /></CompactAction>}
     <p className="field-hint">Bills stay outside the grocery pot and fridge. Only recorded payments enter your shared balances. Dates follow {household.billingTimeZone}.</p>
     {earlier.firstMonth && <div className="bill-overdue-note">
       <p>{earlier.count} earlier {earlier.count === 1 ? 'bill is' : 'bills are'} still overdue.</p>
-      <button className="text-button" onClick={() => { if (earlier.firstMonth) onMonth(earlier.firstMonth) }}>View {monthTitle(earlier.firstMonth)}</button>
+      <CompactAction label={`View ${monthTitle(earlier.firstMonth)}`} className="text-button" onClick={() => { if (earlier.firstMonth) onMonth(earlier.firstMonth) }}><CalendarDays className="compact-only-icon" size="0.9375rem" /></CompactAction>
     </div>}
     {items.length > 0 && <div className="bill-totals" aria-label="Monthly bill totals">
       <span><small>PLANNED, NOT YET RECORDED</small><strong>{money(unpaid.reduce((sum, item) => sum + item.amount, 0), household.currency)}</strong></span>
@@ -63,14 +63,14 @@ export function BillsPanel({ household, month, onMonth, onCreate, onEdit, onPay,
         <div className="bill-amount"><strong>{money(item.amount, household.currency)}</strong><span>{item.participants.length} {item.participants.length === 1 ? 'share' : 'shares'}</span></div>
         {item.payment ? <>
           <p>Paid by {household.members.find((member) => member.id === item.payment?.paidBy)?.name} on {dateTitle(item.payment.date, today)}.</p>
-          <button className="text-button" disabled={busy} onClick={() => { if (item.payment) onRemove(item.payment) }} aria-label={`Undo payment for ${item.name}`}><Undo2 size={14} />Undo payment record</button>
+          <CompactAction label="Undo payment record" className="text-button" disabled={busy} onClick={() => { if (item.payment) onRemove(item.payment) }} aria-label={`Undo payment for ${item.name}`}><Undo2 size="0.875rem" /></CompactAction>
         </> : <>
           <p className="small-muted">Confirm the actual amount and who paid before recording.</p>
-          <button className="button secondary small-button" disabled={busy} onClick={() => onPay(item)} aria-label={`Record payment for ${item.name}`}><Check size={15} />Record paid</button>
+          <CompactAction label="Record paid" className="button secondary small-button" disabled={busy} onClick={() => onPay(item)} aria-label={`Record payment for ${item.name}`}><Check size="0.9375rem" /></CompactAction>
         </>}
       </article>)}
     </div>
-    {!items.length && <div className="empty-state"><CalendarDays size={34} /><h3>{household.bills.length ? 'No bills scheduled here.' : 'Make room for the regulars.'}</h3><p>{household.bills.length ? 'Choose another month or add a monthly bill.' : 'Keep rent, utilities and subscriptions in the same shared ledger.'}</p></div>}
+    {!items.length && <div className="empty-state"><CalendarDays size="2.125rem" /><h3>{household.bills.length ? 'No bills scheduled here.' : 'Make room for the regulars.'}</h3><p>{household.bills.length ? 'Choose another month or add a monthly bill.' : 'Keep rent, utilities and subscriptions in the same shared ledger.'}</p></div>}
     {household.bills.length > 0 && <section className="bill-schedules" aria-label="Monthly bill schedules">
       <div className="section-heading"><h2>Your monthly bills</h2><span className="count-pill">{household.bills.length}</span></div>
       <p className="field-hint">Edits apply to unpaid bills from this month onward. Pausing stops future months, not existing dues.</p>
@@ -78,18 +78,18 @@ export function BillsPanel({ household, month, onMonth, onCreate, onEdit, onPay,
         const revision = latestBillRevision(bill)
         const pause = bill.pauses.find((pause) => pause.untilMonth === null)
         return <article className="bill-card bill-schedule" key={bill.id} aria-label={`${revision.name} schedule`}>
-          <header><div><h3>{revision.name}</h3><p>{money(revision.amount, household.currency)} by default, due on day {revision.dueDay}.</p></div><ReceiptText size={20} /></header>
+          <header><div><h3>{revision.name}</h3><p>{money(revision.amount, household.currency)} by default, due on day {revision.dueDay}.</p></div><ReceiptText size="1.25rem" /></header>
           <p className="small-muted">{pause ? (pause.fromMonth > currentMonth ? `Pauses from ${monthTitle(pause.fromMonth)}.` : 'Paused.') : (bill.startMonth > currentMonth ? `Starts ${monthTitle(bill.startMonth)}.` : 'Active every month.')}</p>
           <div className="bill-actions">
-            <button className="button secondary small-button" disabled={busy} onClick={() => onEdit(bill)} aria-label={`Edit ${revision.name}`}><Pencil size={14} />Edit</button>
-            <button className="button secondary small-button" disabled={busy} onClick={() => onPause(bill, !pause)} aria-label={`${pause ? 'Resume' : 'Pause'} ${revision.name}`}>{pause ? <Play size={14} /> : <Pause size={14} />}{pause ? 'Resume' : 'Pause'}</button>
-            {bill.startMonth > month && <button className="text-button" onClick={() => onMonth(bill.startMonth)}>View first month</button>}
+            <CompactAction label="Edit" className="button secondary small-button" disabled={busy} onClick={() => onEdit(bill)} aria-label={`Edit ${revision.name}`}><Pencil size="0.875rem" /></CompactAction>
+            <CompactAction label={pause ? 'Resume' : 'Pause'} className="button secondary small-button" disabled={busy} onClick={() => onPause(bill, !pause)} aria-label={`${pause ? 'Resume' : 'Pause'} ${revision.name}`}>{pause ? <Play size="0.875rem" /> : <Pause size="0.875rem" />}</CompactAction>
+            {bill.startMonth > month && <CompactAction label="View first month" className="text-button" onClick={() => onMonth(bill.startMonth)}><CalendarDays className="compact-only-icon" size="0.875rem" /></CompactAction>}
           </div>
         </article>
       })}
     </section>}
     {household.bills.length >= 100 && <p className="field-hint">This kitchen has reached its limit of 100 monthly bills.</p>}
-    <button className="button secondary small-button" onClick={onExport}><Download size={15} />Export ledger</button>
+    <CompactAction label="Export ledger" className="button secondary small-button" onClick={onExport}><Download size="0.9375rem" /></CompactAction>
   </section>
 }
 
@@ -146,7 +146,7 @@ export function BillForm({ household, bill, busy, error, onSubmit }: {
       onKeep={() => { setReviewedRevision(latestRevision); setLocalError('') }}
     >This monthly bill changed. Review the latest schedule before saving your draft.</DraftConflict>}
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{bill ? 'Save monthly bill' : 'Create monthly bill'}</button>
+    <button className="button primary full" disabled={busy || blocked || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size="1.0625rem" />}{bill ? 'Save monthly bill' : 'Create monthly bill'}</button>
   </Form>
 }
 
@@ -189,7 +189,7 @@ export function BillPaymentForm({ household, memberId, item, busy, blocked, erro
       onKeep={() => { setReviewedItem(item); setLocalError('') }}
     >This unpaid bill changed. Review its latest amount, due date and split before recording your payment.</DraftConflict>}
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={disabled || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}Record bill payment</button>
+    <button className="button primary full" disabled={disabled || changed}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size="1.0625rem" />}Record bill payment</button>
     <p className="form-footnote">One expense for this bill and month. No money is transferred.</p>
   </Form>
 }

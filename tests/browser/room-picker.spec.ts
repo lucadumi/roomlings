@@ -16,7 +16,7 @@ test('room-selector spinners stay visible while renders load and stop when the s
   const before = await accounts.store.get(owner.household.id)
   try {
     await page.goto(roomPath())
-    const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+    const trigger = page.getByRole('button', { name: /^Rooms: / })
     await trigger.click()
     const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
     const previews = picker.getByRole('group', { name: 'Choose a room', exact: true })
@@ -60,7 +60,7 @@ test('saved room images are warmed before opening and reused without illustratio
   await page.goto(roomPath())
   const renders = () => page.evaluate(() => Number(Reflect.get(window, 'savedRoomPreviewRenders')))
   await expect.poll(renders, { timeout: 20_000 }).toBe(1)
-  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  const trigger = page.getByRole('button', { name: /^Rooms: / })
   await trigger.click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
@@ -87,12 +87,12 @@ test('saved room images are warmed before opening and reused without illustratio
 
 test('the Rooms menu shows real previews beneath its button and preserves the household', { tag: '@room' }, async ({ page, populatedHousehold }, testInfo) => {
   await page.goto(roomPath())
-  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms: / }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(page.getByRole('dialog', { name: 'Rooms', exact: true })).toHaveCount(0)
   await expect(picker.getByRole('menuitemradio', { name: 'Open Kitchen', exact: true })).toHaveAttribute('aria-checked', 'true')
   await expect(picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true })).toHaveAttribute('aria-checked', 'false')
-  const trigger = await page.getByRole('button', { name: 'Rooms', exact: true }).boundingBox()
+  const trigger = await page.getByRole('button', { name: /^Rooms: / }).boundingBox()
   const menu = await picker.boundingBox()
   expect(menu!.y).toBeGreaterThanOrEqual(trigger!.y + trigger!.height)
   expect(menu!.y - trigger!.y - trigger!.height).toBeLessThanOrEqual(12)
@@ -103,14 +103,14 @@ test('the Rooms menu shows real previews beneath its button and preserves the ho
   await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).click()
   await expect(picker).toHaveCount(0)
   await expect(page).toHaveURL(new RegExp(`${roomPath('bathroom')}$`))
-  await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Bathroom')
+  await expect(page.getByRole('button', { name: /^Rooms: / })).toContainText('Bathroom')
   await selectRoom(page, 'bathroom')
   expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(populatedHousehold.token)
 })
 
 test('the room preview cards support keyboard selection, cancellation and browser history', async ({ page, populatedHousehold: _household }) => {
   await page.goto(roomPath())
-  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  const trigger = page.getByRole('button', { name: /^Rooms: / })
   await trigger.focus()
   await page.keyboard.press('Enter')
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
@@ -133,7 +133,7 @@ test('the room preview cards support keyboard selection, cancellation and browse
 
 test('the room menu toggles, closes outside, and returns Tab navigation to the toolbar', async ({ page, populatedHousehold: _household }) => {
   await page.goto(roomPath())
-  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  const trigger = page.getByRole('button', { name: /^Rooms: / })
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
   await trigger.click()
   await expect(menu).toBeVisible()
@@ -159,7 +159,7 @@ test('the anchored menu leaves an editor draft visible and Escape closes only th
   await editor.getByRole('button', { name: 'Edit Dining table', exact: true }).click()
   await editor.getByLabel('Object name', { exact: true }).fill('A draft beside the menu')
   const original = await accounts.store.get(populatedHousehold.household.id)
-  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms: / }).click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(menu).toBeVisible()
   await expect(editor).toBeVisible()
@@ -173,7 +173,7 @@ test('the anchored menu leaves an editor draft visible and Escape closes only th
 test('an open room menu follows its button when the viewport changes', async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.goto(roomPath())
-  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  const trigger = page.getByRole('button', { name: /^Rooms: / })
   await trigger.click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 })
@@ -185,7 +185,8 @@ test('an open room menu follows its button when the viewport changes', async ({ 
     await expect.poll(() => menu.evaluate((element) => {
       const anchor = document.querySelector('.room-picker-trigger')!.getBoundingClientRect()
       const bounds = element.getBoundingClientRect()
-      return Math.abs(bounds.top - anchor.bottom - 8) < 2
+      const gap = parseFloat(getComputedStyle(document.documentElement).fontSize) / 2
+      return Math.abs(bounds.top - anchor.bottom - gap) < 2
         && bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight
     }), { message: `Room menu follows its anchor at ${viewport.width}x${viewport.height}` }).toBe(true)
   }
@@ -196,9 +197,10 @@ test('an open room menu follows its button when the viewport changes', async ({ 
 test('an open room menu follows position-only header reflow', async ({ page, populatedHousehold: _household }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(roomPath())
-  const trigger = page.getByRole('button', { name: 'Rooms', exact: true })
+  const trigger = page.getByRole('button', { name: /^Rooms: / })
   await trigger.click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
+  const gap = await menu.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize) / 2)
   const original = await trigger.boundingBox()
   expect(original).not.toBeNull()
   await page.locator('.game-hud').evaluate((element) => { element.style.paddingBottom = '44px' })
@@ -208,14 +210,14 @@ test('an open room menu follows position-only header reflow', async ({ page, pop
     const anchor = await trigger.boundingBox()
     const bounds = await menu.boundingBox()
     if (!anchor || !bounds) throw new Error('The room trigger and menu must remain visible.')
-    return Math.abs(bounds.y - anchor.y - anchor.height - 8)
+    return Math.abs(bounds.y - anchor.y - anchor.height - gap)
   }).toBeLessThan(1)
   await page.locator('.game-hud').evaluate((element) => element.style.removeProperty('padding-bottom'))
   await expect.poll(async () => {
     const anchor = await trigger.boundingBox()
     const bounds = await menu.boundingBox()
     if (!anchor || !bounds) throw new Error('The room trigger and menu must remain visible.')
-    return Math.abs(bounds.y - anchor.y - anchor.height - 8)
+    return Math.abs(bounds.y - anchor.y - anchor.height - gap)
   }).toBeLessThan(1)
   await page.keyboard.press('Escape')
   await expect(menu).toHaveCount(0)
@@ -226,24 +228,24 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   test(`room previews fit on ${viewport.width}x${viewport.height} screens`, async ({ page, populatedHousehold: _household }) => {
     await page.setViewportSize(viewport)
     await page.goto(roomPath())
-    await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+    await page.getByRole('button', { name: /^Rooms: / }).click()
     const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
     expect(await picker.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     for (const card of await picker.locator('.room-preview-card').all()) {
-      await card.scrollIntoViewIfNeeded()
+      await card.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
       await expect(card).toBeInViewport({ ratio: 1 })
       const bounds = await card.boundingBox()
       expect(bounds?.width).toBeGreaterThanOrEqual(44)
       expect(bounds?.height).toBeGreaterThanOrEqual(44)
     }
-    const trigger = await page.getByRole('button', { name: 'Rooms', exact: true }).boundingBox()
+    const trigger = await page.getByRole('button', { name: /^Rooms: / }).boundingBox()
     const bounds = await picker.boundingBox()
     expect(bounds!.y).toBeGreaterThanOrEqual(trigger!.y + trigger!.height)
     expect(bounds!.x).toBeGreaterThanOrEqual(0)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width)
     expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height)
     await picker.getByRole('menuitemradio', { name: 'Open Bathroom', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toContainText('Bathroom')
+    await expect(page.getByRole('button', { name: /^Rooms: / })).toContainText('Bathroom')
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   })
 }

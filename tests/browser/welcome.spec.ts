@@ -278,7 +278,11 @@ test('the landing remains readable across phones, tablets, short landscapes and 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/welcome')
   await page.addStyleTag({ content: 'html { scrollbar-gutter: stable; }' })
-  for (const [width, height] of [[1440, 960], [1024, 600], [768, 1024], [390, 844], [360, 640], [320, 568], [844, 390], [640, 360], [320, 360]]) {
+  for (const [width, height] of [
+    [3840, 2160], [2560, 1440], [1920, 1080], [1440, 960], [1366, 768], [1280, 720],
+    [1051, 620], [1050, 621], [1024, 600], [801, 621], [800, 620], [768, 1024],
+    [561, 620], [560, 621], [390, 844], [360, 640], [320, 568], [844, 390], [640, 360], [320, 360],
+  ]) {
     await page.setViewportSize({ width, height })
     await page.evaluate(() => document.fonts.ready)
     expect(await layoutProblems(page), `${width}x${height}`).toEqual([])

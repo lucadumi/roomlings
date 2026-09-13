@@ -41,7 +41,7 @@ test('object cards report unavailable 3D instead of rendering SVG previews', { t
 
 test('room-selector spinners give way to the unavailable message without a 2D substitute', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
   await page.goto('/kitchen')
-  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms: / }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false')
   await expect(picker.locator('.room-menu-preview-status')).toHaveText(roomIds.map(() => '3D is unavailable.'))

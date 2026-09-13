@@ -9,12 +9,13 @@ import { cachedHouseholdRoomPreviews, householdRoomPreviews, preloadHouseholdRoo
 import type { RoomPreviewLedger } from './householdRoomPreview.ts'
 import './roomPicker.css'
 
-function menuPosition(bounds: DOMRect) {
-  const width = Math.min(320, window.innerWidth - 24)
-  const top = bounds.bottom + 8
+function menuPosition(bounds: DOMRect, width: number) {
+  const unit = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  const gutter = 0.75 * unit
+  const top = bounds.bottom + 0.5 * unit
   return {
-    left: Math.max(12, Math.min(bounds.left, window.innerWidth - width - 12)),
-    top, width, maxHeight: Math.max(48, window.innerHeight - top - 12),
+    left: Math.max(gutter, Math.min(bounds.left, window.innerWidth - width - gutter)),
+    top, maxHeight: Math.max(3 * unit, window.innerHeight - top - gutter),
   }
 }
 
@@ -73,7 +74,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
   const close = useRef(onClose)
   const restoreFocus = useRef(true)
   const [focusedRoom, setFocusedRoom] = useState(currentRoom)
-  const [position, setPosition] = useState(() => menuPosition(anchor.getBoundingClientRect()))
+  const [position, setPosition] = useState<ReturnType<typeof menuPosition>>()
   const lastPosition = useRef(position)
   const initialImages = cachedHouseholdRoomPreviews({
     components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio),
@@ -84,14 +85,17 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
   close.current = onClose
 
   useLayoutEffect(() => {
+    const element = menu.current
+    if (!element) return
     let frame = 0
     let disposed = false
     const measure = () => {
       if (disposed) return false
       const bounds = anchor.getBoundingClientRect()
       if (!anchor.isConnected || !bounds.width || !bounds.height) { restoreFocus.current = false; close.current(); return false }
-      const next = menuPosition(bounds)
-      if (!Object.keys(next).every((key) => Reflect.get(lastPosition.current, key) === Reflect.get(next, key))) {
+      const next = menuPosition(bounds, element.getBoundingClientRect().width)
+      const previous = lastPosition.current
+      if (!previous || !Object.keys(next).every((key) => Reflect.get(previous, key) === Reflect.get(next, key))) {
         lastPosition.current = next
         setPosition(next)
       }
@@ -103,6 +107,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
     }
     const observer = new ResizeObserver(measure)
     observer.observe(anchor)
+    observer.observe(element)
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
     window.visualViewport?.addEventListener('resize', measure)
@@ -214,11 +219,11 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
           <img src={images[roomId]} alt="" width={560} height={384} draggable={false}
             hidden={!images[roomId] || status === 'loading'} style={{ visibility: images[roomId] && status !== 'loading' ? 'visible' : 'hidden' }} />
           {status === 'loading' ? <span className="room-menu-preview-status" role="status" aria-label={`Loading ${roomCatalog[roomId].name} preview`}>
-            <LoaderCircle size={23} className="spin" aria-hidden="true" />
+            <LoaderCircle size="1.4375rem" className="spin" aria-hidden="true" />
           </span> : status === 'unavailable' && <small className="room-menu-preview-status">3D is unavailable.</small>}
         </span>
         <span className="room-preview-label"><strong>{roomCatalog[roomId].name}</strong><small>{roomId === currentRoom ? 'Current room' : 'Open room'}</small></span>
-        {roomId === currentRoom ? <Check size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}
+        {roomId === currentRoom ? <Check size="1rem" aria-hidden="true" /> : <ArrowRight size="1rem" aria-hidden="true" />}
       </button>)}
     </div>
   </div>, document.body)

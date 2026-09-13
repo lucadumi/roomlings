@@ -1,6 +1,6 @@
 import { expect, test } from './account-fixtures.ts'
 import type { Locator } from '@playwright/test'
-import { openGroceryForm, waitForRoomReady } from './fixtures.ts'
+import { minimumControlSize, openGroceryForm, waitForRoomReady } from './fixtures.ts'
 
 async function surface(control: Locator) {
   return control.evaluate((element) => {
@@ -15,10 +15,11 @@ async function expectNoOverflow(container: Locator) {
 }
 
 async function expectTouchTarget(control: Locator) {
+  const minimum = await minimumControlSize(control)
   const box = await control.boundingBox()
   expect(box).not.toBeNull()
-  expect(box!.width).toBeGreaterThanOrEqual(44)
-  expect(box!.height).toBeGreaterThanOrEqual(44)
+  expect(box!.width).toBeGreaterThanOrEqual(minimum)
+  expect(box!.height).toBeGreaterThanOrEqual(minimum)
 }
 
 test.describe('UI polish', () => {
@@ -183,7 +184,7 @@ test.describe('UI polish', () => {
       await expectTouchTarget(panel.getByRole('button', { name: 'Fruit & veg', exact: true }))
       const search = page.getByRole('textbox', { name: 'Search grocery runs', exact: true })
       await search.fill('Farmers')
-      await expect(search).toHaveCSS('font-size', '16px')
+      await expect(search).toHaveCSS('font-size', '12px')
       await expect(page.locator('.search-input')).toHaveCSS('outline-style', 'solid')
       await expect(page.locator('.expense-row')).toHaveCount(1)
       await expectTouchTarget(page.getByRole('button', { name: 'Remove Farmers market finds', exact: true }))

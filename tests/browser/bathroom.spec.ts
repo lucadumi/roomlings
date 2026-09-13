@@ -170,7 +170,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await waitForRoomReady(page)
     await frameRoom(page)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-    await expect(page.getByRole('button', { name: 'Rooms', exact: true })).toBeInViewport({ ratio: 1 })
+    await expect(page.getByRole('button', { name: /^Rooms: / })).toBeInViewport({ ratio: 1 })
     await expect(page.getByRole('button', { name: 'Chores', exact: true })).toBeInViewport({ ratio: 1 })
     await page.getByRole('button', { name: 'Chores', exact: true }).click()
     await expect(page.getByRole('region', { name: 'Household chores.', exact: true })).toBeVisible()

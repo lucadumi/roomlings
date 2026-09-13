@@ -45,7 +45,7 @@ export function ExpenseForm({
     }} disabled={busy}>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category]}</option>)}</Dropdown></label></div>
     <SplitParticipants members={household.members} selected={participants} onChange={setParticipants} amount={cents} currency={household.currency} disabled={busy} />
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={busy || submitDisabled}>{busy ? <LoadingIcon size={17} tone="light" /> : <Plus size={17} />}{busy ? 'Adding to the kitchen...' : submitLabel}</button>
+    <button className="button primary full" disabled={busy || submitDisabled}>{busy ? <LoadingIcon size={17} tone="light" /> : <Plus size="1.0625rem" />}{busy ? 'Adding to the kitchen...' : submitLabel}</button>
     <p className="form-footnote">Shared equally, with any spare cents split fairly.</p>
   </Form>
 }

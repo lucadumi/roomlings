@@ -86,9 +86,9 @@ test('object and editor panels keep their close control without mode badges', { 
         const rowBounds = (await row.boundingBox())!
         const editBounds = (await edit.boundingBox())!
         expect(editBounds.width).toBeLessThan(rowBounds.width * 0.75)
-        expect(editBounds.width).toBeGreaterThanOrEqual(44)
+        expect(editBounds.width).toBeGreaterThanOrEqual(width <= 800 ? 32 : 44)
         expect(editBounds.x + editBounds.width).toBeCloseTo(rowBounds.x + rowBounds.width, 0)
-        if (width <= 390) expect(editBounds.height).toBeGreaterThanOrEqual(44)
+        if (width <= 390) expect(editBounds.height).toBeGreaterThanOrEqual(32)
       }
       const header = page.locator('.room-panel-header')
       await expect(header.locator('.room-panel-mode')).toHaveCount(0)
@@ -113,9 +113,10 @@ test('the editor Back button stays beside the section tabs on desktop and narrow
     const alignment = await editor.locator('.room-editor-navigation').evaluate((element) => {
       const button = element.querySelector('button')!.getBoundingClientRect()
       const tabs = element.querySelector('nav')!.getBoundingClientRect()
-      return { gap: tabs.left - button.right, offset: Math.abs(button.y + button.height / 2 - (tabs.y + tabs.height / 2)) }
+      return { gap: tabs.left - button.right, expectedGap: parseFloat(getComputedStyle(document.documentElement).fontSize) / 2,
+        offset: Math.abs(button.y + button.height / 2 - (tabs.y + tabs.height / 2)) }
     })
-    expect(alignment.gap).toBeCloseTo(8, 0)
+    expect(alignment.gap).toBeCloseTo(alignment.expectedGap, 0)
     expect(alignment.offset).toBeLessThan(1)
     expect(await editor.locator('.room-editor-toolbar').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     for (const control of await editor.locator('.room-editor-toolbar button').all()) {
@@ -123,8 +124,8 @@ test('the editor Back button stays beside the section tabs on desktop and narrow
       if (width <= 390) {
         const bounds = await control.boundingBox()
         expect(bounds).not.toBeNull()
-        expect(bounds!.width).toBeGreaterThanOrEqual(44)
-        expect(bounds!.height).toBeGreaterThanOrEqual(44)
+        expect(bounds!.width).toBeGreaterThanOrEqual(32)
+        expect(bounds!.height).toBeGreaterThanOrEqual(32)
       }
     }
   }

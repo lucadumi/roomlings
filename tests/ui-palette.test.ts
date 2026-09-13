@@ -13,7 +13,7 @@ test('global UI tokens keep the original warm Roomlings theme', () => {
     '--palette-honey: #f2cc8f;',
     '--palette-clay: #e07a5f;',
     '--palette-red: #b8533b;',
-    '--paper-texture: radial-gradient(#3d405b18 1.5px, transparent 1.8px);',
+    '--paper-texture: radial-gradient(#3d405b18 0.09375rem, transparent 0.1125rem);',
     '--action-fill: var(--palette-red);',
   ]) assert.match(style, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   assert.doesNotMatch(style, /--palette-(?:orange|teal|yellow|charcoal|green):/)

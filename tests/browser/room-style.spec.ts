@@ -38,7 +38,7 @@ async function roomScreenshot(page: Page) {
 }
 
 async function savedRoomImages(page: Page) {
-  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms: / }).click()
   const menu = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(menu.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 })
   const images: Record<string, string> = {}
