@@ -17,7 +17,7 @@ export async function waitForTourReady(page: Page) {
 
 export async function minimumControlSize(control: Locator) {
   return control.evaluate((element) => {
-    if (innerWidth <= 1024 && element.matches('.icon-button')) return 32
+    if (element.matches('.icon-button')) return innerWidth <= 1024 ? 32 : matchMedia('(any-pointer: coarse)').matches ? 44 : 36
     if (element.closest('.modal') || element.matches('input, select, textarea, [role="combobox"], .participant-option, .world-hotspot')) return 44
     if (element.closest('.game-home, .room-panel')) return innerWidth <= 1024 ? 32 : matchMedia('(any-pointer: coarse)').matches ? 44 : 36
     return 44

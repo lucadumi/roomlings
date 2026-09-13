@@ -578,6 +578,7 @@
 }
 @media (max-width: 1024px) {
   .game-app .modal .icon-button, .modal .modal-close, .feedback .feedback-dismiss { --control-compact-height: max(32px, 2.25rem); padding: 0.25rem; }
+  .modal .participant-option { min-height: 44px; }
 }
 @media (max-width: 1024px) and (pointer: fine) {
   .modal .field :is(input, select, textarea), .game-app .field :is(input, select, textarea),
