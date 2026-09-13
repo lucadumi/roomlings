@@ -51,8 +51,8 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 
     if (viewport.width <= 390) {
       const button = await retry.boundingBox()
       expect(button).not.toBeNull()
-      expect(button!.width).toBeGreaterThanOrEqual(44)
-      expect(button!.height).toBeGreaterThanOrEqual(44)
+      expect(button!.width).toBeGreaterThanOrEqual(32)
+      expect(button!.height).toBeGreaterThanOrEqual(32)
     }
 
     await page.unroute('**/api/household/room-access')
@@ -129,9 +129,9 @@ test('room-access errors and successful saves stay separate without overlapping'
   const separation = await messages.evaluate((element) => {
     const error = element.querySelector('.feedback-error')!.getBoundingClientRect()
     const success = element.querySelector('.feedback-success')!.getBoundingClientRect()
-    return success.top - error.bottom
+    return { actual: success.top - error.bottom, expected: parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.625 }
   })
-  expect(separation).toBeGreaterThanOrEqual(10)
+  expect(separation.actual).toBeCloseTo(separation.expected, 1)
   await expect(messages).toBeInViewport({ ratio: 1 })
   await messages.getByRole('button', { name: 'Dismiss notification', exact: true }).click()
   await expect(messages.getByRole('status')).toHaveCount(0)

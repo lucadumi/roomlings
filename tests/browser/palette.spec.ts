@@ -133,7 +133,7 @@ test('the closing invitation keeps its folded outline, shared app shadow and wor
   await expect(page.getByText('Sign in to create or join your household.', { exact: true })).toHaveCount(0)
   const letter = page.locator('#get-started')
   const shadow = page.locator('.welcome-invitation-shadow')
-  const expectedShadow = await page.evaluate(() => {
+  const readShadow = () => page.evaluate(() => {
     const reference = document.createElement('div')
     reference.style.filter = 'var(--paper-shadow)'
     document.body.append(reference)
@@ -141,9 +141,10 @@ test('the closing invitation keeps its folded outline, shared app shadow and wor
     reference.remove()
     return value
   })
+  const expectedShadow = await readShadow()
   expect(expectedShadow).not.toBe('none')
   expect(expectedShadow.match(/drop-shadow/g)).toHaveLength(1)
-  expect(expectedShadow).toContain('0px 5px 0px')
+  expect(expectedShadow).toMatch(/0px [\d.]+px 0px/)
   const plant = letter.locator('.welcome-invitation-plant')
   const action = letter.getByRole('link', { name: 'Start sharing', exact: true })
   for (const [width, height] of [[1440, 960], [390, 844], [320, 568], [844, 390]]) {
@@ -151,7 +152,7 @@ test('the closing invitation keeps its folded outline, shared app shadow and wor
     await letter.scrollIntoViewIfNeeded()
     await expect(letter).toHaveCSS('background-color', 'rgb(255, 255, 255)')
     await expect(letter).toHaveCSS('background-image', 'none')
-    await expect(shadow).toHaveCSS('filter', expectedShadow)
+    await expect(shadow).toHaveCSS('filter', await readShadow())
     await expect(letter).toHaveCSS('border-top-style', 'solid')
     await expect(plant).toBeVisible()
     await expect(plant).toHaveAttribute('aria-hidden', 'true')

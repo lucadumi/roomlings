@@ -31,7 +31,7 @@ export const retiredComponentKinds = [
   'bathroom-scales', 'kitchen-scale',
   'rice-cooker', 'air-purifier', 'waffle-maker', 'reed-diffuser', 'first-aid-kit',
   'record-player', 'cereal-dispenser', 'toilet-brush', 'ironing-board', 'shower-squeegee',
-  'tissue-box', 'wall-calendar', 'hair-dryer', 'egg-basket', 'vacuum', 'toothbrush-holder', 'dish-rack',
+  'tissue-box', 'wall-calendar', 'hair-dryer', 'egg-basket', 'vacuum', 'toothbrush-holder', 'dish-rack', 'bread-box',
 ] as const satisfies readonly ComponentKind[]
 const retiredKinds: ReadonlySet<ComponentKind> = new Set(retiredComponentKinds)
 
@@ -628,10 +628,11 @@ export function newHouseholdRoomComponents(createId: () => string): RoomComponen
 export function getRoomComponents(household: { roomComponents?: readonly RoomComponent[] }): readonly RoomComponent[] {
   const components = household.roomComponents
   if (!components) return defaultRoomComponents()
-  const retiredBin = (component: RoomComponent) => component.kind === 'bins' && component.roomId === 'living-room' && component.installed
-  // Keep old bin identities and linked history, but retire their living-room placement into Storage.
-  const current = components.some(retiredBin)
-    ? components.map((component) => retiredBin(component) ? { ...component, installed: false } : component)
+  const retiredPlacement = (component: RoomComponent) => component.installed
+    && (component.kind === 'bread-box' || (component.kind === 'bins' && component.roomId === 'living-room'))
+  // Keep owned identities and linked history while retiring these placements into Storage.
+  const current = components.some(retiredPlacement)
+    ? components.map((component) => retiredPlacement(component) ? { ...component, installed: false } : component)
     : components
   // Older saved layouts have no living room. Any saved record, including a removed
   // object, marks it as initialized so customization is never reset.

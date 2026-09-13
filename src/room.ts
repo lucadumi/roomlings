@@ -283,7 +283,7 @@ export function buildRoom(room: Group, { material, box, cylinder }: Shapes, styl
     [1.145, 0.02, 1, 0.3], [1.49, -0.045, 1, -0.3],
     [1.29, 0.045, 2, -0.12],
   ]) {
-    const plate = cylinder(sink, 0.17, 0.02, [x, 1.5275 + layer * 0.02, z], porcelain, 0.17)
+    const plate = cylinder(sink, 0.235, 0.02, [x, 1.5275 + layer * 0.02, z], porcelain, 0.235)
     plate.name = 'Kitchen sink dish'
     plate.scale.z = 0.72
     plate.rotation.y = turn

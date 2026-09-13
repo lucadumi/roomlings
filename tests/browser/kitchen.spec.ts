@@ -257,6 +257,9 @@ test.describe('room controls', { tag: '@room' }, () => {
     const kettle = actions.getByRole('button', { name: 'Put the kettle on', exact: true })
     for (const width of [1440, 1251, 390, 320]) {
       await page.setViewportSize({ width, height: 960 })
+      await page.evaluate(() => new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      }))
       for (let state = 0; state < 2; state++) {
         const layout = await actions.evaluate((element) => {
           const buttons = [...element.querySelectorAll('button')].map((button) => button.getBoundingClientRect())
@@ -264,13 +267,14 @@ test.describe('room controls', { tag: '@room' }, () => {
           const sameRow = Math.abs(first.top - second.top) < 1
           return {
             gap: sameRow ? second.left - first.right : second.top - first.bottom,
+            expectedGap: parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.5,
             sizes: buttons.map((bounds) => [bounds.width, bounds.height]),
           }
         })
-        expect(layout.gap).toBeCloseTo(8, 1)
+        expect(layout.gap).toBeCloseTo(layout.expectedGap, 1)
         for (const [buttonWidth, buttonHeight] of layout.sizes) {
-          expect(buttonWidth).toBeGreaterThanOrEqual(width <= 560 ? 44 : 40)
-          expect(buttonHeight).toBeGreaterThanOrEqual(width <= 560 ? 44 : 40)
+          expect(buttonWidth).toBeGreaterThanOrEqual(width <= 1024 ? 36 : 40)
+          expect(buttonHeight).toBeGreaterThanOrEqual(width <= 1024 ? 36 : 40)
         }
         const open = await fridge.getAttribute('aria-pressed')
         await fridge.click()

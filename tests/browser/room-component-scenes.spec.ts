@@ -299,7 +299,7 @@ for (const roomId of roomIds) {
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
-    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 17)
+    expect(installed.length).toBe(roomId === 'kitchen' ? 65 : roomId === 'bathroom' ? 34 : 17)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-all-components-original.png`), animations: 'disabled' })
   })
 
@@ -323,7 +323,7 @@ for (const roomId of roomIds) {
     await page.getByRole('button', { name: 'Room objects', exact: true }).click()
     await expect(page.getByRole('list', { name: 'Installed room objects', exact: true }).getByRole('button', { name: /^Open .+ details$/ })).toHaveCount(new Set(installed.map((component) => component.kind)).size)
     await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-    await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+    await page.getByRole('button', { name: /^Rooms: / }).click()
     const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
     await expect(picker.getByRole('group', { name: 'Choose a room', exact: true })).toHaveAttribute('data-preview-source', 'saved')
     await expect.poll(() => picker.locator('img').evaluateAll((images) => images.every((image) =>
@@ -417,7 +417,7 @@ test('configured objects remain reachable without WebGL and saved previews never
   await page.keyboard.press('Enter')
   await expect(page.getByRole('region', { name: 'Coffee machine manual state', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Close panel', exact: true }).click()
-  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms: / }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
   await expect(picker.getByText('3D is unavailable.', { exact: true })).toHaveCount(roomIds.length)
   expect(await picker.locator('img').evaluateAll((images) => images.every((image) => !image.getAttribute('src')))).toBe(true)

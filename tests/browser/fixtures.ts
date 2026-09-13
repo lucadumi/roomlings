@@ -15,6 +15,15 @@ export async function waitForTourReady(page: Page) {
   await expect(page.locator('.welcome-tour')).toHaveAttribute('data-scene', 'ready', { timeout: 15_000 })
 }
 
+export async function minimumControlSize(control: Locator) {
+  return control.evaluate((element) => {
+    if (element.matches('.icon-button')) return innerWidth <= 1024 ? 32 : matchMedia('(any-pointer: coarse)').matches ? 44 : 36
+    if (element.closest('.modal') || element.matches('input, select, textarea, [role="combobox"], .participant-option, .world-hotspot')) return 44
+    if (element.closest('.game-home, .room-panel')) return innerWidth <= 1024 ? 32 : matchMedia('(any-pointer: coarse)').matches ? 44 : 36
+    return 44
+  })
+}
+
 export async function trackDrawing(page: Page) {
   await page.addInitScript(() => {
     let draws = 0
@@ -123,7 +132,7 @@ export async function closeRoomEditor(page: Page) {
 }
 
 export async function selectRoom(page: Page, roomId: RoomId) {
-  await page.getByRole('button', { name: 'Rooms', exact: true }).click()
+  await page.getByRole('button', { name: /^Rooms: / }).click()
   const picker = page.getByRole('menu', { name: 'Rooms', exact: true })
   await picker.getByRole('menuitemradio', { name: `Open ${roomCatalog[roomId].name}`, exact: true }).click()
   await expect(picker).toHaveCount(0)

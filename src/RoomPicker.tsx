@@ -9,12 +9,13 @@ import { cachedHouseholdRoomPreviews, householdRoomPreviews, preloadHouseholdRoo
 import type { RoomPreviewLedger } from './householdRoomPreview.ts'
 import './roomPicker.css'
 
-function menuPosition(bounds: DOMRect) {
-  const width = Math.min(320, window.innerWidth - 24)
-  const top = bounds.bottom + 8
+function menuPosition(bounds: DOMRect, width: number) {
+  const unit = parseFloat(getComputedStyle(document.documentElement).fontSize)
+  const gutter = 0.75 * unit
+  const top = bounds.bottom + 0.5 * unit
   return {
-    left: Math.max(12, Math.min(bounds.left, window.innerWidth - width - 12)),
-    top, width, maxHeight: Math.max(48, window.innerHeight - top - 12),
+    left: Math.max(gutter, Math.min(bounds.left, window.innerWidth - width - gutter)),
+    top, maxHeight: Math.max(3 * unit, window.innerHeight - top - gutter),
   }
 }
 
@@ -27,6 +28,7 @@ type SavedPreviewProps = {
 }
 
 export function RoomPreviewPreloader({ householdId, components, roomStyle = 'original', roomStyles, ledger, suspended = false }: SavedPreviewProps & { suspended?: boolean }) {
+  const previewArea = useRef<HTMLSpanElement>(null)
   const appearance = JSON.stringify([components, roomStyles, ledger])
   useLayoutEffect(() => {
     if (suspended) return
@@ -36,7 +38,9 @@ export function RoomPreviewPreloader({ householdId, components, roomStyle = 'ori
     let frame = 0
     const warm = () => {
       if (controller.signal.aborted) return
-      void preloadHouseholdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio) }, householdId, controller.signal)
+      const area = previewArea.current?.getBoundingClientRect()
+      if (!area?.width || !area.height) return
+      void preloadHouseholdRoomPreviews({ components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio, area) }, householdId, controller.signal)
         .catch((error: unknown) => {
           if (controller.signal.aborted && error === controller.signal.reason) return
           console.warn('Saved room previews could not be prepared:', error instanceof Error ? error.message : error)
@@ -44,23 +48,28 @@ export function RoomPreviewPreloader({ householdId, components, roomStyle = 'ori
     }
     const schedule = () => {
       if (scheduled || !document.querySelector('.world-canvas:not([hidden]) canvas')) return
+      const area = previewArea.current?.getBoundingClientRect()
+      if (!area?.width || !area.height) return
       scheduled = true
       observer.disconnect()
       if (window.requestIdleCallback) idle = window.requestIdleCallback(warm, { timeout: 1500 })
       else frame = requestAnimationFrame(() => { frame = requestAnimationFrame(warm) })
     }
     const observer = new MutationObserver(schedule)
+    const resize = new ResizeObserver(schedule)
+    if (previewArea.current) resize.observe(previewArea.current)
     const home = document.querySelector('.game-home')
     if (home) observer.observe(home, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] })
     schedule()
     return () => {
       controller.abort()
       observer.disconnect()
+      resize.disconnect()
       if (idle !== undefined) window.cancelIdleCallback(idle)
       cancelAnimationFrame(frame)
     }
   }, [householdId, roomStyle, appearance, suspended])
-  return null
+  return <span className="room-preview-preload" aria-hidden="true"><span className="room-menu-preview" ref={previewArea} /></span>
 }
 
 export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId, components, roomStyle = 'original', roomStyles, ledger }: SavedPreviewProps & {
@@ -73,25 +82,30 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
   const close = useRef(onClose)
   const restoreFocus = useRef(true)
   const [focusedRoom, setFocusedRoom] = useState(currentRoom)
-  const [position, setPosition] = useState(() => menuPosition(anchor.getBoundingClientRect()))
+  const [position, setPosition] = useState<ReturnType<typeof menuPosition>>()
   const lastPosition = useRef(position)
+  const initialArea = document.querySelector('.room-preview-preload .room-menu-preview')?.getBoundingClientRect()
   const initialImages = cachedHouseholdRoomPreviews({
-    components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio),
+    components, roomStyle, roomStyles, ledger, sizes: roomSelectorPreviewSizes(window.devicePixelRatio, initialArea),
   }, householdId)
   const [images, setImages] = useState<Partial<Record<RoomId, string>>>(initialImages ?? {})
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>(initialImages ? 'ready' : 'loading')
+  const [previewsVisible, setPreviewsVisible] = useState(!initialArea || initialArea.width > 0)
   const appearance = JSON.stringify([components, roomStyles, ledger])
   close.current = onClose
 
   useLayoutEffect(() => {
+    const element = menu.current
+    if (!element) return
     let frame = 0
     let disposed = false
     const measure = () => {
       if (disposed) return false
       const bounds = anchor.getBoundingClientRect()
       if (!anchor.isConnected || !bounds.width || !bounds.height) { restoreFocus.current = false; close.current(); return false }
-      const next = menuPosition(bounds)
-      if (!Object.keys(next).every((key) => Reflect.get(lastPosition.current, key) === Reflect.get(next, key))) {
+      const next = menuPosition(bounds, element.getBoundingClientRect().width)
+      const previous = lastPosition.current
+      if (!previous || !Object.keys(next).every((key) => Reflect.get(previous, key) === Reflect.get(next, key))) {
         lastPosition.current = next
         setPosition(next)
       }
@@ -103,6 +117,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
     }
     const observer = new ResizeObserver(measure)
     observer.observe(anchor)
+    observer.observe(element)
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
     window.visualViewport?.addEventListener('resize', measure)
@@ -152,6 +167,13 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
     let version = 0
     let previousSize = ''
     const render = () => {
+      if (![...areas.current.values()].some((area) => area.getBoundingClientRect().width > 0)) {
+        version++
+        previousSize = ''
+        setPreviewsVisible(false)
+        return
+      }
+      setPreviewsVisible(true)
       const ratio = Math.min(window.devicePixelRatio, 2)
       const sizes = Object.fromEntries(roomIds.map((roomId) => {
         const area = areas.current.get(roomId)?.getBoundingClientRect()
@@ -204,7 +226,7 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
         buttons.current.get(next)?.focus({ preventScroll: true })
       }
     }}>
-    <div className="room-preview-grid" role="group" aria-label="Choose a room" aria-busy={status === 'loading'} data-preview-source="saved">
+    <div className="room-preview-grid" role="group" aria-label="Choose a room" aria-busy={previewsVisible && status === 'loading'} data-preview-source="saved">
       {roomIds.map((roomId) => <button type="button" key={roomId} className="room-preview-card"
         ref={(button) => { if (button) buttons.current.set(roomId, button); else buttons.current.delete(roomId) }}
         role="menuitemradio" aria-label={`Open ${roomCatalog[roomId].name}`} aria-checked={roomId === currentRoom}
@@ -214,11 +236,11 @@ export function RoomPicker({ currentRoom, onSelect, onClose, anchor, householdId
           <img src={images[roomId]} alt="" width={560} height={384} draggable={false}
             hidden={!images[roomId] || status === 'loading'} style={{ visibility: images[roomId] && status !== 'loading' ? 'visible' : 'hidden' }} />
           {status === 'loading' ? <span className="room-menu-preview-status" role="status" aria-label={`Loading ${roomCatalog[roomId].name} preview`}>
-            <LoaderCircle size={23} className="spin" aria-hidden="true" />
+            <LoaderCircle size="1.4375rem" className="spin" aria-hidden="true" />
           </span> : status === 'unavailable' && <small className="room-menu-preview-status">3D is unavailable.</small>}
         </span>
         <span className="room-preview-label"><strong>{roomCatalog[roomId].name}</strong><small>{roomId === currentRoom ? 'Current room' : 'Open room'}</small></span>
-        {roomId === currentRoom ? <Check size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}
+        {roomId === currentRoom ? <Check size="1rem" aria-hidden="true" /> : <ArrowRight size="1rem" aria-hidden="true" />}
       </button>)}
     </div>
   </div>, document.body)

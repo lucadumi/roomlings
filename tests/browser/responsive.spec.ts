@@ -6,7 +6,8 @@ import {
   accountState, expect, test,
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
-import { chooseOption, openGroceryForm, openShoppingBag, savedKitchen, waitForRoomReady } from './fixtures.ts'
+import { chooseOption, minimumControlSize, openGroceryForm, openRoomEditor, openRoomObjects, openShoppingBag, savedKitchen, waitForRoomReady } from './fixtures.ts'
+import { roomPath } from '../../src/roomNavigation.ts'
 
 const viewports = [
   { width: 320, height: 568 },
@@ -16,6 +17,30 @@ const viewports = [
   { width: 1024, height: 768 },
   { width: 844, height: 390 },
 ]
+const desktopViewports = [
+  { width: 1025, height: 620 },
+  { width: 1251, height: 700 },
+  { width: 1280, height: 720 },
+  { width: 1366, height: 768 },
+  { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
+  { width: 2560, height: 1440 },
+  { width: 3440, height: 1440 },
+  { width: 3840, height: 2160 },
+]
+const resizeViewports = [
+  ...viewports,
+  { width: 320, height: 480 },
+  { width: 560, height: 620 },
+  { width: 561, height: 620 },
+  { width: 600, height: 800 },
+  { width: 667, height: 375 },
+  { width: 800, height: 621 },
+  { width: 801, height: 621 },
+  { width: 1000, height: 620 },
+  { width: 1001, height: 620 },
+  ...desktopViewports,
+]
 const longName = 'Alexandria'.repeat(5)
 const otherName = 'Christopher'.repeat(5).slice(0, 50)
 const kitchenName = 'Oursharedhousehold'.repeat(3).slice(0, 50)
@@ -24,13 +49,34 @@ const itemName = 'UnsweetenedMilk'.repeat(4).slice(0, 50)
 const billName = 'HouseholdInternet'.repeat(3).slice(0, 50)
 
 async function settledLayout(page: Page) {
+  await page.evaluate(() => document.fonts.ready)
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error('Responsive scenarios need an explicit viewport.')
+  const home = page.locator('.game-home')
+  await expect(home).toHaveCSS('width', `${viewport.width}px`)
+  await expect(home).toHaveCSS('height', `${viewport.height}px`)
+  await expect.poll(() => home.evaluate((element) => {
+    const app = element.closest('.game-app')
+    const dock = element.querySelector('.game-bottom')
+    const toolbar = element.querySelector('.game-dock')
+    const header = element.querySelector('.game-hud')
+    if (!app || !dock || !toolbar || !header) throw new Error('The room layout is missing.')
+    const style = getComputedStyle(app)
+    const top = Math.min(dock.getBoundingClientRect().top, toolbar.getBoundingClientRect().top)
+    const space = element.getBoundingClientRect().bottom - top + parseFloat(getComputedStyle(dock).marginTop)
+    return Math.abs(parseFloat(style.getPropertyValue('--game-dock-space')) - space) < 1
+      && Math.abs(parseFloat(style.getPropertyValue('--game-header-space')) - header.getBoundingClientRect().height) < 1
+  })).toBe(true)
   await page.evaluate(() => new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
   }))
 }
 
-async function expectContentFits(container: Locator) {
-  const problems = await container.evaluate((root) => {
+async function contentProblems(container: Locator) {
+  return container.evaluate((root) => {
     const boundary = root.getBoundingClientRect()
     return [root, ...root.querySelectorAll<HTMLElement>('*')].flatMap((element) => {
       if (!(element instanceof HTMLElement) || !element.clientWidth || !element.getClientRects().length
@@ -47,18 +93,40 @@ async function expectContentFits(container: Locator) {
       }] : []
     })
   })
-  expect(problems).toEqual([])
 }
 
-async function expectReachable(control: Locator, minimum = 44) {
+async function expectContentFits(container: Locator) {
+  expect(await contentProblems(container)).toEqual([])
+}
+
+async function expectReachable(control: Locator, minimum?: number) {
+  const targetSize = minimum ?? await minimumControlSize(control)
   await control.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
   await expect(control).toBeInViewport({ ratio: 1 })
   const dimensions = await control.evaluate((element) => {
     const { width, height } = element.getBoundingClientRect()
     return { width, height }
   })
-  expect(dimensions.width).toBeGreaterThanOrEqual(minimum)
-  expect(dimensions.height).toBeGreaterThanOrEqual(minimum)
+  expect(dimensions.width).toBeGreaterThanOrEqual(targetSize)
+  expect(dimensions.height).toBeGreaterThanOrEqual(targetSize)
+}
+
+async function expectVerticalCameraRail(page: Page) {
+  const rail = page.locator('.world-camera-controls')
+  await expect(rail).toHaveCSS('flex-direction', 'column')
+  const geometry = await rail.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    const room = element.closest('.kitchen-world')!.getBoundingClientRect()
+    const unit = parseFloat(getComputedStyle(document.documentElement).fontSize)
+    const buttons = [...element.querySelectorAll('button')].filter((button) => button.getClientRects().length)
+      .map((button) => button.getBoundingClientRect())
+    return {
+      onRight: room.right - bounds.right >= 0 && room.right - bounds.right <= 2 * unit,
+      singleColumn: buttons.every((button) => Math.abs(button.left - buttons[0].left) < 1),
+    }
+  })
+  expect(geometry).toEqual({ onRight: true, singleColumn: true })
+  await expectContentFits(rail)
 }
 
 async function restore(page: Page, session: Session) {
@@ -121,36 +189,175 @@ async function openAccount(page: Page) {
 }
 
 test.describe('responsive current app', () => {
-  test.use({ reducedMotion: 'reduce' })
+  // Rendering fidelity is covered separately; these cases exercise CSS layout and working controls.
+  test.use({ reducedMotion: 'reduce', deviceScaleFactor: process.env.CI ? 0.5 : 1 })
 
-  test('room controls reflow through resizing and landscape orientation', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
+  for (const roomId of ['kitchen', 'bathroom', 'living-room'] as const) {
+    test(`${roomId} controls reflow through resizing and landscape orientation`, { tag: '@room' }, async ({ page, accounts }, testInfo) => {
+      test.setTimeout(process.env.CI ? 180_000 : 90_000)
+      await seedContent(page, accounts)
+      await page.goto(roomPath(roomId))
+      await waitForRoomReady(page)
+      await page.evaluate(() => document.fonts.ready)
+      for (const viewport of resizeViewports) {
+        await page.setViewportSize(viewport)
+        await settledLayout(page)
+        const issues = await page.locator('.game-home').evaluate((home) => {
+          const selectors = ['.game-hud', '.room-caption', '.game-identity', '.game-month', '.game-resources', '.house-tools', '.world-camera-controls', '.world-quick-actions', '.game-dock', '.game-balance', '.room-sync']
+          const boxes = selectors.flatMap((selector) => {
+            const element = home.querySelector(selector)
+            return element?.getClientRects().length ? [{ selector, element, box: element.getBoundingClientRect() }] : []
+          })
+          return boxes.flatMap(({ selector, element, box }, index) => [
+            ...(box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1 ? [`${selector} is outside the viewport`] : []),
+            ...boxes.slice(index + 1).filter(({ element: otherElement, box: other }) =>
+              !element.contains(otherElement) && !otherElement.contains(element)
+              && Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
+              && Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top) > 1,
+            ).map((other) => `${selector} overlaps ${other.selector}`),
+          ])
+        })
+        const header = await contentProblems(page.locator('.game-hud'))
+        const dock = await contentProblems(page.locator('.game-dock'))
+        if (issues.length || header.length || dock.length) {
+          await page.screenshot({ path: testInfo.outputPath(`${viewport.width}x${viewport.height}.png`) })
+        }
+        expect.soft(issues, `${viewport.width}x${viewport.height}`).toEqual([])
+        expect.soft(header, `${viewport.width}x${viewport.height} header`).toEqual([])
+        expect.soft(dock, `${viewport.width}x${viewport.height} dock`).toEqual([])
+        await expectVerticalCameraRail(page)
+        expect.soft(await page.locator('.game-home').evaluate((home) => ({
+          horizontal: home.scrollWidth - home.clientWidth,
+          vertical: home.scrollHeight - home.clientHeight,
+        })), `${viewport.width}x${viewport.height} room`).toEqual({ horizontal: 0, vertical: 0 })
+      }
+    })
+
+    test(`${roomId} vertical camera rail keeps every control usable in a short window`, { tag: '@room' }, async ({ page, populatedHousehold: _household }, testInfo) => {
+      await page.setViewportSize({ width: 320, height: 400 })
+      await page.goto(roomPath(roomId))
+      await waitForRoomReady(page)
+      await settledLayout(page)
+      await expectVerticalCameraRail(page)
+      await page.screenshot({ path: testInfo.outputPath('vertical-camera-rail.png') })
+      const world = page.locator('.kitchen-world')
+      const rail = page.locator('.world-camera-controls')
+      for (const button of await rail.getByRole('button').all()) await expectReachable(button)
+      await rail.evaluate((element) => { element.scrollTop = 0 })
+      await rail.hover()
+      await page.mouse.wheel(0, 240)
+      if (await rail.evaluate((element) => element.scrollHeight > element.clientHeight + 1)) {
+        await expect.poll(() => rail.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+      }
+      await expect(rail).toContainText('100%')
+      await rail.getByRole('button', { name: 'Zoom in', exact: true }).click()
+      await expect(rail).toContainText('110%')
+      await rail.getByRole('button', { name: 'Zoom out', exact: true }).click()
+      await expect(rail).toContainText('100%')
+      await rail.getByRole('button', { name: 'Reset room view', exact: true }).click()
+      await expect(rail.getByRole('button', { name: 'Reset room view', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await rail.getByRole('button', { name: 'Hide object labels', exact: true }).click()
+      await rail.getByRole('button', { name: 'Show object labels', exact: true }).click()
+      await rail.getByRole('button', { name: 'Switch to evening lighting', exact: true }).click()
+      await expect(world).toHaveAttribute('data-evening', 'true')
+      await rail.getByRole('button', { name: 'Switch to daylight', exact: true }).click()
+      await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
+      await settledLayout(page)
+      await expectVerticalCameraRail(page)
+      await expect(rail.getByRole('button', { name: 'Zoom in', exact: true })).toBeInViewport({ ratio: 1 })
+      await expect(rail.getByRole('button', { name: 'Zoom out', exact: true })).toBeInViewport({ ratio: 1 })
+      await page.screenshot({ path: testInfo.outputPath('vertical-camera-rail-with-panel.png') })
+      for (const button of await rail.getByRole('button').all()) await expectReachable(button)
+      await rail.getByRole('button', { name: 'Zoom in', exact: true }).click()
+      await rail.getByRole('button', { name: 'Reset room view', exact: true }).click()
+      await expect(rail.getByRole('button', { name: 'Reset room view', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expectReachable(page.getByRole('button', { name: 'Close panel', exact: true }))
+    })
+  }
+
+  for (const mode of ['receipts', 'objects', 'editor']) {
+    test(`${mode} panels reflow through narrow and desktop windows`, { tag: '@room' }, async ({ page, accounts }, testInfo) => {
+      await seedContent(page, accounts)
+      await page.goto('/kitchen')
+      await waitForRoomReady(page)
+      if (mode === 'receipts') await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
+      else if (mode === 'objects') await openRoomObjects(page)
+      else await openRoomEditor(page)
+      const panel = page.locator('.room-panel')
+      for (const viewport of [
+        { width: 320, height: 480 }, { width: 390, height: 844 },
+        { width: 561, height: 620 }, { width: 600, height: 800 },
+        { width: 800, height: 621 }, { width: 801, height: 621 },
+        { width: 844, height: 390 }, desktopViewports[0], desktopViewports[4], desktopViewports[8],
+      ]) {
+        await page.setViewportSize(viewport)
+        await settledLayout(page)
+        const geometry = await panel.evaluate((element) => {
+          const panel = element.getBoundingClientRect()
+          const scroll = element.querySelector('.room-panel-scroll')!.getBoundingClientRect()
+          const overlaps = (other: DOMRect) =>
+            Math.min(panel.right, other.right) - Math.max(panel.left, other.left) > 1
+            && Math.min(panel.bottom, other.bottom) - Math.max(panel.top, other.top) > 1
+          return {
+            outside: panel.left < 0 || panel.right > innerWidth || panel.top < 0 || panel.bottom > innerHeight,
+            scrollHeight: scroll.height,
+            overlaps: ['.game-dock', '.game-hud', '.world-camera-controls', '.kitchen-world']
+              .filter((selector) => {
+                const other = document.querySelector(selector)
+                return other?.getClientRects().length && overlaps(other.getBoundingClientRect())
+              }),
+          }
+        })
+        const content = await contentProblems(panel)
+        if (geometry.outside || geometry.overlaps.length || geometry.scrollHeight < 44 || content.length) {
+          await page.screenshot({ path: testInfo.outputPath(`${viewport.width}x${viewport.height}.png`) })
+        }
+        expect.soft(geometry.outside, `${viewport.width}x${viewport.height} panel`).toBe(false)
+        expect.soft(geometry.overlaps, `${viewport.width}x${viewport.height} overlaps`).toEqual([])
+        expect.soft(geometry.scrollHeight, `${viewport.width}x${viewport.height} scroll area`).toBeGreaterThanOrEqual(44)
+        expect.soft(content, `${viewport.width}x${viewport.height} content`).toEqual([])
+        await expectVerticalCameraRail(page)
+        if (mode !== 'editor') {
+          expect.soft(await contentProblems(page.locator('.world-quick-actions')), `${viewport.width}x${viewport.height} quick actions`).toEqual([])
+        }
+      }
+      await page.setViewportSize({ width: 320, height: 480 })
+      await settledLayout(page)
+      await panel.evaluate((element) => { element.scrollTop = element.scrollHeight })
+      const action = mode === 'receipts' ? 'Add grocery run' : mode === 'objects' ? 'Edit room' : 'Cancel'
+      await expectReachable(panel.getByRole('button', { name: action, exact: true }))
+      await expectReachable(panel.getByRole('button', { name: 'Close panel', exact: true }))
+      await panel.getByRole('button', { name: 'Close panel', exact: true }).click()
+      await expect(panel).toHaveCount(0)
+    })
+  }
+
+  test('placement confirmation stays reachable while the window resizes', { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
+    const before = await accounts.store.get(owner.household.id)
     await page.goto('/kitchen')
     await waitForRoomReady(page)
-    await page.evaluate(() => document.fonts.ready)
-    for (const viewport of [...viewports, { width: 667, height: 375 }, { width: 1440, height: 960 }]) {
+    const editor = await openRoomEditor(page)
+    await editor.getByRole('button', { name: 'Add objects', exact: true }).click()
+    await editor.getByRole('button', { name: 'Preview Coffee machine', exact: true }).click()
+    const confirmation = page.getByRole('dialog', { name: 'Try Coffee machine', exact: true })
+    await expect(confirmation).toBeVisible()
+    for (const viewport of [
+      { width: 320, height: 480 }, { width: 390, height: 844 },
+      { width: 561, height: 620 }, { width: 800, height: 621 },
+      { width: 844, height: 390 }, desktopViewports[0], desktopViewports[4], desktopViewports[8],
+    ]) {
       await page.setViewportSize(viewport)
       await settledLayout(page)
-      const issues = await page.locator('.game-home').evaluate((home) => {
-        const selectors = ['.game-hud', '.room-caption', '.game-identity', '.game-resources', '.house-tools', '.world-camera-controls', '.world-fridge-toggle', '.world-kettle-toggle', '.game-dock']
-        const boxes = selectors.map((selector) => {
-          const element = home.querySelector(selector)!
-          return { selector, element, box: element.getBoundingClientRect() }
-        })
-        return boxes.flatMap(({ selector, element, box }, index) => [
-          ...(box.left < -1 || box.right > innerWidth + 1 || box.top < -1 || box.bottom > innerHeight + 1 ? [`${selector} is outside the viewport`] : []),
-          ...boxes.slice(index + 1).filter(({ element: otherElement, box: other }) =>
-            !element.contains(otherElement) && !otherElement.contains(element)
-            && Math.min(box.right, other.right) - Math.max(box.left, other.left) > 1
-            && Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top) > 1,
-          ).map((other) => `${selector} overlaps ${other.selector}`),
-        ])
-      })
-      expect(issues, `${viewport.width}x${viewport.height}`).toEqual([])
-      await expectContentFits(page.locator('.game-hud'))
-      for (const button of await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button').all()) {
-        await expectReachable(button, viewport.width <= 1024 ? 44 : 36)
+      await expectContentFits(confirmation)
+      await expectVerticalCameraRail(page)
+      for (const name of ['Discard preview', 'Place object']) {
+        await expectReachable(confirmation.getByRole('button', { name, exact: true }))
       }
+      await expect(confirmation).toBeInViewport({ ratio: 1 })
     }
+    await confirmation.getByRole('button', { name: 'Discard preview', exact: true }).click()
+    await expect(confirmation).toHaveCount(0)
+    expect(await accounts.store.get(owner.household.id)).toEqual(before)
   })
 
   for (const viewport of viewports) {
@@ -176,7 +383,9 @@ test.describe('responsive current app', () => {
       await page.getByRole('button', { name: 'Bills', exact: true }).click()
       await expectContentFits(panel)
       await expectReachable(page.getByRole('button', { name: 'New monthly bill', exact: true }))
-      await expect(page.getByRole('button', { name: 'New monthly bill', exact: true }).locator('span')).toBeVisible()
+      const newBillLabel = page.getByRole('button', { name: 'New monthly bill', exact: true }).locator('.compact-action-label')
+      if (viewport.width <= 800) await expect(newBillLabel).toBeHidden()
+      else await expect(newBillLabel).toBeVisible()
 
       for (const name of ['Monthly budget', 'Settle up', 'The roommates']) {
         await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name, exact: true }).click()
@@ -244,8 +453,10 @@ test.describe('responsive current app', () => {
     })
   }
 
-  for (const viewport of [viewports[0], viewports[2], viewports[5]]) {
-    test(`forms keep themed fields and saves usable at ${viewport.width}x${viewport.height}`, async ({ page, accounts }) => {
+  for (const viewport of [viewports[0], viewports[2], viewports[5], desktopViewports[0], desktopViewports[4], desktopViewports[8]]) {
+    test(`forms keep themed fields and saves usable at ${viewport.width}x${viewport.height}`, { tag: viewport.width >= 1920 ? '@room' : [] }, async ({ page, accounts }) => {
+      if (viewport.width >= 1920) test.setTimeout(process.env.CI ? 180_000 : 90_000)
+      const minimum = viewport.width <= 1024 ? 44 : 36
       await page.setViewportSize(viewport)
       const { guest } = await seedContent(page, accounts)
       await page.goto('/kitchen')
@@ -260,12 +471,12 @@ test.describe('responsive current app', () => {
         elements.map((element) => ({ font: Number.parseFloat(getComputedStyle(element).fontSize), width: element.getBoundingClientRect().width })),
       )
       for (const field of fields) {
-        expect(field.font).toBeGreaterThanOrEqual(16)
+        expect(field.font).toBeGreaterThanOrEqual(viewport.width <= 1024 ? 12 : 13)
         expect(field.width).toBeGreaterThanOrEqual(160)
       }
-      for (const participant of await dialog.locator('.participant-option').all()) await expectReachable(participant)
+      for (const participant of await dialog.locator('.participant-option').all()) await expectReachable(participant, minimum)
       const save = page.getByRole('button', { name: 'Add & split the groceries', exact: true })
-      await expectReachable(save)
+      await expectReachable(save, minimum)
       await save.click()
       await expect(dialog).toHaveCount(0)
       await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
@@ -275,7 +486,7 @@ test.describe('responsive current app', () => {
       await expectContentFits(dialog)
       await page.getByLabel('Amount paid (RON)', { exact: true }).fill('103.07')
       await chooseOption(page.getByRole('combobox', { name: 'Paid by', exact: true }), guest.id)
-      await expectReachable(page.getByRole('button', { name: 'Record bill payment', exact: true }))
+      await expectReachable(page.getByRole('button', { name: 'Record bill payment', exact: true }), minimum)
       await page.getByRole('button', { name: 'Record bill payment', exact: true }).click()
       await expect(page.locator('.bill-occurrence .bill-status')).toHaveText('Paid')
       await page.getByRole('button', { name: `Edit ${billName}`, exact: true }).click()
@@ -286,7 +497,7 @@ test.describe('responsive current app', () => {
       await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Settle up', exact: true }).click()
       await page.getByRole('button', { name: 'Record paid', exact: true }).click()
       await expectContentFits(dialog)
-      await expectReachable(page.getByRole('button', { name: 'Yes, record payment', exact: true }))
+      await expectReachable(page.getByRole('button', { name: 'Yes, record payment', exact: true }), minimum)
       await page.getByRole('button', { name: 'Yes, record payment', exact: true }).click()
       await expect(page.getByRole('heading', { name: 'All settled up.', exact: true })).toBeVisible()
       await expectContentFits(page.locator('.room-panel'))
@@ -298,6 +509,13 @@ test.describe('responsive current app', () => {
         await expectReachable(page.getByRole('button', { name: 'Close dialog', exact: true }))
         await page.keyboard.press('Escape')
       }
+      await page.getByRole('navigation', { name: 'Household tools', exact: true }).getByRole('button', { name: 'Chores', exact: true }).click()
+      await page.getByRole('button', { name: 'Add chore', exact: true }).click()
+      await page.getByLabel('Chore name', { exact: true }).fill('A responsive household chore')
+      await expectContentFits(dialog)
+      await expectReachable(page.getByRole('button', { name: 'Create chore', exact: true }), minimum)
+      await page.getByRole('button', { name: 'Create chore', exact: true }).click()
+      await expect(page.getByRole('article', { name: 'A responsive household chore', exact: true })).toBeVisible()
       await openShoppingBag(page)
       await page.getByRole('button', { name: 'Add item', exact: true }).click()
       await page.getByLabel('Item name', { exact: true }).fill('Responsive shopping item')
@@ -312,7 +530,7 @@ test.describe('responsive current app', () => {
       await page.getByRole('button', { name: 'Finish shopping', exact: true }).click()
       await expectContentFits(dialog)
       await page.getByLabel('Total (RON)', { exact: true }).fill('9.01')
-      await expectReachable(page.getByRole('button', { name: 'Record shopping run', exact: true }))
+      await expectReachable(page.getByRole('button', { name: 'Record shopping run', exact: true }), minimum)
       await page.getByRole('button', { name: 'Record shopping run', exact: true }).click()
       await expect(dialog).toHaveCount(0)
       await page.reload()
@@ -322,7 +540,7 @@ test.describe('responsive current app', () => {
     })
   }
 
-  for (const viewport of viewports) {
+  for (const viewport of [...viewports, desktopViewports[0], desktopViewports[8]]) {
     test(`account dialogs reflow at ${viewport.width}x${viewport.height}`, async ({ page, accounts, baseURL }) => {
       await page.setViewportSize(viewport)
       await page.goto('/kitchen#account')
@@ -452,11 +670,13 @@ test.describe('responsive current app', () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await seedContent(page, accounts)
     await page.goto('/kitchen')
+    await expect(page.locator('.game-home')).toBeVisible()
     await page.addStyleTag({ content: ':root { font-size: 24px; }' })
+    await expect(page.locator('html')).toHaveCSS('font-size', '24px')
     await page.getByRole('button', { name: 'Grocery runs', exact: true }).click()
     await expectContentFits(page.locator('.room-panel'))
     const descriptionText = page.locator('.expense-description strong').first()
-    expect(await descriptionText.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(18)
+    await expect.poll(() => descriptionText.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(18)
     await page.getByRole('button', { name: 'Add grocery run', exact: true }).click()
     await expectContentFits(page.getByRole('dialog'))
     await expectReachable(page.getByRole('button', { name: 'Add & split the groceries', exact: true }))

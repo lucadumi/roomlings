@@ -29,7 +29,8 @@ export function LoadingIcon({ size = 24, tone = 'color' }: {
   reducedMotion?: boolean
 }) {
   return <img className="roomlings-loader" src={loaderAssets[tone]}
-    width={size} height={size} alt="" aria-hidden="true" draggable={false} />
+    width={size} height={size} style={{ width: `${size / 16}rem`, height: `${size / 16}rem` }}
+    alt="" aria-hidden="true" draggable={false} />
 }
 
 export function SceneLoading({ label = 'Putting the kettle on...' }: { label?: string }) {

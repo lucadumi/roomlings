@@ -73,7 +73,7 @@ test('the public welcome page explains the product without opening or changing a
   await expect(page.locator('.welcome-faq details').nth(2)).toContainText('separate private kitchen code')
   await expect(page.getByRole('link', { name: 'recover browser-only access', exact: true })).toHaveAttribute('href', '/#recover')
   await page.getByText('Can I use it without 3D?', { exact: true }).click()
-  await expect(page.locator('.welcome-faq details').nth(3)).toContainText('desktop and phone browsers')
+  await expect(page.locator('.welcome-faq details').nth(3)).toContainText('the same home in any desktop browser')
   expect(requests).toEqual([])
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
   expect(errors).toEqual([])
@@ -89,6 +89,7 @@ test('landing sections stay compact with spacing after the hero and shared-home 
     const metrics = await page.locator('.welcome').evaluate((element) => {
       if (!(element instanceof HTMLElement)) throw new Error('The landing element is missing.')
       return {
+        scale: parseFloat(getComputedStyle(document.documentElement).fontSize) / 16,
         words: element.innerText.split(/\s+/).length,
         steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
         heroGap: parseFloat(getComputedStyle(element.querySelector('.welcome-hero')!).marginBottom),
@@ -105,10 +106,10 @@ test('landing sections stay compact with spacing after the hero and shared-home 
     expect(metrics.steps).toBeLessThanOrEqual(maximum)
     expect(Math.abs(parseFloat(metrics.sectionMinimums[0]) - (height - metrics.headerHeight))).toBeLessThan(1)
     expect(metrics.sectionMinimums.slice(1)).toEqual(['0px', '0px', '0px', '0px'])
-    expect(metrics.heroGap).toBeGreaterThanOrEqual(40)
-    expect(metrics.heroGap).toBeLessThanOrEqual(72)
-    expect(metrics.featuresGap).toBeGreaterThanOrEqual(16)
-    expect(metrics.featuresGap).toBeLessThanOrEqual(32)
+    expect(metrics.heroGap).toBeGreaterThanOrEqual(40 * metrics.scale)
+    expect(metrics.heroGap).toBeLessThanOrEqual(72 * metrics.scale)
+    expect(metrics.featuresGap).toBeGreaterThanOrEqual(16 * metrics.scale)
+    expect(metrics.featuresGap).toBeLessThanOrEqual(32 * metrics.scale)
     expect(metrics.headingGap).toBe('0px')
     expect(metrics.titleToContent).toBeLessThanOrEqual(24)
     expect(metrics.otherMargins).toEqual(['0px', '0px', '0px', '0px'])
@@ -278,7 +279,11 @@ test('the landing remains readable across phones, tablets, short landscapes and 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/welcome')
   await page.addStyleTag({ content: 'html { scrollbar-gutter: stable; }' })
-  for (const [width, height] of [[1440, 960], [1024, 600], [768, 1024], [390, 844], [360, 640], [320, 568], [844, 390], [640, 360], [320, 360]]) {
+  for (const [width, height] of [
+    [3840, 2160], [2560, 1440], [1920, 1080], [1440, 960], [1366, 768], [1280, 720],
+    [1051, 620], [1050, 621], [1024, 600], [801, 621], [800, 620], [768, 1024],
+    [561, 620], [560, 621], [390, 844], [360, 640], [320, 568], [844, 390], [640, 360], [320, 360],
+  ]) {
     await page.setViewportSize({ width, height })
     await page.evaluate(() => document.fonts.ready)
     expect(await layoutProblems(page), `${width}x${height}`).toEqual([])

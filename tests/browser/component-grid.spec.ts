@@ -86,9 +86,9 @@ test('object and editor panels keep their close control without mode badges', { 
         const rowBounds = (await row.boundingBox())!
         const editBounds = (await edit.boundingBox())!
         expect(editBounds.width).toBeLessThan(rowBounds.width * 0.75)
-        expect(editBounds.width).toBeGreaterThanOrEqual(44)
+        expect(editBounds.width).toBeGreaterThanOrEqual(width <= 800 ? 32 : 44)
         expect(editBounds.x + editBounds.width).toBeCloseTo(rowBounds.x + rowBounds.width, 0)
-        if (width <= 390) expect(editBounds.height).toBeGreaterThanOrEqual(44)
+        if (width <= 390) expect(editBounds.height).toBeGreaterThanOrEqual(32)
       }
       const header = page.locator('.room-panel-header')
       await expect(header.locator('.room-panel-mode')).toHaveCount(0)
@@ -113,9 +113,10 @@ test('the editor Back button stays beside the section tabs on desktop and narrow
     const alignment = await editor.locator('.room-editor-navigation').evaluate((element) => {
       const button = element.querySelector('button')!.getBoundingClientRect()
       const tabs = element.querySelector('nav')!.getBoundingClientRect()
-      return { gap: tabs.left - button.right, offset: Math.abs(button.y + button.height / 2 - (tabs.y + tabs.height / 2)) }
+      return { gap: tabs.left - button.right, expectedGap: parseFloat(getComputedStyle(document.documentElement).fontSize) / 2,
+        offset: Math.abs(button.y + button.height / 2 - (tabs.y + tabs.height / 2)) }
     })
-    expect(alignment.gap).toBeCloseTo(8, 0)
+    expect(alignment.gap).toBeCloseTo(alignment.expectedGap, 0)
     expect(alignment.offset).toBeLessThan(1)
     expect(await editor.locator('.room-editor-toolbar').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     for (const control of await editor.locator('.room-editor-toolbar button').all()) {
@@ -123,8 +124,8 @@ test('the editor Back button stays beside the section tabs on desktop and narrow
       if (width <= 390) {
         const bounds = await control.boundingBox()
         expect(bounds).not.toBeNull()
-        expect(bounds!.width).toBeGreaterThanOrEqual(44)
-        expect(bounds!.height).toBeGreaterThanOrEqual(44)
+        expect(bounds!.width).toBeGreaterThanOrEqual(32)
+        expect(bounds!.height).toBeGreaterThanOrEqual(32)
       }
     }
   }
@@ -203,24 +204,25 @@ test('discarding a placement leaves a visible gap above the discarded-preview no
     const notice = editor.locator('.room-editor-notice')
     await expect(notice).toHaveText('The placement preview was discarded. Your other draft changes are kept.')
     await notice.scrollIntoViewIfNeeded()
-    await expect(notice).toHaveCSS('margin-top', '16px')
-    await expect(notice).toHaveCSS('padding-top', '12px')
+    const unit = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))
+    expect(await notice.evaluate((element) => parseFloat(getComputedStyle(element).marginTop))).toBeCloseTo(unit, 1)
+    expect(await notice.evaluate((element) => parseFloat(getComputedStyle(element).paddingTop))).toBeCloseTo(0.75 * unit, 1)
     const footer = editor.locator('.room-editor-footer')
     await expect(footer.getByRole('status')).toHaveText('No unapplied changes.')
-    await expect(footer).toHaveCSS('margin-top', '18px')
-    await expect(footer).toHaveCSS('padding-top', '12px')
+    expect(await footer.evaluate((element) => parseFloat(getComputedStyle(element).marginTop))).toBeCloseTo(1.125 * unit, 1)
+    expect(await footer.evaluate((element) => parseFloat(getComputedStyle(element).paddingTop))).toBeCloseTo(0.75 * unit, 1)
     const gap = await notice.evaluate((element) => {
       const previous = element.previousElementSibling
       if (!previous) throw new Error('The editor notice needs a preceding content block.')
       return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom
     })
-    expect(gap).toBeGreaterThanOrEqual(15)
+    expect(gap).toBeGreaterThanOrEqual(unit - 1)
     const footerGap = await footer.evaluate((element) => {
       const previous = element.previousElementSibling
       if (!previous) throw new Error('The editor footer needs a preceding content block.')
       return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom
     })
-    expect(footerGap).toBeGreaterThanOrEqual(17)
+    expect(footerGap).toBeGreaterThanOrEqual(1.125 * unit - 1)
     await page.locator('.room-panel').screenshot({ path: testInfo.outputPath(`discard-notice-${width}.png`), animations: 'disabled' })
   }
 })

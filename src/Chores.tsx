@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Archive, ArrowDown, ArrowUp, Check, History, ListChecks, Pencil, Plus, RotateCcw, Users } from 'lucide-react'
+import { Archive, ArrowDown, ArrowUp, Check, History, ListChecks, Pencil, Plus, RotateCcw, ShoppingBasket, Users } from 'lucide-react'
 import { billingDate, choreEditInputSchema, choreInputSchema, choreLimit } from '../shared/domain.ts'
 import type { Chore, ChoreCompletion, Household } from '../shared/domain.ts'
 import { canUndoChore, choreAssignee, choreStatus } from '../shared/chores.ts'
@@ -8,7 +8,7 @@ import { componentChoreArea, componentChoreIsPaused, componentChoreMatches, getR
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import { choreAreaSchema, choreLocationLabel, roomCatalog, roomIds, roomIdSchema } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
-import { Avatar, DraftConflict, Form } from './components.tsx'
+import { Avatar, CompactAction, DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { Dropdown } from './Dropdown.tsx'
 import { dateTitle } from './format.ts'
@@ -70,9 +70,9 @@ export function ChoresPanel({
 
   return <section className="chores-panel" aria-label="Household chores" aria-busy={busy || undefined}>
     <nav className="receipt-tabs" aria-label="Chore sections">
-      <button type="button" disabled={busy} aria-pressed={view === 'active'} onClick={() => onView('active')}>Chores</button>
-      <button type="button" disabled={busy} aria-pressed={view === 'history'} onClick={() => onView('history')}>History</button>
-      <button type="button" disabled={busy} aria-pressed={view === 'archived'} onClick={() => onView('archived')}>Archived</button>
+      <CompactAction label="Chores" type="button" disabled={busy} aria-pressed={view === 'active'} onClick={() => onView('active')}><ListChecks className="compact-only-icon" size="1rem" /></CompactAction>
+      <CompactAction label="History" type="button" disabled={busy} aria-pressed={view === 'history'} onClick={() => onView('history')}><History className="compact-only-icon" size="1rem" /></CompactAction>
+      <CompactAction label="Archived" type="button" disabled={busy} aria-pressed={view === 'archived'} onClick={() => onView('archived')}><Archive className="compact-only-icon" size="1rem" /></CompactAction>
     </nav>
     <div className="chore-filters">
       <label className="field">Chore room<Dropdown label="Chore room" value={filter.room} disabled={busy} onValueChange={(value) => {
@@ -113,14 +113,14 @@ export function ChoresPanel({
       </Dropdown></label>}
     </div>
     <label className="chore-mine"><input type="checkbox" checked={mine} disabled={busy} onChange={(event) => onMine(event.target.checked)} />{view === 'history' ? 'My turns and completions' : 'My turn only'}</label>
-    <button className="text-button chore-supplies" disabled={busy} onClick={onRestock}>Restock room supplies</button>
+    <CompactAction label="Restock room supplies" className="text-button chore-supplies" disabled={busy} onClick={onRestock}><ShoppingBasket className="compact-only-icon" size="0.9375rem" /></CompactAction>
     {filterError && <Feedback>{filterError}</Feedback>}
     {busy && <p className="inline loading-status" role="status"><LoadingIcon size={20} />Saving chores...</p>}
     {view !== 'history' && <div className="chore-toolbar">
       <span>{view === 'active' ? `${due} due / ${scheduled.length} scheduled${paused.length ? ` / ${paused.length} paused in Storage` : ''}` : `${items.length} archived`}</span>
-      <button className="button primary small-button" disabled={busy || household.chores.items.length >= choreLimit} onClick={onAdd}><Plus size={15} />Add chore</button>
+      <CompactAction label="Add chore" className="button primary small-button" disabled={busy || household.chores.items.length >= choreLimit} onClick={onAdd}><Plus size="0.9375rem" /></CompactAction>
     </div>}
-    {view !== 'history' && !items.length && <div className="empty-state"><ListChecks size={32} /><h3>{view === 'archived' ? 'No archived chores.' : mine ? 'No chores assigned to you.' : 'No chores here yet.'}</h3><p>{view === 'archived' ? 'Archived chores keep their completion history.' : 'Add a task or choose another room.'}</p></div>}
+    {view !== 'history' && !items.length && <div className="empty-state"><ListChecks size="2rem" /><h3>{view === 'archived' ? 'No archived chores.' : mine ? 'No chores assigned to you.' : 'No chores here yet.'}</h3><p>{view === 'archived' ? 'Archived chores keep their completion history.' : 'Add a task or choose another room.'}</p></div>}
     {view !== 'history' && <div className="chore-list">{items.map((chore) => {
       const assignee = choreAssignee(chore, household.members)
       const status = choreStatus(chore, today)
@@ -134,21 +134,21 @@ export function ChoresPanel({
           : unavailableObject && <p className="field-hint">{component ? 'This object is in Storage.' : 'This object is unavailable.'} Its chore history is kept.{chore.archived && ' An admin must bring back the object before restoring this chore.'}</p>}
         <p className="chore-schedule">{chore.dueDate ? dateTitle(chore.dueDate, today) : 'One-off completed'}<span>{repeats(chore.repeatDays)}</span></p>
         {chore.notes && <p className="chore-notes">{chore.notes}</p>}
-        <div className="chore-assignee">{assignee ? <><Avatar member={assignee} small /><span>{assignee.id === memberId ? 'Your turn' : `${assignee.name}'s turn`}</span></> : <><Users size={17} /><span>Unassigned. Choose an active roommate.</span></>}
+        <div className="chore-assignee">{assignee ? <><Avatar member={assignee} small /><span>{assignee.id === memberId ? 'Your turn' : `${assignee.name}'s turn`}</span></> : <><Users size="1.0625rem" /><span>Unassigned. Choose an active roommate.</span></>}
           {chore.rotation.length > 1 && <small>Rotating</small>}
         </div>
         <div className="chore-actions">
-          {chore.archived ? <button className="button secondary small-button" disabled={busy || unavailableObject} onClick={() => onArchive(chore)}><RotateCcw size={14} />Restore chore</button>
+          {chore.archived ? <CompactAction label="Restore chore" className="button secondary small-button" disabled={busy || unavailableObject} onClick={() => onArchive(chore)}><RotateCcw size="0.875rem" /></CompactAction>
             : <>
-              <button className="button primary small-button" disabled={busy || chore.dueDate === null || isPaused} onClick={() => { if (!isPaused) onComplete(chore) }}><Check size={15} />Mark done</button>
-              <button className="icon-button" disabled={busy || isPaused} aria-label={`Edit ${chore.title}`} onClick={() => onEdit(chore)}><Pencil size={16} /></button>
-              <button className="icon-button" disabled={busy} aria-label={`Archive ${chore.title}`} onClick={() => onArchive(chore)}><Archive size={16} /></button>
+              <button className="button primary small-button" disabled={busy || chore.dueDate === null || isPaused} onClick={() => { if (!isPaused) onComplete(chore) }}><Check size="0.9375rem" />Mark done</button>
+              <button className="icon-button" disabled={busy || isPaused} aria-label={`Edit ${chore.title}`} onClick={() => onEdit(chore)}><Pencil size="1rem" /></button>
+              <button className="icon-button" disabled={busy} aria-label={`Archive ${chore.title}`} onClick={() => onArchive(chore)}><Archive size="1rem" /></button>
             </>}
         </div>
       </article>
     })}</div>}
     {view === 'history' && <>
-      {!history.length && <div className="empty-state"><History size={32} /><h3>No completions yet.</h3><p>Completed chores will be recorded here.</p></div>}
+      {!history.length && <div className="empty-state"><History size="2rem" /><h3>No completions yet.</h3><p>Completed chores will be recorded here.</p></div>}
       {history.slice(0, historyCount).map((completion) => {
         const chore = tasks.get(completion.choreId)
         const component = completion.componentId ? components.find((component) => component.id === completion.componentId) : undefined
@@ -159,12 +159,12 @@ export function ChoresPanel({
           <p>{memberName(completion.completedBy)} completed it on {dateTitle(billingDate(household.billingTimeZone, new Date(completion.completedAt)), today)}.</p>
           <p className="field-hint">Scheduled for {dateTitle(completion.dueDate, today)}{completion.assignedTo ? `; assigned to ${memberName(completion.assignedTo)}.` : '; no assigned roommate.'}</p>
           {completion.undoneAt && <p className="field-hint">Undone by {completion.undoneBy ? memberName(completion.undoneBy) : 'a roommate'}.</p>}
-          {canUndoChore(chore, completion) && <button className="text-button" disabled={busy} onClick={() => onUndo(completion)}><RotateCcw size={14} />Undo completion</button>}
+          {canUndoChore(chore, completion) && <CompactAction label="Undo completion" className="text-button" disabled={busy} onClick={() => onUndo(completion)}><RotateCcw size="0.875rem" /></CompactAction>}
           {chore && !chore.archived && chore.dueDate === null && !completion.undoneAt && chore.occurrence === completion.occurrence + 1
-            && <button className="text-button" disabled={busy || componentChoreIsPaused(chore, components)} onClick={() => onEdit(chore)}>Schedule again</button>}
+            && <CompactAction label="Schedule again" className="text-button" disabled={busy || componentChoreIsPaused(chore, components)} onClick={() => onEdit(chore)}><RotateCcw className="compact-only-icon" size="0.875rem" /></CompactAction>}
         </article>
       })}
-      {historyCount < history.length && <button className="button secondary full" onClick={() => setHistoryCount((count) => count + 20)}>Show more completions</button>}
+      {historyCount < history.length && <CompactAction label="Show more completions" className="button secondary full" onClick={() => setHistoryCount((count) => count + 20)}><ArrowDown className="compact-only-icon" size="1rem" /></CompactAction>}
     </>}
     {household.chores.items.length >= choreLimit && <p className="field-hint">This home has reached its {choreLimit}-chore limit.</p>}
   </section>
@@ -274,8 +274,8 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
     </fieldset>
     {rotation.length > 1 && <ol className="chore-rotation" aria-label="Rotation order">{rotation.map((id, index) => <li key={id}>
       <span>{household.members.find((member) => member.id === id)?.name ?? 'Former roommate'}</span>
-      <button className="icon-button" type="button" aria-label={`Move ${household.members.find((member) => member.id === id)?.name ?? 'roommate'} earlier`} disabled={busy || index === 0} onClick={() => move(index, -1)}><ArrowUp size={15} /></button>
-      <button className="icon-button" type="button" aria-label={`Move ${household.members.find((member) => member.id === id)?.name ?? 'roommate'} later`} disabled={busy || index === rotation.length - 1} onClick={() => move(index, 1)}><ArrowDown size={15} /></button>
+      <button className="icon-button" type="button" aria-label={`Move ${household.members.find((member) => member.id === id)?.name ?? 'roommate'} earlier`} disabled={busy || index === 0} onClick={() => move(index, -1)}><ArrowUp size="0.9375rem" /></button>
+      <button className="icon-button" type="button" aria-label={`Move ${household.members.find((member) => member.id === id)?.name ?? 'roommate'} later`} disabled={busy || index === rotation.length - 1} onClick={() => move(index, 1)}><ArrowDown size="0.9375rem" /></button>
     </li>)}</ol>}
     <label className="field">Next turn<Dropdown label="Next turn" required value={nextMember} disabled={busy || !rotation.length} onValueChange={setNextMember}>
       {!rotation.length && <option value="">Choose a roommate</option>}
@@ -287,6 +287,6 @@ export function ChoreForm({ household, memberId, chore, initialRoom, initialArea
       onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
     >This chore changed. Review the latest schedule before saving your draft.</DraftConflict>}
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={busy || blocked || changed || invalidComponent || paused}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{chore ? 'Save chore' : 'Create chore'}</button>
+    <button className="button primary full" disabled={busy || blocked || changed || invalidComponent || paused}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size="1.0625rem" />}{chore ? 'Save chore' : 'Create chore'}</button>
   </Form>
 }

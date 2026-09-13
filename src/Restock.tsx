@@ -8,6 +8,7 @@ import { roomCatalog } from '../shared/rooms.ts'
 import type { RoomId } from '../shared/rooms.ts'
 import { normalizeShoppingName } from '../shared/shopping.ts'
 import { Dropdown } from './Dropdown.tsx'
+import { CompactAction } from './components.tsx'
 import './chores.css'
 
 export function SupplyShortcuts({ household, components, busy, onAdd }: {
@@ -40,12 +41,12 @@ export function SupplyShortcuts({ household, components, busy, onAdd }: {
             </Dropdown>
           </label> : <p>{roomCatalog[component.roomId].name}: {component.name}</p>}
         </div>
-        {listed ? <span className="chore-status completed"><Check size={13} />On the list</span>
-          : <button type="button" className="button secondary small-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit}
+        {listed ? <span className="chore-status completed"><Check size="0.8125rem" />On the list</span>
+          : <CompactAction label="Add to list" className="button secondary small-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit}
             aria-label={`Restock ${supply.name}`} onClick={() => onAdd({
               name: supply.name, quantity: supply.quantity, notes: `${roomCatalog[component.roomId].name}: ${component.name}`,
               componentSource: { componentId: component.id, supplyId: supply.id },
-            })}><Plus size={14} />Add to list</button>}
+            })}><Plus size="0.875rem" /></CompactAction>}
       </article>
     })}</div>
     {household.shopping.items.length >= shoppingItemLimit && <p className="field-hint">The shared list has reached {shoppingItemLimit} items. Finish a run or remove an unused item before adding more.</p>}
@@ -62,8 +63,8 @@ export function RestockPanel({ household, roomId, busy, onAdd, onShopping }: {
   const stored = roomComponents.filter((component) => !component.installed && component.supplies.length)
   return <section aria-label={`${room.name} supplies`}>
     <p className="field-hint">These are shopping shortcuts for the objects in this room. Add supplies when they are running low. Nothing tracks stock or adds a debt.</p>
-    <div className="restock-toolbar"><button className="button secondary small-button" disabled={busy} onClick={onShopping}><ShoppingBasket size={15} />Open shopping list</button>
-      <button className="text-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit} onClick={() => onAdd({ name: '', quantity: '1', notes: `${room.name} supplies` })}><Plus size={14} />Other supplies</button>
+    <div className="restock-toolbar"><CompactAction label="Open shopping list" className="button secondary small-button" disabled={busy} onClick={onShopping}><ShoppingBasket size="0.9375rem" /></CompactAction>
+      <CompactAction label="Other supplies" className="text-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit} onClick={() => onAdd({ name: '', quantity: '1', notes: `${room.name} supplies` })}><Plus size="0.875rem" /></CompactAction>
     </div>
     {!components.some((component) => component.supplies.length) && <p className="field-hint">No supply shortcuts are configured in this room. An admin can add them in Edit room, or you can add other supplies above.</p>}
     <SupplyShortcuts household={household} components={components} busy={busy} onAdd={onAdd} />

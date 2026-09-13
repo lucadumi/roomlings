@@ -32,7 +32,7 @@ test('Baloo 2 display text and DM Sans controls load throughout while inputs rem
   await page.getByRole('button', { name: 'House rules', exact: true }).click()
   await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('font-size', '13px')
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('font-size', '16px')
+  await expect(page.getByLabel('Kitchen name', { exact: true })).toHaveCSS('font-size', '12px')
   const save = page.getByRole('button', { name: 'Save the house rules', exact: true })
   expect(await save.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44)
   await expect(page.getByRole('dialog').getByRole('heading', { level: 2 })).toHaveCSS('font-family', /Baloo 2 Variable/)

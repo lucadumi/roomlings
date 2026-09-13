@@ -172,7 +172,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
   }
 
   const motionControl = <button type="button" className="welcome-motion" onClick={onToggleMotion} aria-label="Reduced motion" aria-pressed={reducedMotion}>
-    {reducedMotion ? <Play size={16} /> : <Pause size={16} />}<span>Reduced motion</span>
+    {reducedMotion ? <Play size="1rem" /> : <Pause size="1rem" />}<span>Reduced motion</span>
   </button>
 
   return <section className="welcome-tour welcome-container" id="tour" aria-labelledby="tour-title"
@@ -183,7 +183,7 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
       <div className="welcome-tour-sticky" ref={pin}>
         <div className="welcome-section-heading">
           <h2 id="tour-title" ref={heading}>Explore the rooms</h2>
-          <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size={16} /></a>
+          <a className="welcome-text-link" href="#questions">Skip the tour <ArrowDown size="1rem" /></a>
         </div>
         <RoomChoices value={room} onChange={selectRoom} />
         <div className="welcome-tour-pin">
@@ -212,13 +212,13 @@ export function KitchenTour({ reducedMotion, paused, onToggleMotion }: { reduced
                 <h3>{title}</h3><p>{copy}</p>
               </div>)}
             </div>
-            <p className="welcome-tour-hint"><ArrowDown size={14} />Scroll, tap an object or use the controls.</p>
+            <p className="welcome-tour-hint"><ArrowDown size="0.875rem" />Scroll, tap an object or use the controls.</p>
           </div>
         </div>
         <div className="welcome-tour-controls">
           <nav className="welcome-chapters" aria-label={`${roomCatalog[room].name} tour`}>
             {chapters.map(({ id, label, short, icon: Icon }, index) => {
-              return <button type="button" key={id} aria-label={label} aria-pressed={active === index} aria-controls="tour-details" onClick={() => selectChapter(index)}><Icon size={17} /><span>{short}</span></button>
+              return <button type="button" key={id} aria-label={label} aria-pressed={active === index} aria-controls="tour-details" onClick={() => selectChapter(index)}><Icon size="1.0625rem" /><span>{short}</span></button>
             })}
           </nav>
           {motionControl}

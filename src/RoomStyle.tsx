@@ -54,7 +54,7 @@ export function RoomStyleForm({ current, busy, error, onSubmit, onClose, canEdit
     <div className="button-row room-style-actions">
       <button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button>
       <button className="button primary" disabled={busy || !canEdit || selected === current}>
-        {busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}
+        {busy ? <LoadingIcon size={17} tone="light" /> : <Check size="1.0625rem" />}
         {busy ? 'Saving...' : 'Apply for everyone'}
       </button>
     </div>

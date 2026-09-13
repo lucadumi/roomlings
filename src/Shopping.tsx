@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Check, History, Pencil, Plus, ReceiptText, ShoppingBasket, Trash2, UserCheck } from 'lucide-react'
+import { ArrowDown, Check, History, List, Pencil, Plus, ReceiptText, RotateCcw, ShoppingBasket, Trash2, UserCheck } from 'lucide-react'
 import {
   localDate, money, shoppingCheckoutSchema, shoppingItemEditSchema, shoppingItemInputSchema, shoppingItemLimit,
 } from '../shared/domain.ts'
@@ -9,7 +9,7 @@ import { getRoomComponents } from '../shared/roomComponents.ts'
 import type { ComponentSourceSnapshot } from '../shared/roomComponents.ts'
 import { roomCatalog } from '../shared/rooms.ts'
 import { canEditShoppingItem, checkoutItems, inBasket, normalizeShoppingName } from '../shared/shopping.ts'
-import { DraftConflict, Form } from './components.tsx'
+import { CompactAction, DraftConflict, Form } from './components.tsx'
 import { LoadingIcon } from './Branding.tsx'
 import { ExpenseForm } from './ExpenseForm.tsx'
 import { dateTitle } from './format.ts'
@@ -38,19 +38,19 @@ export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, 
   const memberName = (id: string) => household.members.find((member) => member.id === id)?.name ?? 'Unknown roommate'
   return <section className="shopping-panel" aria-label="Shared shopping list" aria-busy={busy || undefined}>
     <nav className="receipt-tabs shopping-tabs" aria-label="Shopping bag sections">
-      <button type="button" aria-pressed={view === 'list'} disabled={busy} onClick={() => onView('list')}>List <span>{household.shopping.items.length}</span></button>
-      <button type="button" aria-pressed={view === 'basket'} disabled={busy} onClick={() => onView('basket')}>Basket <span>{basket.length}</span></button>
-      <button type="button" aria-pressed={view === 'history'} disabled={busy} onClick={() => onView('history')}>Past runs</button>
+      <CompactAction label="List" count={household.shopping.items.length} type="button" aria-pressed={view === 'list'} disabled={busy} onClick={() => onView('list')}><List className="compact-only-icon" size="1rem" /></CompactAction>
+      <CompactAction label="Basket" count={basket.length} type="button" aria-pressed={view === 'basket'} disabled={busy} onClick={() => onView('basket')}><ShoppingBasket className="compact-only-icon" size="1rem" /></CompactAction>
+      <CompactAction label="Past runs" type="button" aria-pressed={view === 'history'} disabled={busy} onClick={() => onView('history')}><History className="compact-only-icon" size="1rem" /></CompactAction>
     </nav>
     {busy && <p className="inline shopping-saving loading-status" role="status"><LoadingIcon size={20} />Saving the list...</p>}
     {view !== 'history' && <>
       <div className="shopping-toolbar">
-        {view === 'list' ? <button className="button primary small-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit} onClick={onAdd}><Plus size={15} />Add item</button>
-          : <button className="button primary small-button" disabled={busy || !basket.length} onClick={onCheckout}><Check size={15} />Finish shopping</button>}
-        <button className="text-button" disabled={busy} onClick={onQuickRecord}>Record without a list</button>
+        {view === 'list' ? <CompactAction label="Add item" className="button primary small-button" disabled={busy || household.shopping.items.length >= shoppingItemLimit} onClick={onAdd}><Plus size="0.9375rem" /></CompactAction>
+          : <CompactAction label="Finish shopping" className="button primary small-button" disabled={busy || !basket.length} onClick={onCheckout}><Check size="0.9375rem" /></CompactAction>}
+        <CompactAction label="Record without a list" className="text-button" disabled={busy} onClick={onQuickRecord}><ReceiptText className="compact-only-icon" size="0.9375rem" /></CompactAction>
       </div>
       <p className="field-hint">{view === 'basket' ? 'Only your picked-up items are here. Confirm the actual receipt total to record an expense.' : 'Claim what you will buy, then tick it into your basket. Ticking items never creates a debt.'}</p>
-      {!items.length && <div className="empty-state"><ShoppingBasket size={34} /><h3>{view === 'basket' ? 'Your basket is empty.' : 'What does home need?'}</h3><p>{view === 'basket' ? 'Pick up items from the shared list first.' : 'Add groceries, quantities and any useful notes.'}</p></div>}
+      {!items.length && <div className="empty-state"><ShoppingBasket size="2.125rem" /><h3>{view === 'basket' ? 'Your basket is empty.' : 'What does home need?'}</h3><p>{view === 'basket' ? 'Pick up items from the shared list first.' : 'Add groceries, quantities and any useful notes.'}</p></div>}
       <div className="shopping-items">
         {items.map((item) => {
           const otherShopper = item.claimedBy !== null && item.claimedBy !== memberId
@@ -66,30 +66,30 @@ export function ShoppingPanel({ household, memberId, view, onView, busy, onAdd, 
               : item.pickedUp ? `In ${item.claimedBy === memberId ? 'your' : `${memberName(item.claimedBy)}'s`} basket`
                 : `${item.claimedBy === memberId ? 'You are' : `${memberName(item.claimedBy)} is`} buying this`}</p>
             <div className="shopping-item-actions">
-              {item.claimedBy === null ? <button className="button secondary small-button" disabled={busy} aria-label={`Claim ${item.name}`} onClick={() => onClaim(item)}><UserCheck size={14} />I will get it</button>
-                : <button className="text-button" disabled={busy} aria-label={`Release claim on ${item.name}`} onClick={() => onRelease(item)}>Release claim</button>}
-              <button className="icon-button" disabled={busy || !editable} aria-label={`Edit ${item.name}`} title={editable ? 'Edit item' : 'Return to the list and release other claims to edit'} onClick={() => onEdit(item)}><Pencil size={15} /></button>
-              <button className="icon-button" disabled={busy || !editable} aria-label={`Remove ${item.name}`} title={editable ? 'Remove item' : 'Return to the list and release other claims to remove'} onClick={() => onRemove(item)}><Trash2 size={15} /></button>
+              {item.claimedBy === null ? <CompactAction label="I will get it" className="button secondary small-button" disabled={busy} aria-label={`Claim ${item.name}`} onClick={() => onClaim(item)}><UserCheck size="0.875rem" /></CompactAction>
+                : <CompactAction label="Release claim" className="text-button" disabled={busy} aria-label={`Release claim on ${item.name}`} onClick={() => onRelease(item)}><RotateCcw className="compact-only-icon" size="0.875rem" /></CompactAction>}
+              <button className="icon-button" disabled={busy || !editable} aria-label={`Edit ${item.name}`} title={editable ? 'Edit item' : 'Return to the list and release other claims to edit'} onClick={() => onEdit(item)}><Pencil size="0.9375rem" /></button>
+              <button className="icon-button" disabled={busy || !editable} aria-label={`Remove ${item.name}`} title={editable ? 'Remove item' : 'Return to the list and release other claims to remove'} onClick={() => onRemove(item)}><Trash2 size="0.9375rem" /></button>
             </div>
           </article>
         })}
       </div>
       {household.shopping.items.length >= shoppingItemLimit && <p className="field-hint">The list has reached {shoppingItemLimit} items. Finish a run or remove unused items before adding more.</p>}
-      {view === 'list' && basket.length > 0 && <button className="button secondary full" disabled={busy} onClick={() => onView('basket')}><ShoppingBasket size={16} />Review my basket ({basket.length})</button>}
+      {view === 'list' && basket.length > 0 && <CompactAction label={`Review my basket (${basket.length})`} className="button secondary full" disabled={busy} onClick={() => onView('basket')}><ShoppingBasket size="1rem" /></CompactAction>}
     </>}
     {view === 'history' && <>
       <p className="field-hint">Items are archived only after their grocery receipt is saved. Removing a receipt does not put bought items back on the list.</p>
-      {!household.shopping.runs.length && <div className="empty-state"><History size={34} /><h3>No completed runs yet.</h3><p>Finish a basket to save its receipt and items here.</p></div>}
+      {!household.shopping.runs.length && <div className="empty-state"><History size="2.125rem" /><h3>No completed runs yet.</h3><p>Finish a basket to save its receipt and items here.</p></div>}
       {household.shopping.runs.slice(0, historyCount).map((run) => {
         const receipt = receipts.get(run.expenseId)
         return <article className="shopping-run" key={run.id} aria-label={run.name}>
           <h3>{run.name}</h3><p>Recorded by {memberName(run.completedBy)} on {dateTitle(localDate(new Date(run.completedAt)))}.</p>
-          {receipt ? <p className="shopping-receipt"><ReceiptText size={15} /><strong>{money(receipt.amount, household.currency)}</strong> paid by {memberName(receipt.paidBy)}</p>
+          {receipt ? <p className="shopping-receipt"><ReceiptText size="0.9375rem" /><strong>{money(receipt.amount, household.currency)}</strong> paid by {memberName(receipt.paidBy)}</p>
             : <p className="small-muted">Receipt removed. The purchased items remain archived.</p>}
           <details><summary>{run.items.length} {run.items.length === 1 ? 'item' : 'items'}</summary><ul>{run.items.map((item) => <li key={item.id}><strong>{item.quantity} {item.name}</strong>{item.notes && <span>{item.notes}</span>}<ShoppingSources sources={item.componentSources} /></li>)}</ul></details>
         </article>
       })}
-      {historyCount < household.shopping.runs.length && <button className="button secondary full" onClick={() => setHistoryCount((count) => count + 20)}>Show more runs</button>}
+      {historyCount < household.shopping.runs.length && <CompactAction label="Show more runs" className="button secondary full" onClick={() => setHistoryCount((count) => count + 20)}><ArrowDown className="compact-only-icon" size="1rem" /></CompactAction>}
     </>}
   </section>
 }
@@ -134,7 +134,7 @@ export function ShoppingItemForm({ household, memberId, item, initialItem, preve
       onKeep={() => { setBaseVersion(latest.version); setLocalError('') }}
     >This item changed. Latest: {latest.quantity} {latest.name}{latest.notes ? `, ${latest.notes}` : ''}.</DraftConflict>}
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={busy || blocked || changed || duplicate || unavailableSource}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size={17} />}{item ? 'Save item' : 'Add to shopping list'}</button>
+    <button className="button primary full" disabled={busy || blocked || changed || duplicate || unavailableSource}>{busy ? <LoadingIcon size={17} tone="light" /> : <Check size="1.0625rem" />}{item ? 'Save item' : 'Add to shopping list'}</button>
   </Form>
 }
 
@@ -172,13 +172,13 @@ export function ShoppingCheckoutForm({ household, memberId, checkoutId, initialI
         </label>
       })}
     </fieldset>
-    {!recorded && <button type="button" className="text-button" disabled={busy} onClick={() => {
+    {!recorded && <CompactAction label="Reload my basket" type="button" className="text-button" disabled={busy} onClick={() => {
       const latest = household.shopping.items.filter((item) => inBasket(item, memberId))
       setSnapshot(latest)
       setSelectedIds(latest.map((item) => item.id))
       setSelectionError('')
       setSelectionNotice('Basket refreshed. Review the total and split.')
-    }}>Reload my basket</button>}
+    }}><RotateCcw className="compact-only-icon" size="0.9375rem" /></CompactAction>}
     {!recorded && changed && <Feedback>Basket changed. Deselect changed items or reload, then review the total.</Feedback>}
     {!recorded && !selected.length && <p className="field-hint">{snapshot.length ? 'Choose at least one item for this run.' : 'Your basket is empty. Close this form and pick up items from the shared list.'}</p>}
     {selectionNotice && <Feedback tone="info">{selectionNotice}</Feedback>}

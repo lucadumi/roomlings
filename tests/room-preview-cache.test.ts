@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createRoomPreviewCache } from '../src/roomPreviewCache.ts'
+import { roomSelectorPreviewSizes } from '../src/roomPreviews.ts'
 import type { RoomPreviewOptions } from '../src/roomPreviewCache.ts'
 
 const options = (): RoomPreviewOptions => ({
@@ -8,6 +9,12 @@ const options = (): RoomPreviewOptions => ({
   sizes: { kitchen: { width: 86, height: 59 }, bathroom: { width: 86, height: 59 }, 'living-room': { width: 86, height: 59 } },
 })
 const images = (value: string) => ({ kitchen: value, bathroom: value, 'living-room': value })
+
+test('selector previews use measured CSS dimensions at the display pixel ratio', () => {
+  const measured = { width: 81.15625, height: 55.640625 }
+  const sizes = roomSelectorPreviewSizes(2, measured)
+  for (const size of Object.values(sizes!)) assert.deepEqual(size, { width: 162, height: 111 })
+})
 
 test('room previews coalesce in-flight requests and are synchronously available after warming', async () => {
   let renders = 0

@@ -38,7 +38,7 @@ export function ComponentInfo({ label, description, supplies }: {
       aria-label={open ? `Show rendering of ${label}` : `Info about ${label}`} aria-expanded={open}
       aria-controls={open ? id : undefined} onKeyDown={closeOnEscape}
       onClick={(event) => { event.stopPropagation(); setOpen((value) => !value) }}>
-      {open ? <Image size={16} aria-hidden="true" /> : <Info size={16} aria-hidden="true" />}
+      {open ? <Image size="1rem" aria-hidden="true" /> : <Info size="1rem" aria-hidden="true" />}
     </button>
     {open && <div id={id} ref={panel} className="component-info-panel" role="region" tabIndex={0}
       aria-label={`${label} information`} onKeyDown={closeOnEscape}>

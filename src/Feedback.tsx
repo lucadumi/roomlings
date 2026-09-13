@@ -14,12 +14,12 @@ export function Feedback({ children, tone = 'error', actions, onDismiss, dismiss
   const Icon = tone === 'error' ? CircleAlert : tone === 'success' ? Check : Info
   const Container = inline ? 'span' : 'div'
   return <Container className={`feedback feedback-${tone}${tone === 'error' ? ' form-error' : ''}${className ? ` ${className}` : ''}`} id={id}>
-    <Icon className="feedback-icon" size={18} aria-hidden="true" />
+    <Icon className="feedback-icon" size="1.125rem" aria-hidden="true" />
     <span className="feedback-body">
       <span className="feedback-text" role={tone === 'error' ? 'alert' : 'status'} aria-atomic="true">{children}</span>
       {actions && <span className="feedback-actions">{actions}</span>}
     </span>
-    {onDismiss && <button type="button" className="icon-button feedback-dismiss" onClick={onDismiss} aria-label={dismissLabel}><X size={16} aria-hidden="true" /></button>}
+    {onDismiss && <button type="button" className="icon-button feedback-dismiss" onClick={onDismiss} aria-label={dismissLabel}><X size="1rem" aria-hidden="true" /></button>}
   </Container>
 }
 

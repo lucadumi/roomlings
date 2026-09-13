@@ -16,7 +16,7 @@ import { baseCameraOffset, cameraOrbitOffset, cameraProjection, fitRoomBounds, f
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
-import { dampTo, frameSeconds } from './motion.ts'
+import { CameraProjectionMotion, dampTo, frameSeconds, springTo, springVector3To } from './motion.ts'
 import {
   componentAccessibleName, componentChoresLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible, visibleRoomBounds,
 } from './roomComponentScene.ts'
@@ -98,7 +98,7 @@ type ChoreRoomHit<Target extends string> = Target | { componentId: string } | { 
 
 export type ChoreRoomWorldProps<Target extends string> = Pick<RoomWorldProps,
   'roomStyle' | 'paused' | 'deferColdStart' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'
-  | 'components' | 'editMode' | 'selectedComponentId' | 'placementPreviewId' | 'onComponentSelect' | 'overviewFocus'> & {
+  | 'components' | 'editMode' | 'wholeRoomView' | 'selectedComponentId' | 'placementPreviewId' | 'onComponentSelect' | 'overviewFocus'> & {
   focusRequest: { target: SceneFocus | ChoreRoomFocus<Target>; id: number }
   preview?: boolean
   motionReduced?: boolean
@@ -121,15 +121,15 @@ function availableFocus<Target extends string>(config: ChoreRoomConfig<Target>, 
 
 export default function ChoreRoomWorld<Target extends string>({
   config, roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
-  preview = false, motionReduced, onStatus, tour, components, editMode = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
+  preview = false, motionReduced, onStatus, tour, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: ChoreRoomWorldProps<Target> & { config: ChoreRoomConfig<Target> }) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const labels = useRef(new Map<Target, HTMLButtonElement>())
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<ChoreRoomControls<Target> | null>(null)
-  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
-  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
+  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
+  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
   const installed = installedRoomComponents(components, config.roomId)
   const requestedFocus = (target: SceneFocus | ChoreRoomFocus<Target>) =>
     !preview && target === 'room' && config.entryFocus ? config.entryFocus : config.focusForRequest(target)
@@ -247,6 +247,8 @@ export default function ChoreRoomWorld<Target extends string>({
     const pointer = new Vector2()
     const projected = new Vector3()
     const cameraCenter = new Vector3()
+    const cameraVelocity = new Vector3()
+    const projectionMotion = new CameraProjectionMotion()
     const desiredCenter = new Vector3()
     const offset = new Vector3()
     const pointers = new Map<number, Vector2>()
@@ -266,9 +268,13 @@ export default function ChoreRoomWorld<Target extends string>({
     let shadowsDirty = true
     let targetRotation = 0
     let orbitRotation = 0
+    let orbitVelocity = 0
     let targetPitch = 0
     let pitch = 0
+    let pitchVelocity = 0
     let halfHeight = 1
+    let halfHeightVelocity = 0
+    let zoomVelocity = 0
     let lightMix = 0
     let lastFocusId = state.current.focusRequest.id
     let lastSelectedComponentKey: string | null = null
@@ -406,9 +412,13 @@ export default function ChoreRoomWorld<Target extends string>({
         displayedProgress = snap ? latest.tour.progress.current : dampTo(displayedProgress, latest.tour.progress.current, 9, delta, 0.0001)
         container.dataset.tourPosition = reduced ? 'static' : displayedProgress.toFixed(3)
       }
-      orbitRotation = snap ? targetRotation : dampTo(orbitRotation, targetRotation, 9, delta)
+      if (snap) { orbitRotation = targetRotation; orbitVelocity = 0 }
+      else if (preview) orbitRotation = dampTo(orbitRotation, targetRotation, 9, delta)
+      else ({ value: orbitRotation, velocity: orbitVelocity } = springTo({ value: orbitRotation, velocity: orbitVelocity }, targetRotation, 24, delta))
       room.updateMatrixWorld(true)
-      pitch = snap ? targetPitch : dampTo(pitch, targetPitch, 9, delta)
+      if (snap) { pitch = targetPitch; pitchVelocity = 0 }
+      else if (preview) pitch = dampTo(pitch, targetPitch, 9, delta)
+      else ({ value: pitch, velocity: pitchVelocity } = springTo({ value: pitch, velocity: pitchVelocity }, targetPitch, 24, delta))
       const framedFocus = placementCandidate || latest.overviewFocus || (preview && (latest.motionReduced ?? reducedMotion.matches)) ? 'room' : currentControls.focus
       const focusedComponent = framedFocus === 'room' ? undefined : targetComponent(config, framedFocus, latestInstalled)
       const bounds = framedFocus === 'room' ? componentScene.bounds
@@ -419,7 +429,8 @@ export default function ChoreRoomWorld<Target extends string>({
       const atEntryFocus = !!config.entryFocus && framedFocus === config.entryFocus
       const closeRoom = usesRoomEntryFraming({
         focus: atEntryFocus ? 'room' : framedFocus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
-        panelOpen: latest.panelOpen, overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, publicPreview: preview,
+        overviewFocus: latest.overviewFocus, placementPreview: !!placementCandidate, publicPreview: preview,
+        wholeRoomView: latest.wholeRoomView,
       })
       const displayedZoom = latest.overviewFocus ? 1 : currentControls.zoom
       const desiredZoom = config.cameraZoom ? config.cameraZoom(displayedZoom, closeRoom, config.roomId) : displayedZoom
@@ -443,7 +454,7 @@ export default function ChoreRoomWorld<Target extends string>({
       if (configuredEntry) {
         configuredEntry.halfHeight = Math.max(config.minimumFocusHalfHeight ?? 0, configuredEntry.halfHeight) * frameArea.height / viewport.height
       }
-      const framing = latest.editMode && !preview && !latest.tour && !closeRoom
+      const framing = latest.wholeRoomView && !preview && !latest.tour && !closeRoom
         ? fitRoomOrbitBounds(frameArea.width, frameArea.height, selectedBounds ?? bounds)
         : selectedBounds
         ? fitRoomBounds(frameArea.width, frameArea.height, selectedBounds, orbitRotation, pitch)
@@ -462,14 +473,25 @@ export default function ChoreRoomWorld<Target extends string>({
       if (placementBounds && !latest.overviewFocus) {
         placementPreviewCenter(placementBounds, desiredCenter).applyMatrix4(room.matrixWorld)
       }
-      if (snap) cameraCenter.copy(desiredCenter)
-      else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
-      if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
-      halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
+      if (snap) { cameraCenter.copy(desiredCenter); cameraVelocity.set(0, 0, 0) }
+      else if (preview) {
+        cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
+        if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
+      } else springVector3To(cameraCenter, cameraVelocity, desiredCenter, 16, delta)
+      if (snap) { halfHeight = framing.halfHeight; halfHeightVelocity = 0; camera.zoom = desiredZoom; zoomVelocity = 0 }
+      else if (preview) {
+        halfHeight = dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
+        camera.zoom = dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
+      } else {
+        ({ value: halfHeight, velocity: halfHeightVelocity } = springTo({ value: halfHeight, velocity: halfHeightVelocity }, framing.halfHeight, 16, delta, 0.002))
+        const zoom = springTo({ value: camera.zoom, velocity: zoomVelocity }, desiredZoom, 16, delta, 0.002)
+        camera.zoom = zoom.value
+        zoomVelocity = zoom.velocity
+      }
       camera.position.copy(cameraCenter).add(cameraOrbitOffset(orbitRotation, pitch, offset))
       camera.lookAt(cameraCenter)
-      const projection = cameraProjection(viewport.width, viewport.height, frameArea, halfHeight, camera.zoom)
+      const projectedArea = projectionMotion.update(frameArea, viewport, delta, snap || preview)
+      const projection = cameraProjection(viewport.width, viewport.height, projectedArea, halfHeight, camera.zoom)
       camera.left = projection.left
       camera.right = projection.right
       camera.top = projection.top
@@ -546,8 +568,9 @@ export default function ChoreRoomWorld<Target extends string>({
         canvas.dataset.renderReady = 'true'
         latest.onStatus?.('ready')
       }
-      const moving = orbitRotation !== targetRotation || pitch !== targetPitch
-        || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom
+      const moving = orbitRotation !== targetRotation || orbitVelocity !== 0 || pitch !== targetPitch || pitchVelocity !== 0
+        || !cameraCenter.equals(desiredCenter) || cameraVelocity.lengthSq() !== 0 || halfHeight !== framing.halfHeight || halfHeightVelocity !== 0
+        || camera.zoom !== desiredZoom || zoomVelocity !== 0 || projectionMotion.moving
         || !!latest.tour && !reduced && displayedProgress !== latest.tour.progress.current
       setCameraMoving(moving)
       drawing = false
@@ -749,7 +772,7 @@ export default function ChoreRoomWorld<Target extends string>({
     return cleanup
   }, [], deferColdStart)
 
-  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, selectedComponentId, placementPreviewId, overviewFocus])
+  useEffect(() => { controls.current?.wake() }, [roomStyle, paused, panelOpen, focusRequest.id, showLabels, motionReduced, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, overviewFocus])
 
   const changeZoom = (direction: -1 | 1) => {
     const current = controls.current
@@ -781,7 +804,7 @@ export default function ChoreRoomWorld<Target extends string>({
       <div className={`chore-room-scene-area ${config.roomId}-scene-area`} ref={stage} aria-hidden="true" />
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable}
         aria-label={editMode ? config.copy.editing : config.copy.interactive} />
-      {unavailable ? <div className={`chore-room-unavailable ${config.roomId}-unavailable`} role="status"><RoomIcon size={34} /><strong>{config.copy.unavailable}</strong><p>You can still manage chores and restock supplies with the room controls.</p></div> : <>
+      {unavailable ? <div className={`chore-room-unavailable ${config.roomId}-unavailable`} role="status"><RoomIcon size="2.125rem" /><strong>{config.copy.unavailable}</strong><p>You can still manage chores and restock supplies with the room controls.</p></div> : <>
         {!placementLabelsHidden && <div className={`world-hotspots${showLabels ? '' : ' hide-labels'}`} aria-label={config.copy.objects}>
           {!editMode && config.targets.filter((target) => !config.targetSlots[target]).map((target) => {
             const area = config.getTargetArea(target)
@@ -791,7 +814,7 @@ export default function ChoreRoomWorld<Target extends string>({
               className={`world-hotspot hotspot-${target}`} {...{ [`data-${config.roomId}-target`]: target }} data-selected={focused === target}
               aria-label={label} onClick={() => activate(target)} onMouseEnter={() => setHovered(target)} onMouseLeave={() => setHovered(null)}
               onFocus={() => setHovered(target)} onBlur={() => setHovered(null)}>
-              <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{label}</span>
+              <span className="hotspot-dot"><Plus size="0.75rem" /></span><span className="hotspot-label">{label}</span>
             </button>
           })}
           {onComponentSelect && installed.map((component) => <button type="button" key={component.id}
@@ -801,22 +824,22 @@ export default function ChoreRoomWorld<Target extends string>({
             data-selected={!overviewFocus && selectedComponentId === component.id} aria-label={componentChoresLabel(component, installed)}
             onClick={() => activate({ componentId: component.id })} onMouseEnter={() => setHovered({ componentId: component.id })}
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
-            <span className="hotspot-dot"><Plus size={12} /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
+            <span className="hotspot-dot"><Plus size="0.75rem" /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
           </button>)}
         </div>}
         <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? config.copy.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? config.copy.room : config.labels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
-          <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size={19} /></button>
+          <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size="1.1875rem" /></button>
           <span>{Math.round(zoom * 100)}%</span>
-          <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size={19} /></button>
+          <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size="1.1875rem" /></button>
           <i />
-          <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size={18} /></button>
+          <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size="1.125rem" /></button>
           <button type="button" className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={placementLabelsHidden}
             aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'} aria-pressed={labelsShown}
-            title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size={18} /> : <EyeOff size={18} />}</button>
-          <button type="button" className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title={config.copy.lighting}>{evening ? <Moon size={18} /> : <Sun size={18} />}</button>
+            title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size="1.125rem" /> : <EyeOff size="1.125rem" />}</button>
+          <button type="button" className="icon-button" onClick={changeLight} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title={config.copy.lighting}>{evening ? <Moon size="1.125rem" /> : <Sun size="1.125rem" />}</button>
         </div>
-        <div className="world-interaction-hint"><Move size={13} />{hovered && typeof hovered !== 'string'
+        <div className="world-interaction-hint"><Move size="0.8125rem" />{hovered && typeof hovered !== 'string'
           ? 'lighting' in hovered ? (evening ? 'Switch to daylight' : 'Switch to evening lighting')
             : hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores'
           : hoveredTarget === config.suppliesTarget ? config.copy.restockHint : hoveredTarget ? hoveredTarget === config.choresTarget ? 'Open room chores' : config.labels[hoveredTarget]
@@ -824,10 +847,10 @@ export default function ChoreRoomWorld<Target extends string>({
       </>}
       {!editMode && <div className="world-quick-actions chore-room-quick-actions" role="group" aria-label={`${roomCatalog[config.roomId].name} quick actions`}>
         <button type="button" className="world-fridge-toggle" aria-label="Room chores" onClick={() => activate(config.choresTarget)}>
-          <ClipboardList size={15} aria-hidden="true" /><span className="world-action-label">Room chores</span>
+          <ClipboardList size="0.9375rem" aria-hidden="true" /><span className="world-action-label">Room chores</span>
         </button>
         <button type="button" className="world-kettle-toggle" aria-label="Restock supplies" onClick={() => activate(config.suppliesTarget)}>
-          <PackagePlus size={16} aria-hidden="true" /><span className="world-action-label">Restock supplies</span>
+          <PackagePlus size="1rem" aria-hidden="true" /><span className="world-action-label">Restock supplies</span>
         </button>
       </div>}
     </div>

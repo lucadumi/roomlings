@@ -20,7 +20,7 @@ export function AccountRecoveryPanel({ recovery, codes, busy, onGenerate, onRevo
   return <>
     <div className="access-heading">
       <h3>{recovery.remaining} unused recovery {recovery.remaining === 1 ? 'code' : 'codes'}</h3>
-      <button className="icon-button control-surface" disabled={busy} aria-label="Refresh recovery code status" onClick={onRefresh}><RefreshCw size={16} /></button>
+      <button className="icon-button control-surface" disabled={busy} aria-label="Refresh recovery code status" onClick={onRefresh}><RefreshCw size="1rem" /></button>
     </div>
     <p className="field-hint">Account recovery codes are a backup when email sign-in is unavailable. They restore your existing account and memberships, without creating another roommate or signing out your other devices.</p>
     <p className="field-hint">Generate {accountRecoveryCodeCount} single-use codes and keep them somewhere private. You may need to sign in again before changing them.</p>
@@ -28,7 +28,7 @@ export function AccountRecoveryPanel({ recovery, codes, busy, onGenerate, onRevo
       dateStyle: 'medium', timeStyle: 'short',
     }).format(new Date(recovery.updatedAt))}</p>}
     <button className="button primary full" disabled={busy} onClick={onGenerate}>
-      {busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size={17} />}
+      {busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size="1.0625rem" />}
       {recovery.remaining ? 'Replace recovery codes' : 'Generate recovery codes'}
     </button>
     {recovery.remaining > 0 && <button className="text-button" disabled={busy} onClick={onRevoke}>Revoke recovery codes</button>}
@@ -57,7 +57,7 @@ export function AccountRecoverySignIn({ busy, initialEmail, fixedEmail = false, 
     <label className="field">Name this browser<input required autoComplete="off" maxLength={50}
       value={label} disabled={busy} onChange={(event) => setLabel(event.target.value)} /></label>
     {error && <Feedback>{error}</Feedback>}
-    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size={17} />}Recover my account</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <KeyRound size="1.0625rem" />}Recover my account</button>
     <button type="button" className="text-button" disabled={busy} onClick={() => onEmail(email)}>Use email sign-in</button>
   </Form>
 }

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import type { Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
+import type { ComponentProps, Dispatch, FormEvent, ReactNode, SetStateAction } from 'react'
 import { Apple, Check, Coffee, Cookie, Copy, Egg, ShoppingBasket, X } from 'lucide-react'
 import { money, splitAmount } from '../shared/domain.ts'
 import type { Category, Member } from '../shared/domain.ts'
@@ -7,11 +7,22 @@ import { Feedback, FeedbackAction } from './Feedback.tsx'
 
 export function CategoryIcon({ category, size = 20 }: { category: Category; size?: number }) {
   const Icon = { produce: Apple, dairy: Egg, pantry: Cookie, drinks: Coffee, other: ShoppingBasket }[category]
-  return <Icon size={size} strokeWidth={1.7} />
+  return <Icon size={`${size / 16}rem`} strokeWidth={1.7} />
 }
 
 export function Avatar({ member, small = false }: { member: Member; small?: boolean }) {
   return <span className={`avatar${small ? ' small' : ''}`} style={{ backgroundColor: member.color }} title={member.name}>{member.name.slice(0, 1).toUpperCase()}</span>
+}
+
+export function CompactAction({ label, count, className = '', children, ...props }: ComponentProps<'button'> & {
+  label: string
+  count?: number
+}) {
+  return <button {...props} type={props.type ?? 'button'} className={`${className} compact-action`.trim()}
+    aria-label={props['aria-label'] ?? (count === undefined ? label : `${label} ${count}`)} title={props.title ?? (count === undefined ? label : `${label} (${count})`)}>
+    {children}<span className="compact-action-label">{label}</span>
+    {count !== undefined && <span className="compact-action-count">{count}</span>}
+  </button>
 }
 
 export function Modal({ title, subtitle, children, onClose, busy = false, wide = false }: {
@@ -65,7 +76,7 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
     <div className={`modal${wide ? ' wide' : ''}`} ref={dialog} role="dialog" aria-modal="true" aria-busy={busy || undefined} aria-labelledby={titleId} aria-describedby={subtitle ? descriptionId : undefined} tabIndex={-1}>
       <header className="modal-header">
         <h2 id={titleId}>{title}</h2>
-        <button type="button" className="icon-button control-surface modal-close" aria-label="Close dialog" disabled={busy} onClick={onClose}><X size={20} /></button>
+        <button type="button" className="icon-button control-surface modal-close" aria-label="Close dialog" disabled={busy} onClick={onClose}><X size="1.25rem" /></button>
       </header>
       {subtitle && <p className="modal-subtitle" id={descriptionId}>{subtitle}</p>}
       {children}
@@ -98,6 +109,7 @@ export function RoomPanel({ title, subtitle, children, onClose, view, suspended 
     // Restore a room control even when an earlier dialog removed the original trigger.
     if (!returnFocus.current) returnFocus.current = document.querySelector<HTMLButtonElement>('.game-dock button[aria-pressed="true"]')
     if (scroll.current) scroll.current.scrollTop = 0
+    if (panel.current) panel.current.scrollTop = 0
     if (placementChanged) return
     panel.current?.focus({ preventScroll: true })
   }, [title, view, suspended, compact])
@@ -128,7 +140,7 @@ export function RoomPanel({ title, subtitle, children, onClose, view, suspended 
     data-panel-side={side} data-compact={compact} inert={suspended} aria-hidden={suspended || undefined} style={suspended ? { display: 'none' } : undefined}>
     <header className="room-panel-header">
       <div className="room-panel-title"><h2 id={titleId}>{title}</h2></div>
-      {!compact && <div className="room-panel-actions">{badge}<button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size={20} /></button></div>}
+      {!compact && <div className="room-panel-actions">{badge}<button type="button" className="icon-button control-surface" aria-label="Close panel" disabled={busy} onClick={onClose}><X size="1.25rem" /></button></div>}
     </header>
     <div className="room-panel-scroll" ref={scroll}>{subtitle && <p className="room-panel-subtitle">{subtitle}</p>}{children}</div>
   </aside>
@@ -178,7 +190,7 @@ export function CopyField({ label, value, buttonLabel, copiedLabel, multiline = 
       }).catch(() => {
         if (currentValue.current === value && copyAttempt.current === attempt) setError('Your browser could not copy this value. Select the field above and copy it manually.')
       })
-    }}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? copiedLabel : buttonLabel}</button>
+    }}>{copied ? <Check size="1rem" /> : <Copy size="1rem" />}{copied ? copiedLabel : buttonLabel}</button>
     {error && <Feedback>{error}</Feedback>}
   </>
 }
@@ -198,7 +210,7 @@ export function SplitParticipants({ members, selected, onChange, amount, currenc
         <input type="checkbox" checked={selected.includes(member.id)} disabled={disabled} onChange={(event) => onChange((previous) =>
           event.target.checked ? [...previous, member.id] : previous.filter((id) => id !== member.id),
         )} />
-        <Avatar member={member} small /><span>{member.name}{member.inactive ? ' (former roommate)' : ''}</span>{selected.includes(member.id) && <Check size={13} />}
+        <Avatar member={member} small /><span>{member.name}{member.inactive ? ' (former roommate)' : ''}</span>{selected.includes(member.id) && <Check size="0.8125rem" />}
       </label>)}
     </div></fieldset>
     {shares && <div className="split-preview">{members.filter((member) => selected.includes(member.id)).map((member) =>

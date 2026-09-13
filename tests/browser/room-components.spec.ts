@@ -379,7 +379,7 @@ test('narrow keyboard editing validates supply names and Escape never saves a dr
   const editor = await openEditor(page)
   await editor.getByRole('button', { name: 'Edit Fridge', exact: true }).click()
   await expect(editor.getByLabel('Object name', { exact: true })).toBeFocused()
-  await expect(editor.getByLabel('Object name', { exact: true })).toHaveCSS('font-size', '16px')
+  await expect(editor.getByLabel('Object name', { exact: true })).toHaveCSS('font-size', '12px')
   await editor.getByRole('button', { name: 'Add supply shortcut', exact: true }).click()
   await expect(editor.getByLabel('Supply name 2', { exact: true })).toBeFocused()
   await editor.getByLabel('Supply name 2', { exact: true }).fill('ＳＵＲＦＡＣＥ　ＣＬＥＡＮＥＲ')

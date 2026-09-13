@@ -22,6 +22,6 @@ export function CreateKitchenForm({ busy, error, onSubmit, initialMemberName = '
     <label className="field">Your name<input required maxLength={50} value={memberName} onChange={(event) => setMemberName(event.target.value)} placeholder="What should your roommates call you?" disabled={busy} /></label>
     <div className="field-row"><label className="field">Monthly grocery budget<input required inputMode="decimal" value={budget} onChange={(event) => setBudget(event.target.value)} disabled={busy} /></label><label className="field">Currency<Dropdown label="Currency" value={currency} onValueChange={setCurrency} disabled={busy}>{currencies.map((value) => <option key={value}>{value}</option>)}</Dropdown></label></div>
     {localError && <Feedback>{localError}</Feedback>}{error}
-    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Home size={17} />}{busy ? 'Making room...' : 'Create our kitchen'}</button>
+    <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Home size="1.0625rem" />}{busy ? 'Making room...' : 'Create our kitchen'}</button>
   </Form>
 }

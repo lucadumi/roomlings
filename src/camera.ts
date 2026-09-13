@@ -43,17 +43,21 @@ export function preferredRoomRotation(slotId?: RoomSlotId): number {
   return placement?.surface === 'fitted' && placement.rotation === -Math.PI / 2 ? 0.75 : 0
 }
 
+// A side panel only narrows the clear area, so the room keeps its entry magnification and the camera pans into it.
+// The object panels are the exception: they are about the room itself, so it is framed whole beside them.
 export function usesRoomEntryFraming(view: {
   focus: string
   selectedComponentId?: string | null
   resetView?: boolean
-  panelOpen?: boolean
   overviewFocus?: boolean
   placementPreview?: boolean
   publicPreview?: boolean
+  wholeRoomView?: boolean
 }): boolean {
-  return !view.overviewFocus && !view.publicPreview
-    && (!!view.placementPreview || !!view.resetView || (!view.panelOpen && view.focus === 'room' && !view.selectedComponentId))
+  if (view.overviewFocus || view.publicPreview) return false
+  if (view.placementPreview) return true
+  if (view.wholeRoomView) return false
+  return !!view.resetView || (view.focus === 'room' && !view.selectedComponentId)
 }
 
 export function roomFramingArea(canvas: FramingArea, stage: FramingArea, controls?: FramingArea, minimum = { width: 0, height: 0 }): FramingArea {

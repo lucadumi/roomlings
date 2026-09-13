@@ -135,7 +135,12 @@ export async function closeAccountContext(context: BrowserContext): Promise<void
 export async function routeAccountApi(page: Page, accounts: AccountHarness): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
-    const response = await route.fetch({ url: `${accounts.origin}${url.pathname}${url.search}`, maxRedirects: 0 })
+    const response = await route.fetch({
+      url: `${accounts.origin}${url.pathname}${url.search}`,
+      maxRedirects: 0,
+      // Retry a dropped read connection without replaying a mutation.
+      maxRetries: route.request().method() === 'GET' ? 1 : 0,
+    })
     await route.fulfill({ response })
   })
 }
