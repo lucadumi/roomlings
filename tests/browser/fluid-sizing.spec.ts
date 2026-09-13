@@ -2,7 +2,8 @@ import type { Page } from '@playwright/test'
 import { expect, test } from './account-fixtures.ts'
 import { openGroceryForm, openRoomEditor, openShoppingBag, waitForRoomReady } from './fixtures.ts'
 
-test.use({ reducedMotion: 'reduce' })
+// Keep large CSS viewports without spending the layout suite's budget on software-rendered pixels.
+test.use({ reducedMotion: 'reduce', deviceScaleFactor: process.env.CI ? 0.5 : 1 })
 
 const laptop = { width: 1440, height: 900, unit: 16 }
 const largerWindows = [
@@ -14,6 +15,9 @@ type Dimension = 'width' | 'height' | 'font-size' | 'column-gap' | 'padding-top'
 
 async function resize(page: Page, viewport: typeof laptop) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height })
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
   await expect.poll(() => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize)), { timeout: 15_000 })
     .toBeCloseTo(viewport.unit, 3)
   await page.evaluate(() => new Promise<void>((resolve) => {
@@ -90,7 +94,7 @@ test('landing text, actions, branding, spacing and artwork scale within comforta
 })
 
 test('household controls, icons, dialogs, fields and room menus share the same size scale', { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
-  test.setTimeout(90_000)
+  test.setTimeout(process.env.CI ? 180_000 : 90_000)
   await page.setViewportSize({ width: laptop.width, height: laptop.height })
   await page.goto('/kitchen')
   await waitForRoomReady(page)
@@ -149,11 +153,11 @@ test('household controls, icons, dialogs, fields and room menus share the same s
 })
 
 test.describe('compact screenshot layouts', () => {
-  test.use({ deviceScaleFactor: 2 })
+  test.use({ deviceScaleFactor: process.env.CI ? 0.5 : 2 })
 
   for (const viewport of [{ width: 952, height: 534 }, { width: 644, height: 534 }]) {
     test(`compact controls keep their names and usable hit areas at ${viewport.width}px`, { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
-      test.setTimeout(90_000)
+      test.setTimeout(process.env.CI ? 180_000 : 90_000)
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
       await waitForRoomReady(page)
@@ -237,7 +241,7 @@ test.describe('compact screenshot layouts', () => {
     })
 
     test(`compact editor actions and fields remain usable at ${viewport.width}px`, { tag: '@room' }, async ({ page, emptyHousehold: _owner }, testInfo) => {
-      test.setTimeout(90_000)
+      test.setTimeout(process.env.CI ? 180_000 : 90_000)
       await page.setViewportSize(viewport)
       await page.goto('/kitchen')
       await waitForRoomReady(page)

@@ -89,6 +89,7 @@ test('landing sections stay compact with spacing after the hero and shared-home 
     const metrics = await page.locator('.welcome').evaluate((element) => {
       if (!(element instanceof HTMLElement)) throw new Error('The landing element is missing.')
       return {
+        scale: parseFloat(getComputedStyle(document.documentElement).fontSize) / 16,
         words: element.innerText.split(/\s+/).length,
         steps: element.querySelector('.welcome-features')!.getBoundingClientRect().height,
         heroGap: parseFloat(getComputedStyle(element.querySelector('.welcome-hero')!).marginBottom),
@@ -105,10 +106,10 @@ test('landing sections stay compact with spacing after the hero and shared-home 
     expect(metrics.steps).toBeLessThanOrEqual(maximum)
     expect(Math.abs(parseFloat(metrics.sectionMinimums[0]) - (height - metrics.headerHeight))).toBeLessThan(1)
     expect(metrics.sectionMinimums.slice(1)).toEqual(['0px', '0px', '0px', '0px'])
-    expect(metrics.heroGap).toBeGreaterThanOrEqual(40)
-    expect(metrics.heroGap).toBeLessThanOrEqual(72)
-    expect(metrics.featuresGap).toBeGreaterThanOrEqual(16)
-    expect(metrics.featuresGap).toBeLessThanOrEqual(32)
+    expect(metrics.heroGap).toBeGreaterThanOrEqual(40 * metrics.scale)
+    expect(metrics.heroGap).toBeLessThanOrEqual(72 * metrics.scale)
+    expect(metrics.featuresGap).toBeGreaterThanOrEqual(16 * metrics.scale)
+    expect(metrics.featuresGap).toBeLessThanOrEqual(32 * metrics.scale)
     expect(metrics.headingGap).toBe('0px')
     expect(metrics.titleToContent).toBeLessThanOrEqual(24)
     expect(metrics.otherMargins).toEqual(['0px', '0px', '0px', '0px'])

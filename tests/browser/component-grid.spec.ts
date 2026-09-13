@@ -204,24 +204,25 @@ test('discarding a placement leaves a visible gap above the discarded-preview no
     const notice = editor.locator('.room-editor-notice')
     await expect(notice).toHaveText('The placement preview was discarded. Your other draft changes are kept.')
     await notice.scrollIntoViewIfNeeded()
-    await expect(notice).toHaveCSS('margin-top', '16px')
-    await expect(notice).toHaveCSS('padding-top', '12px')
+    const unit = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize))
+    expect(await notice.evaluate((element) => parseFloat(getComputedStyle(element).marginTop))).toBeCloseTo(unit, 1)
+    expect(await notice.evaluate((element) => parseFloat(getComputedStyle(element).paddingTop))).toBeCloseTo(0.75 * unit, 1)
     const footer = editor.locator('.room-editor-footer')
     await expect(footer.getByRole('status')).toHaveText('No unapplied changes.')
-    await expect(footer).toHaveCSS('margin-top', '18px')
-    await expect(footer).toHaveCSS('padding-top', '12px')
+    expect(await footer.evaluate((element) => parseFloat(getComputedStyle(element).marginTop))).toBeCloseTo(1.125 * unit, 1)
+    expect(await footer.evaluate((element) => parseFloat(getComputedStyle(element).paddingTop))).toBeCloseTo(0.75 * unit, 1)
     const gap = await notice.evaluate((element) => {
       const previous = element.previousElementSibling
       if (!previous) throw new Error('The editor notice needs a preceding content block.')
       return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom
     })
-    expect(gap).toBeGreaterThanOrEqual(15)
+    expect(gap).toBeGreaterThanOrEqual(unit - 1)
     const footerGap = await footer.evaluate((element) => {
       const previous = element.previousElementSibling
       if (!previous) throw new Error('The editor footer needs a preceding content block.')
       return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom
     })
-    expect(footerGap).toBeGreaterThanOrEqual(17)
+    expect(footerGap).toBeGreaterThanOrEqual(1.125 * unit - 1)
     await page.locator('.room-panel').screenshot({ path: testInfo.outputPath(`discard-notice-${width}.png`), animations: 'disabled' })
   }
 })

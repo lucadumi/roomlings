@@ -7,10 +7,10 @@ const savedPreviews = createRoomPreviewCache(async (options, signal) => {
   return renderHouseholdRoomPreviews(options, signal)
 })
 
-export function roomSelectorPreviewSizes(ratio = 1): RoomPreviewOptions['sizes'] {
+export function roomSelectorPreviewSizes(ratio = 1, area = { width: 86, height: 86 * 24 / 35 }): RoomPreviewOptions['sizes'] {
   const scale = Math.min(ratio, 2)
   return Object.fromEntries(roomIds.map((roomId) => [roomId, {
-    width: Math.round(86 * scale), height: Math.round(86 * 24 / 35 * scale),
+    width: Math.max(1, Math.round(area.width * scale)), height: Math.max(1, Math.round(area.height * scale)),
   }])) as RoomPreviewOptions['sizes']
 }
 

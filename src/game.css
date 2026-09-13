@@ -584,6 +584,9 @@
   .modal .field :is(input, select, textarea), .game-app .field :is(input, select, textarea),
   .modal .dropdown-trigger, .game-app .dropdown-trigger, .game-panel-content .search-input input { font-size: max(12px, 0.8125rem); }
 }
+@media (max-width: 1024px) {
+  .game-app .app-feedback { --feedback-top: calc(var(--game-header-space, 5rem) + 2 * var(--control-compact-height) + 1.25rem); top: var(--feedback-top); left: 0.75rem; transform: none; width: min(26.25rem, calc(100vw - var(--control-compact-height) - 4rem)); max-height: calc(100dvh - var(--feedback-top) - var(--game-dock-space, 5rem)); }
+}
 @media (prefers-reduced-motion: reduce) {
   .game-home::after, .kitchen-world { transition: none; }
 }

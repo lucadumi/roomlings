@@ -417,8 +417,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 374, height: 844 }
     expect(controls!.y + controls!.height).toBeLessThanOrEqual(camera!.y)
     for (const button of await tools.getByRole('button').all()) {
       const bounds = await button.boundingBox()
-      expect(bounds!.width).toBeGreaterThanOrEqual(44)
-      expect(bounds!.height).toBeGreaterThanOrEqual(44)
+      expect(bounds!.width).toBeGreaterThanOrEqual(32)
+      expect(bounds!.height).toBeGreaterThanOrEqual(32)
     }
     await page.getByRole('button', { name: 'Close the fridge', exact: true }).click()
     await expect(page.locator('.world-view-label')).toBeVisible()

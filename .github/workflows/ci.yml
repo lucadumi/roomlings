@@ -33,7 +33,7 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
       options: --ipc=host
-    timeout-minutes: 25
+    timeout-minutes: ${{ startsWith(matrix.suite, 'room-') && 30 || 25 }}
     strategy:
       fail-fast: false
       matrix:
