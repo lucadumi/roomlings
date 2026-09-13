@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 
 const template = readFileSync(new URL('../emails/auth-code.html', import.meta.url), 'utf8')
 const instructions = readFileSync(new URL('../docs/accounts.md', import.meta.url), 'utf8')
@@ -20,12 +20,18 @@ describe('Roomlings account email template', () => {
     assert.match(template, /There is no confirmation link to click/)
   })
 
-  it('uses existing Roomlings branding without remote assets, tracking or executable content', () => {
+  it('uses existing Roomlings branding with one remote mark and no tracking or executable content', () => {
     assert.match(template, /roomlings<span/)
-    for (const token of ['ink', 'sage', 'honey', 'clay']) {
+    for (const token of ['ink', 'sage', 'clay']) {
       assert.ok(template.includes(paletteColor(token)), `The email has drifted from --palette-${token}.`)
     }
-    assert.doesNotMatch(template, /<(?:script|iframe|img|form|link)\b|\bsrc\s*=|\bon\w+\s*=|url\s*\(/i)
+    const images = template.match(/<img\b[^>]*>/g) ?? []
+    assert.equal(images.length, 1)
+    assert.equal(template.match(/\bsrc\s*=/g)?.length, 1)
+    assert.match(images[0], /src="https:\/\/[^"]+\/storage\/v1\/object\/public\/brand\/roomlings-icon-flat-256\.png"/)
+    assert.match(images[0], /alt=""/)
+    assert.ok(existsSync(new URL('../design/roomlings-logo/exports/roomlings-icon-flat-256.png', import.meta.url)))
+    assert.doesNotMatch(template, /<(?:script|iframe|form|link)\b|\bon\w+\s*=|url\s*\(/i)
     assert.match(template, /<html lang="en">/)
     assert.match(template, /role="presentation"/)
   })
@@ -39,6 +45,8 @@ describe('Roomlings account email template', () => {
     assert.match(instructions, /\*\*Confirm signup\*\* and \*\*Magic Link/)
     assert.match(instructions, /emails\/auth-code\.html/)
     assert.match(instructions, /Your Roomlings sign-in code/)
+    assert.match(instructions, /public Storage bucket named `brand`/)
+    assert.match(instructions, /YOUR-PROJECT-REF/)
     assert.match(readme, /\(docs\/accounts\.md\)/)
   })
 })
