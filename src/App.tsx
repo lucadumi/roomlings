@@ -59,6 +59,7 @@ const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
 const browserStorageMessage = 'Could not save browser access. Keep this tab open.'
 const browserAccessEndedMessage = 'Browser access ended. Sign in or recover your access.'
+const roomHelpHint = 'Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.'
 
 type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit'
 const pageFocus: Record<Page, FocusRequest['target']> = {
@@ -766,7 +767,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         <p><Users size="1.1875rem" /><span><strong>Share the work.</strong> Assign a person or rotation. Completing a chore records who did it and advances the next turn.</span></p>
         <p><Plus size="1.1875rem" /><span><strong>Restock supplies.</strong> The supply shelf adds items to the existing shopping list. It does not record a purchase.</span></p>
         <p><Settings2 size="1.1875rem" /><span><strong>Make the room yours.</strong> Room objects holds supplies, care and manual states. Admins use Edit room to preview appliances, fixtures and decorations before applying a shared change.</span></p>
-      </div><p className="field-hint">Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.</p>
+      </div><p className="field-hint">{roomHelpHint}</p>
     </Modal>
     if (dialog === 'help') return <Modal title="A kitchen you can play with." subtitle="Real groceries, real shares. Just a much nicer place to keep track." onClose={close}>
       <div className="game-guide">
@@ -777,7 +778,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         <p><Users size="1.1875rem" /><span><strong>Make room for your people.</strong> The noticeboard opens your household. The envelope sorts out repayments.</span></p>
         <p><Check size="1.1875rem" /><span><strong>Keep up with chores.</strong> The cleaning caddy opens this room's tasks. Room supplies go onto the existing shopping list.</span></p>
         <p><Settings2 size="1.1875rem" /><span><strong>Make the room yours.</strong> Room objects holds supplies, care and manual states. Admins use Edit room to preview appliances, furniture and decorations before applying a shared change.</span></p>
-      </div>
+      </div><p className="field-hint">{roomHelpHint}</p>
     </Modal>
     // Keep welcome-screen forms mounted when the loaded kitchen replaces the welcome content.
     if (dialog === 'create') return <Modal key="create" title="Make room for your people." subtitle="Start a fresh kitchen, then invite your roommates. You can switch back to saved kitchens from The roommates." onClose={close} busy={busy}>

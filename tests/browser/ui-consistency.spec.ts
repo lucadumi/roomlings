@@ -370,6 +370,16 @@ test.describe('UI consistency', () => {
   })
 })
 
+test('every room guide uses the same closing navigation paragraph', async ({ page, populatedHousehold: _household }) => {
+  const guidance = 'Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.'
+  for (const room of ['kitchen', 'bathroom', 'living-room']) {
+    await page.goto(`/rooms/${room}`)
+    await page.getByRole('button', { name: 'How to play', exact: true }).click()
+    await expect(page.getByRole('dialog').locator('.field-hint').last()).toHaveText(guidance)
+    await page.keyboard.press('Escape')
+  }
+})
+
 test('camera movement copy also describes zooming out', { tag: '@room' }, async ({ page, populatedHousehold: _household }) => {
   const now = Date.now()
   await page.clock.install({ time: now - 60_000 })
