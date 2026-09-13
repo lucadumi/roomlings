@@ -25,7 +25,7 @@ const contactTolerance = 0.01
 const penetrationTolerance = 0.006
 const rooms = ['kitchen', 'bathroom', 'living-room'] as const
 const expectedAuditCounts = {
-  kitchen: { candidates: 62, legalPairs: 1773 },
+  kitchen: { candidates: 60, legalPairs: 1660 },
   bathroom: { candidates: 27, legalPairs: 328 },
   'living-room': { candidates: 12, legalPairs: 53 },
 } as const
@@ -334,7 +334,7 @@ test('active living-room wall offers remain available after classifying the TV a
 })
 
 test('retired legacy-only kinds are excluded from the new-placement audit surface', () => {
-  for (const kind of ['vacuum', 'toothbrush-holder', 'dish-rack'] as const) {
+  for (const kind of ['vacuum', 'toothbrush-holder', 'dish-rack', 'bread-box'] as const) {
     assert.equal(componentIsRetired(kind), true)
     for (const roomId of rooms) assert.deepEqual(availableComponentSlots(defaultRoomComponents(), roomId, kind), [])
   }

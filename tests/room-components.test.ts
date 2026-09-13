@@ -130,10 +130,10 @@ describe('reversible component storage', () => {
 
 describe('room component catalog and legacy defaults', () => {
   it('retires the approved extras without removing their historical kinds or positions', () => {
-    assert.equal(retiredComponentKinds.length, 31)
-    assert.equal(new Set(retiredComponentKinds).size, 31)
+    assert.equal(retiredComponentKinds.length, 32)
+    assert.equal(new Set(retiredComponentKinds).size, 32)
     assert.equal(componentKinds.length, 86)
-    assert.equal(componentKinds.filter((kind) => !componentIsRetired(kind)).length, 55)
+    assert.equal(componentKinds.filter((kind) => !componentIsRetired(kind)).length, 54)
     assert.ok(defaultRoomComponents().every((component) => !componentIsRetired(component.kind)))
     assert.equal(componentIsRetired('wall-art'), false)
     for (const roomId of ['kitchen', 'bathroom', 'living-room'] as const) {
@@ -147,6 +147,25 @@ describe('room component catalog and legacy defaults', () => {
       const slot = roomSlots.find((slot) => slot.kinds.includes(kind))!
       assert.equal(roomComponentSchema.safeParse(createRoomComponent(kind, slot.id, randomUUID())).success, true)
     }
+  })
+
+  it('retires saved bread boxes into Storage without changing their identity or linked history', () => {
+    const household = home()
+    const bread = createRoomComponent('bread-box', 'kitchen-bread-box', randomUUID())
+    household.roomComponents = [...defaultRoomComponents(), bread]
+    household.chores.items.push({ ...linkedChore(household, bread), title: 'Clear crumbs from the bread box' })
+    const before = structuredClone(household)
+    const components = getRoomComponents(household)
+    assert.deepEqual(components.find((component) => component.id === bread.id), { ...bread, installed: false })
+    assert.equal(componentChoreIsPaused(household.chores.items[0], components), true)
+    assert.deepEqual(availableComponentSlots(components, 'kitchen', 'bread-box'), [])
+    assert.deepEqual(household, before)
+    const stored = components.find((component) => component.id === bread.id)!
+    applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(stored, { name: 'Our stored bread box' })] }, now)
+    assert.equal(getRoomComponents(household).find((component) => component.id === bread.id)?.name, 'Our stored bread box')
+    assert.deepEqual(household.chores.items, before.chores.items)
+    const edited = getRoomComponents(household).find((component) => component.id === bread.id)!
+    throwsStatus(() => applyRoomComponentPatch(household, { roomId: 'kitchen', changes: [change(edited, { installed: true })] }, now), 400)
   })
 
   it('offers new spice racks only on walls and bins only in the kitchen or bathroom', () => {
@@ -376,8 +395,8 @@ describe('room component changes', () => {
     for (const key of ['expenses', 'settlements', 'shopping', 'members'] as const) assert.deepEqual(household[key], original[key])
   })
 
-  it('keeps retired objects editable and their linked care intact while rejecting new placements', () => {
-    for (const kind of retiredComponentKinds) {
+  it('keeps other retired objects editable and their linked care intact while rejecting new placements', () => {
+    for (const kind of retiredComponentKinds.filter((kind) => kind !== 'bread-box')) {
       const household = home()
       const slot = roomSlots.find((slot) => slot.kinds.includes(kind))!
       const legacy = createRoomComponent(kind, slot.id, randomUUID())
