@@ -16,7 +16,7 @@ import { baseCameraOffset, cameraOrbitOffset, cameraProjection, fitRoomBounds, f
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
-import { dampTo, frameSeconds } from './motion.ts'
+import { CameraProjectionMotion, dampTo, frameSeconds, springTo, springVector3To } from './motion.ts'
 import {
   componentAccessibleName, componentChoresLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible, visibleRoomBounds,
 } from './roomComponentScene.ts'
@@ -247,6 +247,8 @@ export default function ChoreRoomWorld<Target extends string>({
     const pointer = new Vector2()
     const projected = new Vector3()
     const cameraCenter = new Vector3()
+    const cameraVelocity = new Vector3()
+    const projectionMotion = new CameraProjectionMotion()
     const desiredCenter = new Vector3()
     const offset = new Vector3()
     const pointers = new Map<number, Vector2>()
@@ -266,9 +268,13 @@ export default function ChoreRoomWorld<Target extends string>({
     let shadowsDirty = true
     let targetRotation = 0
     let orbitRotation = 0
+    let orbitVelocity = 0
     let targetPitch = 0
     let pitch = 0
+    let pitchVelocity = 0
     let halfHeight = 1
+    let halfHeightVelocity = 0
+    let zoomVelocity = 0
     let lightMix = 0
     let lastFocusId = state.current.focusRequest.id
     let lastSelectedComponentKey: string | null = null
@@ -406,9 +412,13 @@ export default function ChoreRoomWorld<Target extends string>({
         displayedProgress = snap ? latest.tour.progress.current : dampTo(displayedProgress, latest.tour.progress.current, 9, delta, 0.0001)
         container.dataset.tourPosition = reduced ? 'static' : displayedProgress.toFixed(3)
       }
-      orbitRotation = snap ? targetRotation : dampTo(orbitRotation, targetRotation, 9, delta)
+      if (snap) { orbitRotation = targetRotation; orbitVelocity = 0 }
+      else if (preview) orbitRotation = dampTo(orbitRotation, targetRotation, 9, delta)
+      else ({ value: orbitRotation, velocity: orbitVelocity } = springTo({ value: orbitRotation, velocity: orbitVelocity }, targetRotation, 24, delta))
       room.updateMatrixWorld(true)
-      pitch = snap ? targetPitch : dampTo(pitch, targetPitch, 9, delta)
+      if (snap) { pitch = targetPitch; pitchVelocity = 0 }
+      else if (preview) pitch = dampTo(pitch, targetPitch, 9, delta)
+      else ({ value: pitch, velocity: pitchVelocity } = springTo({ value: pitch, velocity: pitchVelocity }, targetPitch, 24, delta))
       const framedFocus = placementCandidate || latest.overviewFocus || (preview && (latest.motionReduced ?? reducedMotion.matches)) ? 'room' : currentControls.focus
       const focusedComponent = framedFocus === 'room' ? undefined : targetComponent(config, framedFocus, latestInstalled)
       const bounds = framedFocus === 'room' ? componentScene.bounds
@@ -463,14 +473,25 @@ export default function ChoreRoomWorld<Target extends string>({
       if (placementBounds && !latest.overviewFocus) {
         placementPreviewCenter(placementBounds, desiredCenter).applyMatrix4(room.matrixWorld)
       }
-      if (snap) cameraCenter.copy(desiredCenter)
-      else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
-      if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
-      halfHeight = snap ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      camera.zoom = snap ? desiredZoom : dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
+      if (snap) { cameraCenter.copy(desiredCenter); cameraVelocity.set(0, 0, 0) }
+      else if (preview) {
+        cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
+        if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
+      } else springVector3To(cameraCenter, cameraVelocity, desiredCenter, 16, delta)
+      if (snap) { halfHeight = framing.halfHeight; halfHeightVelocity = 0; camera.zoom = desiredZoom; zoomVelocity = 0 }
+      else if (preview) {
+        halfHeight = dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
+        camera.zoom = dampTo(camera.zoom, desiredZoom, 9, delta, 0.002)
+      } else {
+        ({ value: halfHeight, velocity: halfHeightVelocity } = springTo({ value: halfHeight, velocity: halfHeightVelocity }, framing.halfHeight, 16, delta, 0.002))
+        const zoom = springTo({ value: camera.zoom, velocity: zoomVelocity }, desiredZoom, 16, delta, 0.002)
+        camera.zoom = zoom.value
+        zoomVelocity = zoom.velocity
+      }
       camera.position.copy(cameraCenter).add(cameraOrbitOffset(orbitRotation, pitch, offset))
       camera.lookAt(cameraCenter)
-      const projection = cameraProjection(viewport.width, viewport.height, frameArea, halfHeight, camera.zoom)
+      const projectedArea = projectionMotion.update(frameArea, viewport, delta, snap || preview)
+      const projection = cameraProjection(viewport.width, viewport.height, projectedArea, halfHeight, camera.zoom)
       camera.left = projection.left
       camera.right = projection.right
       camera.top = projection.top
@@ -547,8 +568,9 @@ export default function ChoreRoomWorld<Target extends string>({
         canvas.dataset.renderReady = 'true'
         latest.onStatus?.('ready')
       }
-      const moving = orbitRotation !== targetRotation || pitch !== targetPitch
-        || !cameraCenter.equals(desiredCenter) || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom
+      const moving = orbitRotation !== targetRotation || orbitVelocity !== 0 || pitch !== targetPitch || pitchVelocity !== 0
+        || !cameraCenter.equals(desiredCenter) || cameraVelocity.lengthSq() !== 0 || halfHeight !== framing.halfHeight || halfHeightVelocity !== 0
+        || camera.zoom !== desiredZoom || zoomVelocity !== 0 || projectionMotion.moving
         || !!latest.tour && !reduced && displayedProgress !== latest.tour.progress.current
       setCameraMoving(moving)
       drawing = false

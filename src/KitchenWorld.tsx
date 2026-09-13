@@ -17,7 +17,7 @@ import { cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitR
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
-import { dampTo, frameSeconds } from './motion.ts'
+import { CameraProjectionMotion, dampTo, frameSeconds, springTo, springVector3To } from './motion.ts'
 import {
   componentAccessibleName, componentAtSlot, componentChoresLabel, createRoomComponentScene, installedRoomComponents, isSceneObjectVisible,
   kitchenActionSlots, kitchenUtilitySlots, visibleRoomBounds,
@@ -169,6 +169,7 @@ export default function KitchenWorld({
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let targetRotation = 0
     let orbitRotation = 0
+    let orbitVelocity = 0
     let moved = false
     let startX = 0
     let startY = 0
@@ -202,7 +203,10 @@ export default function KitchenWorld({
     let wasPaused = false
     let visualKey = ''
     let halfHeight = 4.6
+    let halfHeightVelocity = 0
+    let zoomVelocity = 0
     let cameraPitch = 0
+    let pitchVelocity = 0
     let lightingMix = 0
     let brewIntensity = 0
     let steamPhase = 0
@@ -217,6 +221,8 @@ export default function KitchenWorld({
     const vector = new Vector3()
     const projected = new Vector3()
     const cameraCenter = new Vector3(-0.1, 1.65, -0.05)
+    const cameraVelocity = new Vector3()
+    const projectionMotion = new CameraProjectionMotion()
     const desiredCenter = new Vector3()
     const actorsY = new Map([...scenery.actors].map(([action, actor]) => [action, actor.position.y]))
     const wake = (duration = 900) => {
@@ -505,9 +511,12 @@ export default function KitchenWorld({
         transitioning ||= rotation !== target
         door.rotation.y = rotation
       }
-      orbitRotation = reducedMotion.matches ? targetRotation : dampTo(orbitRotation, targetRotation, 9, delta)
+      const snapCamera = !initialized || reducedMotion.matches
+      if (snapCamera) { orbitRotation = targetRotation; orbitVelocity = 0 }
+      else ({ value: orbitRotation, velocity: orbitVelocity } = springTo({ value: orbitRotation, velocity: orbitVelocity }, targetRotation, 24, delta))
       room.updateMatrixWorld(true)
-      cameraPitch = reducedMotion.matches ? targetPitch : dampTo(cameraPitch, targetPitch, 9, delta)
+      if (snapCamera) { cameraPitch = targetPitch; pitchVelocity = 0 }
+      else ({ value: cameraPitch, velocity: pitchVelocity } = springTo({ value: cameraPitch, velocity: pitchVelocity }, targetPitch, 24, delta))
       const focus = currentControls.focus
       const closeRoom = usesRoomEntryFraming({
         focus, selectedComponentId: latest.selectedComponentId, resetView: currentControls.roomView,
@@ -542,21 +551,27 @@ export default function KitchenWorld({
       if (placementBounds && !latest.overviewFocus) {
         placementPreviewCenter(placementBounds, desiredCenter).applyMatrix4(room.matrixWorld)
       }
-      if (reducedMotion.matches) cameraCenter.copy(desiredCenter)
-      else cameraCenter.lerp(desiredCenter, 1 - Math.exp(-9 * delta))
-      if (cameraCenter.distanceTo(desiredCenter) < 0.002) cameraCenter.copy(desiredCenter)
+      if (snapCamera) { cameraCenter.copy(desiredCenter); cameraVelocity.set(0, 0, 0) }
+      else springVector3To(cameraCenter, cameraVelocity, desiredCenter, 16, delta)
       camera.position.copy(cameraCenter).add(cameraOrbitOffset(orbitRotation, cameraPitch, vector))
       camera.lookAt(cameraCenter)
-      halfHeight = reducedMotion.matches ? framing.halfHeight : dampTo(halfHeight, framing.halfHeight, 9, delta, 0.002)
-      camera.zoom = reducedMotion.matches ? desiredZoom : dampTo(camera.zoom, desiredZoom, 8, delta, 0.002)
-      const projection = cameraProjection(viewport.width, viewport.height, area, halfHeight, camera.zoom)
+      if (snapCamera) { halfHeight = framing.halfHeight; halfHeightVelocity = 0; camera.zoom = desiredZoom; zoomVelocity = 0 }
+      else {
+        ({ value: halfHeight, velocity: halfHeightVelocity } = springTo({ value: halfHeight, velocity: halfHeightVelocity }, framing.halfHeight, 16, delta, 0.002))
+        const zoom = springTo({ value: camera.zoom, velocity: zoomVelocity }, desiredZoom, 16, delta, 0.002)
+        camera.zoom = zoom.value
+        zoomVelocity = zoom.velocity
+      }
+      const projectedArea = projectionMotion.update(area, viewport, delta, snapCamera)
+      const projection = cameraProjection(viewport.width, viewport.height, projectedArea, halfHeight, camera.zoom)
       camera.left = projection.left
       camera.right = projection.right
       camera.top = projection.top
       camera.bottom = projection.bottom
       camera.updateProjectionMatrix()
-      const moving = cameraCenter.distanceTo(desiredCenter) > 0.002 || cameraPitch !== targetPitch
-        || halfHeight !== framing.halfHeight || camera.zoom !== desiredZoom || orbitRotation !== targetRotation
+      const moving = !cameraCenter.equals(desiredCenter) || cameraVelocity.lengthSq() !== 0
+        || cameraPitch !== targetPitch || pitchVelocity !== 0 || orbitRotation !== targetRotation || orbitVelocity !== 0
+        || halfHeight !== framing.halfHeight || halfHeightVelocity !== 0 || camera.zoom !== desiredZoom || zoomVelocity !== 0 || projectionMotion.moving
       if (moving !== wasMoving) { wasMoving = moving; setCameraMoving(moving) }
       if (moving) activeUntil = Math.max(activeUntil, now + 120)
       for (const item of foods) {

@@ -156,6 +156,27 @@ function expectFixedEditorFraming(frames: z.infer<typeof frameSchema>[]) {
 }
 
 for (const roomId of roomIds) {
+  test(`${roomId} eases focus and panel projection without moving the room`, { tag: '@room' }, async ({ page, emptyHousehold: owner }) => {
+    await page.setViewportSize({ width: 1100, height: 800 })
+    await page.goto(roomPath(roomId))
+    await waitForRoomReady(page)
+    await settleView(page)
+    const reference = getRoomComponents(owner.household).find((component) => component.roomId === roomId && component.installed)
+    if (!reference) throw new Error('The focus transition needs a room reference.')
+    await trackCamera(page, reference.name)
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await openRoomObjects(page)
+    await expect.poll(async () => (await cameraFrames(page)).length).toBeGreaterThan(3)
+    await settleView(page)
+    const frames = await cameraFrames(page)
+    expect(new Set(frames.map((frame) => JSON.stringify(frame.projection))).size).toBeGreaterThan(3)
+    for (const frame of frames) {
+      expect(frame.room).toEqual(frames[0].room)
+      expect(frame.projection.every(Number.isFinite)).toBe(true)
+    }
+    await expect(page.locator('.kitchen-world')).toHaveAttribute('data-rendering', 'paused')
+  })
+
   test(`${roomId} frames the whole room beside the object panel and holds it there while orbiting`, { tag: '@room' }, async ({ page, accounts, emptyHousehold: owner }) => {
     await page.setViewportSize({ width: 1440, height: 960 })
     const household = await accounts.store.get(owner.household.id)
