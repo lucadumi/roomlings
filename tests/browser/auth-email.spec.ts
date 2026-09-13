@@ -4,7 +4,7 @@ import { expect, test } from './account-fixtures.ts'
 const template = readFileSync(new URL('../../emails/auth-code.html', import.meta.url), 'utf8')
 const markUrl = template.match(/<img\b[^>]*\bsrc="([^"]+)"/)?.[1] ?? ''
 const requestedMark = new URL(markUrl).href
-const markFile = new URL('../../design/roomlings-logo/exports/roomlings-icon-flat-256.png', import.meta.url)
+const markFile = new URL('../../public/brand/roomlings-icon-flat-256.png', import.meta.url)
 
 async function measure(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
@@ -46,7 +46,7 @@ test('Roomlings code email still reads as Roomlings when the mark is blocked', a
   await page.setViewportSize({ width: 320, height: 850 })
   await page.setContent(template.replace('{{ .Token }}', '1234567890'))
   await expect(page.getByRole('heading', { name: 'Your sign-in code.', exact: true })).toBeVisible()
-  await expect(page.locator('#roomlings-wordmark')).toHaveText('roomlings.')
+  await expect(page.locator('#roomlings-wordmark')).toHaveText('roomlings')
   await expect(page.locator('#roomlings-code')).toHaveText('1234567890')
   const sizes = await measure(page)
   expect(sizes.contentWidth).toBeLessThanOrEqual(sizes.pageWidth)

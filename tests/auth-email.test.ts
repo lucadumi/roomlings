@@ -17,27 +17,31 @@ describe('Roomlings account email template', () => {
   it('includes one Supabase email code without any confirmation links or callback tokens', () => {
     assert.equal(template.match(/\{\{\s*\.Token\s*\}\}/g)?.length, 1)
     assert.doesNotMatch(template, /\.ConfirmationURL|\.TokenHash|\.RedirectTo|\.SiteURL|\bhref\s*=/i)
-    assert.match(template, /There is no confirmation link to click/)
+    assert.match(template, /There is no confirmation link to click|No link to click/)
   })
 
-  it('uses existing Roomlings branding with one remote mark and no tracking or executable content', () => {
-    assert.match(template, /roomlings<span/)
-    for (const token of ['ink', 'sage', 'clay']) {
-      assert.ok(template.includes(paletteColor(token)), `The email has drifted from --palette-${token}.`)
+  it('draws every email colour from the app theme and loads only the brand mark', () => {
+    assert.match(template, /id="roomlings-wordmark"[^>]*>roomlings</)
+    const ink = paletteColor('ink')
+    assert.ok(template.includes(ink), 'The email has drifted from --palette-ink.')
+    const channels = [1, 3, 5].map((start) => parseInt(ink.slice(start, start + 2), 16))
+    assert.ok(template.includes(`radial-gradient(rgba(${channels.join(',')},`), 'The paper texture no longer follows the app ink.')
+    for (const color of new Set(template.match(/#[0-9a-f]{6,8}\b/g) ?? [])) {
+      assert.ok(styles.includes(color), `${color} is not one of the app theme colours.`)
     }
     const images = template.match(/<img\b[^>]*>/g) ?? []
     assert.equal(images.length, 1)
     assert.equal(template.match(/\bsrc\s*=/g)?.length, 1)
     assert.match(images[0], /src="https:\/\/[^"]+\/storage\/v1\/object\/public\/brand\/roomlings-icon-flat-256\.png"/)
     assert.match(images[0], /alt=""/)
-    assert.ok(existsSync(new URL('../design/roomlings-logo/exports/roomlings-icon-flat-256.png', import.meta.url)))
+    assert.ok(existsSync(new URL('../public/brand/roomlings-icon-flat-256.png', import.meta.url)))
     assert.doesNotMatch(template, /<(?:script|iframe|form|link)\b|\bon\w+\s*=|url\s*\(/i)
     assert.match(template, /<html lang="en">/)
     assert.match(template, /role="presentation"/)
   })
 
   it('does not promise a fixed expiry that might disagree with the provider settings', () => {
-    assert.match(template, /If it expires, request a new one/)
+    assert.match(template, /request a new one if it expires/)
     assert.doesNotMatch(template, /\d+\s*(?:minutes?|hours?)/i)
   })
 

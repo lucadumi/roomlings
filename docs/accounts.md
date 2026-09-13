@@ -6,7 +6,7 @@ Supabase Auth verifies email codes. Roomlings keeps its own server-validated ses
 
 1. Create a Supabase project and enable Email authentication with email confirmation.
 2. Configure custom SMTP under **Authentication > Emails > SMTP Settings**. Use your mail provider's credentials, not a Supabase project key. Hosted template editing may require SMTP first. Do not disable confirmation to work around delivery failures.
-3. Create a public Storage bucket named `brand` and upload [roomlings-icon-flat-256.png](../design/roomlings-logo/exports/roomlings-icon-flat-256.png). The email header loads the mark from its public URL.
+3. Create a public Storage bucket named `brand` and upload [roomlings-icon-flat-256.png](../public/brand/roomlings-icon-flat-256.png). The email header loads the mark from its public URL.
 4. Update both **Confirm signup** and **Magic Link (or OTP)** templates. Use **Your Roomlings sign-in code** as the subject and [emails/auth-code.html](../emails/auth-code.html) as the body. Replace `YOUR-PROJECT-REF` in the image address with your project reference. Both templates need `{{ .Token }}`, not a confirmation link. Set an appropriate short OTP lifetime.
 5. Copy the account variables from [.env.example](../.env.example) into the ignored `.env`. Keep the project URL, publishable key and administrative credential on the Express server, never in `VITE_*` variables.
 6. Set `APP_ORIGIN=http://localhost:5173` for review, or an HTTPS origin for production. Configure reverse proxies deliberately rather than trusting arbitrary forwarded IP headers.
