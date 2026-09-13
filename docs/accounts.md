@@ -1,6 +1,6 @@
 # Accounts and email
 
-Supabase Auth verifies email codes. Roomlings keeps its own server-validated sessions in `HttpOnly` cookies; provider tokens, email codes and account credentials never enter browser storage.
+Supabase Auth verifies email codes. Roomlings keeps its own server-validated sessions in `HttpOnly` cookies for browsers and bearer tokens for the native iOS app. Provider tokens, email codes and account credentials never enter browser storage.
 
 ## Setup
 
@@ -24,6 +24,45 @@ SMTP credentials belong in Supabase settings, not browser code or this repositor
 The local template has no external assets, tracking or sign-in links. Copying it into the repository does not update Supabase. Enter the newest code in the app rather than following an old email's confirmation link.
 
 References: [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless#with-otp), [templates](https://supabase.com/docs/guides/auth/auth-email-templates), [SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
+
+## Native iOS sessions
+
+The separate Swift app uses the same accounts, household memberships and ledger as the web app. No database migration, second identity system or Supabase credentials in the client are needed.
+
+Send `X-Roomlings-Client: ios` on native account and household requests. This header selects the session transport; it is not authentication. Native requests never fall back to cookies or legacy kitchen tokens. Unsupported client values return `400 CLIENT_UNSUPPORTED`.
+
+Use HTTPS, except for loopback during local development. Configure `URLSession` without cookie storage or automatic cookie handling, and do not send `Origin` or `Sec-Fetch-Site`. Requests carrying either browser header are rejected with `403 NATIVE_CLIENT_REQUIRED`, even with valid credentials. The browser's origin checks and CSRF requirements remain unchanged; do not enable cross-origin access to make a native client work.
+
+### Signing in
+
+1. Call `POST /api/account/code` with `{ "email": "you@example.com" }`.
+2. Call `POST /api/account/verify` with `email`, the emailed `code`, `name` and a device `label`, such as `iPhone` or `iPad`. The same Zod validation and rate limits apply to browser and native requests together.
+3. A successful native verification returns the ordinary account state plus `accessToken`, validated by `nativeAccountSignInSchema` in `shared/accounts.ts`. Store the token in the iOS Keychain, not `UserDefaults`, URLs, logs or analytics. Use a device-only Keychain accessibility policy appropriate for foreground access.
+4. Send `Authorization: Bearer <accessToken>` together with `X-Roomlings-Client: ios` on subsequent requests.
+
+`POST /api/account/recover` accepts `email`, one unused account recovery `code`, and a device `label`. It returns the same native sign-in response without requiring email delivery.
+
+Only successful native verification and recovery responses contain `accessToken`. No native response sets or clears a browser cookie. Ordinary account reads and mutations return the existing account state without reissuing the token. Browser responses never include the native token. The account state's `csrfToken` remains present for schema compatibility but is not used by the native client, and `session.token` remains `null`; neither is the bearer credential.
+
+When reauthenticating, include the current bearer token. A successful sign-in replaces only that session and retains the same account's selected active household. Without a current bearer, signing in creates another device session, even if a cookie accompanies the request. Failed sign-ins preserve the existing session. Recovery-code consumption, token creation and response validation are atomic; a failure before commit does not consume the code or revoke the previous session.
+
+A response lost after commit cannot be replayed to retrieve the new token. Do not automatically repeat email verification or recovery as if they were idempotent writes. If the token was not received, use a fresh email code or another unused recovery code.
+
+### Using the shared API
+
+Use the existing `/api/account` endpoints for profile, devices, recovery settings, invitations, household creation, selection and deletion. Use `/api/household`, `/api/expenses`, `/api/chores`, `/api/shopping` and the other existing household routes for shared activity. Native tokens are Roomlings account sessions, not Supabase provider tokens or legacy browser-only kitchen credentials.
+
+`X-Roomlings-Household: <household UUID>` targets an active membership for that request without changing the device's selected household. Without it, household routes use the selected household. The server checks membership and room permissions on every request.
+
+Money stays in integer cents. Household mutations retain the existing `version` requirement and optional `mutationId`/`mutationVersion` retry receipts. Household creation retains its optional `requestId`. A client preview must never replace the server's ledger or bypass a version conflict.
+
+### Expiry, sign-out and deletion
+
+Native sessions use the existing 30-day absolute lifetime, seven-day idle lifetime and 50-device account limit. There is no separate refresh token. `GET /api/account` returns a signed-out state when the bearer is missing, invalid, expired or revoked; protected requests return `401 ACCOUNT_SESSION_REQUIRED`. Clear the local credential after confirmed sign-out or expiry, not after network failures or server errors.
+
+Device revocation and sign-out work across native and browser sessions. `POST /api/account/logout` with `{ "all": false }` revokes only the authenticated native session; `{ "all": true }` also revokes the account's other sessions and linked legacy browser access. An unrelated accompanying cookie is never used or cleared.
+
+Recovery-code management and deletion still require a sign-in within the previous ten minutes. `401 REAUTHENTICATION_REQUIRED` means the user must sign in again before explicitly confirming the action. `503 ACCOUNT_DELETION_PENDING` is not successful deletion: retain the current credential for the deletion-only retry, hide household access, and follow `deletionPending` from `GET /api/account`. Clear the Keychain token after deletion succeeds.
 
 ## Account recovery codes
 
@@ -82,7 +121,7 @@ Leaving, removal and account deletion clear delegated rights in the same transac
 
 ## Sessions and membership
 
-- Account sessions expire after 30 days, or seven days without use. An account supports up to 50 saved browsers. Account settings support device labels, revocation and sign-out on one or all devices.
+- Account sessions expire after 30 days, or seven days without use. An account supports up to 50 saved devices across browsers and the native app. Account settings support device labels, revocation and sign-out on one or all devices.
 - Signing in again rotates this browser's session instead of adding another saved device. It keeps the same account's selected active kitchen; other browsers stay signed in. Failed sign-ins leave the previous session intact.
 - Returning to the public home page does not replace an account session. Valid cookies reopen the room without another code; expired or revoked access prompts sign-in without erasing household data.
 - Signing out all devices also revokes linked browser sessions. Unrelated saved browser identities stay separate.

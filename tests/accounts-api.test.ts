@@ -1,7 +1,7 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { AddressInfo } from 'node:net'
 import { createApp } from '../server/app.ts'
 import { Store } from '../server/store.ts'
@@ -12,6 +12,7 @@ import type { AccountProvider } from '../server/provider.ts'
 import { accountIdleLifetime, accountAbsoluteLifetime, accountReauthLifetime } from '../server/accounts-store.ts'
 import {
   accountInvitationResultSchema, accountRecoveryResultSchema, accountRecoveryStateSchema, accountStateSchema, householdAccessSchema,
+  nativeAccountSignInSchema, nativeClientHeader,
 } from '../shared/accounts.ts'
 import type { AccountState } from '../shared/accounts.ts'
 import { balances, memberColors } from '../shared/domain.ts'
@@ -55,11 +56,12 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   cleanups.push(async () => { server.close(); await once(server, 'close'); await store.close() })
   const call = async (path: string, body?: unknown, options: {
-    method?: string; cookie?: string; csrf?: string; token?: string; householdId?: string
+    method?: string; cookie?: string; csrf?: string; token?: string; householdId?: string; client?: 'ios'
     headers?: Record<string, string | undefined>
   } = {}) => {
     const headers: Record<string, string | undefined> = {
-      'Content-Type': 'application/json', 'X-Roomlings-Request': '1', Origin: appOrigin,
+      'Content-Type': 'application/json',
+      ...(options.client ? { [nativeClientHeader]: options.client } : { 'X-Roomlings-Request': '1', Origin: appOrigin }),
       ...(options.cookie ? { Cookie: options.cookie } : {}),
       ...(options.csrf ? { 'X-CSRF-Token': options.csrf } : {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
@@ -73,23 +75,32 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
     })
     return { response, status: response.status, data: await response.json() }
   }
-  const browser = () => {
+  const client = (native: boolean) => {
     let cookie = ''
     let csrf = ''
+    let token = ''
     const request = async (path: string, body?: unknown, options: Parameters<typeof call>[2] = {}) => {
-      const result = await call(path, body, { cookie, csrf, ...options })
+      const result = await call(path, body, { ...(native ? { client: 'ios', token } : { cookie, csrf }), ...options })
       const setCookie = result.response.headers.get('set-cookie')
-      if (setCookie) cookie = setCookie.split(';')[0]
-      if (result.data.csrfToken) csrf = result.data.csrfToken
-      if (result.data.account === null) csrf = ''
+      if (native) {
+        assert.equal(setCookie, null)
+        if (result.data.accessToken !== undefined) token = nativeAccountSignInSchema.parse(result.data).accessToken
+        if (result.data.account === null) token = ''
+      } else {
+        if (setCookie) cookie = setCookie.split(';')[0]
+        if (result.data.csrfToken) csrf = result.data.csrfToken
+        if (result.data.account === null) csrf = ''
+        assert.equal(result.data.accessToken, undefined)
+      }
       return result
     }
     return {
       request,
       get cookie() { return cookie },
       get csrf() { return csrf },
+      get token() { return token },
       async signIn(email: string, name = 'Roommate') {
-        const result = await request('/account/verify', { email, code: '123456', name, label: 'Test browser' })
+        const result = await request('/account/verify', { email, code: '123456', name, label: native ? 'Test iOS app' : 'Test browser' })
         assert.equal(result.status, 200, JSON.stringify(result.data))
         return accountStateSchema.parse(result.data)
       },
@@ -110,7 +121,7 @@ async function fixture(configured = true, appOrigin = 'http://localhost:5173') {
       },
     }
   }
-  return { store, database, provider, call, browser, advance(ms: number) { time += ms } }
+  return { store, database, provider, call, browser: () => client(false), native: () => client(true), advance(ms: number) { time += ms } }
 }
 
 async function secondLegacy(store: Store, first: Session, name = 'Ben') {
@@ -336,6 +347,426 @@ describe('verified account HTTP lifecycle', () => {
     await stranger.signIn('stranger@example.com')
     assert.equal((await stranger.request(`/account/households/${first.household.id}`)).status, 403)
     assert.equal((await stranger.request('/household', undefined, { householdId: first.household.id })).status, 403)
+  })
+})
+
+describe('native account HTTP lifecycle', () => {
+  it('issues a native token once without cookies and keeps ordinary account responses token-free', async () => {
+    const f = await fixture(true, 'https://roomlings.example')
+    const phone = f.native()
+    assert.deepEqual((await phone.request('/account/code', { email: ' ADA@EXAMPLE.COM ' })).data, { sent: true })
+    assert.deepEqual(f.provider.sent, ['ada@example.com'])
+    const login = await phone.request('/account/verify', {
+      email: 'Ada@example.com', code: '123456', name: 'Ada', label: 'iPhone',
+    })
+    assert.equal(login.status, 200)
+    const signedIn = nativeAccountSignInSchema.parse(login.data)
+    assert.equal(signedIn.account.email, 'ada@example.com')
+    assert.equal(signedIn.devices[0].label, 'iPhone')
+    assert.equal(login.response.headers.get('cache-control'), 'no-store')
+    assert.equal(signedIn.accessToken, phone.token)
+    const saved = await f.database.prepare('SELECT hash FROM account_sessions').get()
+    assert.equal(saved?.hash, createHash('sha256').update(phone.token).digest('hex'))
+    const state = await phone.request('/account')
+    assert.equal(state.status, 200)
+    assert.equal(state.data.accessToken, undefined)
+    assert.ok(!JSON.stringify(state.data).includes(phone.token))
+    assert.equal(accountStateSchema.parse(state.data).account?.id, signedIn.account.id)
+    assert.equal(nativeAccountSignInSchema.safeParse({ ...signedIn, account: null }).success, false)
+    assert.equal(nativeAccountSignInSchema.safeParse({ ...signedIn, accessToken: 'invalid' }).success, false)
+    assert.equal(nativeAccountSignInSchema.safeParse({ ...signedIn, csrfToken: null }).success, false)
+    assert.equal((await phone.request('/account', { name: 'Ada Lovelace' }, { method: 'PATCH' })).data.account.name, 'Ada Lovelace')
+    const renamed = await phone.request('/account/device', { label: 'iPad' }, { method: 'PATCH' })
+    assert.equal(renamed.data.devices[0].label, 'iPad')
+    assert.equal(renamed.data.accessToken, undefined)
+    const browser = f.browser()
+    const browserState = await browser.signIn('ada@example.com')
+    assert.equal(browserState.account?.id, signedIn.account.id)
+    assert.equal(browserState.devices.length, 2)
+  })
+
+  it('uses account households with the existing version checks and mutation receipts', async () => {
+    const f = await fixture()
+    const phone = f.native()
+    await phone.signIn('ada@example.com')
+    const first = (await phone.create('First')).session!
+    const second = (await phone.create('Second')).session!
+    assert.equal((await phone.request('/household')).data.household.id, second.household.id)
+    const expense = {
+      version: first.household.version, mutationId: randomUUID(), mutationVersion: first.household.version,
+      description: 'Shared groceries', amount: 1001, category: 'pantry', date: '2026-09-13',
+      paidBy: first.memberId, participants: [first.memberId],
+    }
+    const saved = await phone.request('/expenses', expense, { householdId: first.household.id })
+    assert.equal(saved.status, 200)
+    assert.equal(saved.data.household.id, first.household.id)
+    assert.equal(saved.data.household.expenses[0].amount, 1001)
+    const replay = await phone.request('/expenses', expense, { householdId: first.household.id })
+    assert.equal(replay.status, 200)
+    assert.equal(replay.data.replayed, true)
+    assert.equal(replay.data.household.expenses.length, 1)
+    assert.equal((await phone.request('/expenses', { ...expense, mutationId: randomUUID() }, {
+      householdId: first.household.id,
+    })).status, 409)
+    assert.equal((await phone.request('/expenses', {
+      ...expense, version: saved.data.household.version, amount: 10.5, mutationId: randomUUID(),
+    }, { householdId: first.household.id })).status, 400)
+    assert.equal((await f.store.get(second.household.id))?.expenses.length, 0)
+    const selected = await phone.request(`/account/households/${first.household.id}/select`, {})
+    assert.equal(selected.status, 200)
+    assert.equal(selected.data.session.token, null)
+    assert.equal(selected.data.accessToken, undefined)
+    assert.equal((await phone.request('/household')).data.household.expenses.length, 1)
+    assert.equal((await phone.request('/household', undefined, { householdId: randomUUID() })).status, 403)
+    assert.equal((await phone.request('/household', undefined, { householdId: 'invalid' })).status, 400)
+    assert.equal((await phone.request(`/account/households/${randomUUID()}/select`, {})).status, 403)
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const shared = await browser.request('/household', undefined, { householdId: first.household.id })
+    assert.deepEqual(shared.data.household.expenses, saved.data.household.expenses)
+  })
+
+  it('rejects browser origins and fetch metadata even when the native header and credentials are supplied', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const house = (await browser.create()).session!.household
+    const phone = f.native()
+    await phone.signIn('ada@example.com')
+    const headers = [
+      { Origin: 'https://attacker.example' },
+      { Origin: 'http://localhost:5173' },
+      { Origin: 'null' },
+      { 'Sec-Fetch-Site': 'cross-site' },
+      { 'Sec-Fetch-Site': 'same-site' },
+      { 'Sec-Fetch-Site': 'same-origin' },
+      { 'Sec-Fetch-Site': 'none' },
+    ]
+    for (const browserHeaders of headers) {
+      const options = { client: 'ios' as const, token: phone.token, cookie: browser.cookie, csrf: browser.csrf, headers: browserHeaders }
+      const requests = [
+        await f.call('/account/code', { email: 'ada@example.com' }, options),
+        await f.call('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' }, options),
+        await f.call('/account', undefined, options),
+        await f.call('/household', undefined, options),
+        await f.call('/household', { version: house.version, name: 'Forged', currency: 'EUR', budget: 10000 }, {
+          ...options, method: 'PATCH',
+        }),
+      ]
+      for (const result of requests) {
+        assert.equal(result.status, 403, JSON.stringify(browserHeaders))
+        assert.equal(result.data.code, 'NATIVE_CLIENT_REQUIRED')
+        assert.equal(result.data.accessToken, undefined)
+        assert.equal(result.response.headers.get('set-cookie'), null)
+      }
+    }
+    assert.deepEqual(f.provider.sent, [])
+    assert.equal((await browser.state()).devices.length, 2)
+    assert.equal((await f.store.get(house.id))?.name, house.name)
+  })
+
+  it('rejects unsupported client headers instead of falling back to browser or legacy access', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    await browser.create()
+    const legacy = await f.store.create('Legacy', 'Ben', 'EUR', 10000)
+    for (const client of ['android', 'IOS', 'ios, ios', '']) {
+      const options = { cookie: browser.cookie, csrf: browser.csrf, token: legacy.token, headers: { [nativeClientHeader]: client } }
+      for (const result of [
+        await f.call('/account', undefined, options),
+        await f.call('/household', undefined, options),
+        await f.call('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' }, options),
+      ]) {
+        assert.equal(result.status, 400)
+        assert.equal(result.data.code, 'CLIENT_UNSUPPORTED')
+        assert.equal(result.data.accessToken, undefined)
+        assert.equal(result.response.headers.get('set-cookie'), null)
+      }
+    }
+    assert.equal((await browser.state()).devices.length, 1)
+    assert.equal((await f.call('/household', undefined, { token: legacy.token })).data.household.id, legacy.household.id)
+  })
+
+  it('authenticates only the native bearer and never uses or alters an accompanying cookie', async () => {
+    const f = await fixture()
+    const browser = f.browser()
+    const browserState = await browser.signIn('ben@example.com', 'Ben')
+    await browser.create('Browser kitchen', 'Ben')
+    const cookie = browser.cookie
+    const phone = f.native()
+    const signedIn = await phone.request('/account/verify', {
+      email: 'ada@example.com', code: '123456', name: 'Ada', label: 'iPhone',
+    }, { cookie })
+    assert.equal(signedIn.status, 200)
+    const token = phone.token
+    const own = (await phone.create('Native kitchen')).session!
+    const read = await phone.request('/household', undefined, { cookie })
+    assert.equal(read.data.household.id, own.household.id)
+    const lowerCase = await phone.request('/account', undefined, { headers: { Authorization: `bearer ${token}` } })
+    assert.equal(lowerCase.data.account.email, 'ada@example.com')
+    const legacy = await f.store.create('Legacy kitchen', 'Ada', 'EUR', 10000)
+    for (const authorization of [
+      undefined, '', `Basic ${token}`, token, 'Bearer invalid', `Bearer ${'a'.repeat(43)}`,
+      `Bearer ${token} extra`, `Bearer ${legacy.token}`,
+    ]) {
+      const options = { client: 'ios' as const, cookie, csrf: browser.csrf, headers: { Authorization: authorization } }
+      const state = await f.call('/account', undefined, options)
+      assert.equal(state.status, 200)
+      assert.equal(state.data.account, null)
+      assert.equal(state.response.headers.get('set-cookie'), null)
+      for (const result of [
+        await f.call('/account', { name: 'Forged' }, { ...options, method: 'PATCH' }),
+        await f.call('/household', undefined, options),
+      ]) {
+        assert.equal(result.status, 401)
+        assert.equal(result.data.code, 'ACCOUNT_SESSION_REQUIRED')
+        assert.equal(result.response.headers.get('set-cookie'), null)
+      }
+    }
+    assert.equal((await f.call('/account', undefined, { token })).data.account, null)
+    assert.equal((await f.call('/household', undefined, { token })).status, 401)
+    assert.equal((await browser.state()).account?.id, browserState.account?.id)
+    assert.equal((await browser.state()).account?.name, 'Ben')
+    assert.equal(browser.cookie, cookie)
+    assert.equal((await phone.state()).session?.household.id, own.household.id)
+  })
+
+  it('rotates only the current native session and preserves its selected household on reauthentication', async () => {
+    const f = await fixture()
+    const phone = f.native()
+    await phone.signIn('ada@example.com')
+    await phone.create('First')
+    const selected = await phone.create('Selected')
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const cookie = browser.cookie
+    const previousToken = phone.token
+    f.advance(accountReauthLifetime + 1)
+    const refreshed = await phone.signIn('ada@example.com')
+    assert.notEqual(phone.token, previousToken)
+    assert.equal(refreshed.session?.household.id, selected.session?.household.id)
+    assert.equal(refreshed.devices.length, 2)
+    assert.equal((await f.call('/account', undefined, { client: 'ios', token: previousToken })).data.account, null)
+    assert.equal((await browser.state()).account?.id, selected.account?.id)
+    assert.equal(browser.cookie, cookie)
+    const token = phone.token
+    const failed = await phone.request('/account/verify', { email: 'ada@example.com', code: '999999', name: 'Ada' })
+    assert.equal(failed.status, 401)
+    assert.equal(failed.data.accessToken, undefined)
+    assert.equal(phone.token, token)
+    assert.equal((await phone.state()).session?.household.id, selected.session?.household.id)
+    const switched = await phone.signIn('other@example.com', 'Other')
+    assert.equal(switched.session, null)
+    assert.deepEqual(switched.memberships, [])
+    assert.equal((await browser.state()).devices.length, 1)
+  })
+
+  it('recovers the same native account once and rolls back the old session and code if the response fails', async (t) => {
+    const f = await fixture()
+    const phone = f.native()
+    const signedIn = await phone.signIn('ada@example.com')
+    await phone.create('First')
+    const selected = await phone.create('Selected')
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const codes = accountRecoveryResultSchema.parse((await phone.request('/account/recovery', { version: 0 })).data)
+    const input = { email: 'ada@example.com', code: codes.codes[0], label: 'Recovered iPhone' }
+    const previousToken = phone.token
+    const failure = t.mock.method(f.store.accounts, 'state', async () => { throw new Error('Simulated account response failure') })
+    const failed = await phone.request('/account/recover', input)
+    assert.equal(failed.status, 500)
+    assert.equal(failed.data.accessToken, undefined)
+    failure.mock.restore()
+    assert.equal(phone.token, previousToken)
+    assert.equal((await phone.state()).devices.length, 2)
+    assert.equal((await phone.request('/account/recovery')).data.remaining, 10)
+    const recovered = await phone.request('/account/recover', input)
+    assert.equal(recovered.status, 200)
+    const state = nativeAccountSignInSchema.parse(recovered.data)
+    assert.equal(state.account.id, signedIn.account?.id)
+    assert.equal(state.session?.household.id, selected.session?.household.id)
+    assert.equal(state.devices.length, 2)
+    assert.notEqual(state.accessToken, previousToken)
+    assert.equal((await f.call('/account', undefined, { client: 'ios', token: previousToken })).data.account, null)
+    assert.equal((await phone.request('/account/recovery')).data.remaining, 9)
+    const reused = await phone.request('/account/recover', input)
+    assert.equal(reused.status, 401)
+    assert.equal(reused.data.accessToken, undefined)
+    assert.equal(phone.token, state.accessToken)
+    assert.equal((await browser.state()).account?.id, signedIn.account?.id)
+  })
+
+  it('does not leave a new native session behind if preparing an email sign-in response fails', async (t) => {
+    const f = await fixture()
+    const phone = f.native()
+    const failure = t.mock.method(f.store.accounts, 'state', async () => { throw new Error('Simulated account response failure') })
+    const failed = await phone.request('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' })
+    assert.equal(failed.status, 500)
+    assert.equal(failed.data.accessToken, undefined)
+    assert.equal(phone.token, '')
+    failure.mock.restore()
+    assert.equal((await phone.signIn('ada@example.com')).devices.length, 1)
+  })
+
+  it('shares code, verification and recovery rate limits with browsers and reports missing configuration', async () => {
+    const f = await fixture()
+    for (let index = 0; index < 5; index++) {
+      const result = await f.call('/account/code', { email: 'ADA@example.com' }, { client: index % 2 ? 'ios' : undefined })
+      assert.equal(result.status, 200)
+    }
+    assert.equal((await f.native().request('/account/code', { email: 'ada@example.com' })).status, 429)
+    for (let index = 0; index < 10; index++) {
+      const result = await f.call('/account/verify', { email: 'ben@example.com', code: '999999', name: 'Ben' }, {
+        client: index % 2 ? 'ios' : undefined,
+      })
+      assert.equal(result.status, 401)
+    }
+    const limited = await f.native().request('/account/verify', { email: 'ben@example.com', code: '123456', name: 'Ben' })
+    assert.equal(limited.status, 429)
+    assert.equal(limited.data.accessToken, undefined)
+    const phone = f.native()
+    await phone.signIn('ada@example.com')
+    const generated = accountRecoveryResultSchema.parse((await phone.request('/account/recovery', { version: 0 })).data)
+    for (let index = 0; index < 10; index++) {
+      const result = await f.call('/account/recover', { email: 'ada@example.com', code: `roomlings-account-${'0000-'.repeat(7)}0000` }, {
+        client: index % 2 ? 'ios' : undefined,
+      })
+      assert.equal(result.status, 401)
+    }
+    assert.equal((await phone.request('/account/recover', { email: 'ada@example.com', code: generated.codes[0] })).status, 429)
+    assert.equal((await phone.request('/account/recovery')).data.remaining, 10)
+    const unconfigured = await fixture(false)
+    const noProvider = unconfigured.native()
+    assert.equal((await noProvider.state()).configured, false)
+    for (const result of [
+      await noProvider.request('/account/code', { email: 'ada@example.com' }),
+      await noProvider.request('/account/verify', { email: 'ada@example.com', code: '123456', name: 'Ada' }),
+      await noProvider.request('/account/recover', { email: 'ada@example.com', code: generated.codes[0] }),
+    ]) {
+      assert.equal(result.status, 503)
+      assert.equal(result.data.code, 'AUTH_NOT_CONFIGURED')
+      assert.equal(result.data.accessToken, undefined)
+    }
+  })
+
+  it('expires native sessions at the same idle and absolute deadlines without clearing browser cookies', async () => {
+    const f = await fixture()
+    const phone = f.native()
+    await phone.signIn('ada@example.com')
+    f.advance(accountIdleLifetime)
+    assert.equal((await phone.state()).account, null)
+    assert.equal(phone.token, '')
+    await phone.signIn('ada@example.com')
+    for (let elapsed = 0; elapsed < accountAbsoluteLifetime; elapsed += 6 * 86_400_000) {
+      assert.ok((await phone.state()).account)
+      f.advance(6 * 86_400_000)
+    }
+    assert.equal((await phone.state()).account, null)
+    assert.equal(phone.token, '')
+  })
+
+  it('supports cross-device revocation and current or all-device sign-out across both transports', async () => {
+    const f = await fixture()
+    const phone = f.native()
+    const first = await phone.signIn('ada@example.com')
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const nativeId = first.devices.find((device) => device.current)!.id
+    assert.equal((await browser.request(`/account/devices/${nativeId}`, undefined, { method: 'DELETE' })).status, 200)
+    assert.equal((await phone.request('/account/recovery')).status, 401)
+    await phone.signIn('ada@example.com')
+    const browserId = (await phone.state()).devices.find((device) => !device.current)!.id
+    assert.equal((await phone.request(`/account/devices/${browserId}`, undefined, { method: 'DELETE' })).status, 200)
+    assert.equal((await browser.state()).account, null)
+    await browser.signIn('ada@example.com')
+    const cookie = browser.cookie
+    assert.equal((await phone.request('/account/logout', { all: false }, { cookie })).data.account, null)
+    assert.ok((await browser.state()).account)
+    assert.equal(browser.cookie, cookie)
+    const current = await phone.signIn('ada@example.com')
+    const self = current.devices.find((device) => device.current)!.id
+    assert.equal((await phone.request(`/account/devices/${self}`, undefined, { method: 'DELETE', cookie })).data.account, null)
+    assert.ok((await browser.state()).account)
+    await phone.signIn('ada@example.com')
+    const legacy = await f.store.create('Linked kitchen', 'Ada', 'EUR', 10000)
+    assert.equal((await phone.request('/account/link', { token: legacy.token })).status, 200)
+    assert.equal((await phone.request('/account/logout', { all: true }, { cookie })).data.account, null)
+    assert.equal((await browser.state()).account, null)
+    assert.equal((await f.call('/household', undefined, { token: legacy.token })).status, 401)
+  })
+
+  it('shares invitations, ledger identity and room permissions without restoring removed memberships', async () => {
+    const f = await fixture()
+    const owner = f.browser()
+    await owner.signIn('ada@example.com')
+    const first = (await owner.create()).session!
+    const invite = await owner.invite(first.household)
+    const phone = f.native()
+    await phone.signIn('ben@example.com', 'Ben')
+    const accepted = await phone.request('/account/invitations/accept', { code: invite.code, memberName: 'Ben' })
+    assert.equal(accepted.status, 200)
+    const joined = accountStateSchema.parse(accepted.data).session!
+    const room = await phone.request('/household/room-access')
+    assert.equal(room.status, 200)
+    assert.equal(room.data.role, 'member')
+    const denied = await phone.request(`/household/room-access/${joined.memberId}`, {
+      role: 'admin', version: joined.household.version,
+    }, { method: 'PATCH' })
+    assert.equal(denied.status, 403)
+    assert.equal((await phone.request(`/account/households/${first.household.id}/invitations`, {
+      version: joined.household.version,
+    })).status, 403)
+    const expense = await phone.request('/expenses', {
+      version: joined.household.version, description: 'Shared shopping', amount: 3000, category: 'pantry',
+      date: '2026-09-13', paidBy: joined.memberId, participants: [first.memberId, joined.memberId],
+    })
+    assert.equal(expense.status, 200)
+    const household: Household = expense.data.household
+    const before = balances(household)
+    assert.equal(before.get(first.memberId), -1500)
+    assert.equal(before.get(joined.memberId), 1500)
+    const removed = await owner.request(`/account/households/${household.id}/members/${joined.memberId}`, {
+      version: household.version,
+    }, { method: 'DELETE' })
+    assert.equal(removed.status, 200)
+    assert.equal((await phone.request('/household', undefined, { householdId: household.id })).status, 403)
+    assert.deepEqual((await phone.state()).memberships, [])
+    assert.deepEqual(balances((await f.store.get(household.id))!), before)
+  })
+
+  it('keeps recent-proof and pending-deletion restrictions on native sessions and allows a deletion-only retry', async () => {
+    const f = await fixture()
+    const phone = f.native()
+    await phone.signIn('ada@example.com')
+    await phone.create()
+    const browser = f.browser()
+    await browser.signIn('ada@example.com')
+    const cookie = browser.cookie
+    f.advance(accountReauthLifetime + 1)
+    const confirmation = { confirmation: 'ada@example.com' }
+    const stale = await phone.request('/account', confirmation, { method: 'DELETE' })
+    assert.equal(stale.status, 401)
+    assert.equal(stale.data.code, 'REAUTHENTICATION_REQUIRED')
+    assert.deepEqual(f.provider.deleted, [])
+    await phone.signIn('ada@example.com')
+    f.provider.failDelete = true
+    const failed = await phone.request('/account', confirmation, { method: 'DELETE', cookie })
+    assert.equal(failed.status, 503)
+    assert.equal(failed.data.code, 'ACCOUNT_DELETION_PENDING')
+    const pending = await phone.state()
+    assert.equal(pending.deletionPending, true)
+    assert.equal(pending.session, null)
+    assert.deepEqual(pending.memberships, [])
+    assert.equal(pending.devices.length, 1)
+    assert.equal((await phone.request('/household')).status, 409)
+    assert.equal((await phone.request('/account/recovery')).status, 409)
+    assert.equal((await browser.state()).account, null)
+    f.provider.failDelete = false
+    const finished = await phone.request('/account', confirmation, { method: 'DELETE', cookie })
+    assert.equal(finished.status, 200)
+    assert.equal(finished.data.account, null)
+    assert.equal(phone.token, '')
   })
 })
 

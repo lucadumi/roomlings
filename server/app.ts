@@ -22,7 +22,7 @@ import { deviceNameInputSchema, recoverInputSchema, recoveryRotationInputSchema 
 import { requestFailureMessage } from '../shared/requestMessages.ts'
 import type { Store } from './store.ts'
 import { ApiError, apiMessages } from './errors.ts'
-import { accountCookieName, installAccounts } from './accounts-api.ts'
+import { accountCookieName, installAccounts, isNativeAccountRequest } from './accounts-api.ts'
 import type { AccountOptions } from './accounts-api.ts'
 import { installRoomAccess } from './room-access.ts'
 
@@ -76,10 +76,13 @@ export function createApp(store: Store, options: AccountOptions = {}) {
     if (!session) throw new ApiError(401, expiredSession)
     return session
   }
-  const authenticated = async (req: Request, res: Response) => req.get('authorization') !== undefined
-    || !req.headers.cookie?.split(';').some((entry) => entry.trim().startsWith(`${accountCookieName}=`))
-    ? (await legacyAuthenticated(req))
-    : (await accounts.kitchen(req, res))
+  const authenticated = async (req: Request, res: Response) => {
+    if (isNativeAccountRequest(req)) return accounts.kitchen(req, res)
+    return req.get('authorization') !== undefined
+      || !req.headers.cookie?.split(';').some((entry) => entry.trim().startsWith(`${accountCookieName}=`))
+      ? (await legacyAuthenticated(req))
+      : (await accounts.kitchen(req, res))
+  }
   const availableAccess = <T>(result: T | null): T => {
     if (result === null) throw new ApiError(401, expiredSession)
     return result
