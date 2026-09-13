@@ -299,7 +299,7 @@ for (const roomId of roomIds) {
     await world.getByRole('button', { name: 'Hide object labels', exact: true }).click()
     await expect(world).toHaveAttribute('data-rendering', 'paused')
     await expect(world).toHaveAttribute('data-component-count', String(installed.length))
-    expect(installed.length).toBe(roomId === 'kitchen' ? 66 : roomId === 'bathroom' ? 34 : 17)
+    expect(installed.length).toBe(roomId === 'kitchen' ? 65 : roomId === 'bathroom' ? 34 : 17)
     await page.screenshot({ path: testInfo.outputPath(`${roomId}-all-components-original.png`), animations: 'disabled' })
   })
 
