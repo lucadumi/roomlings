@@ -6,10 +6,11 @@ Supabase Auth verifies email codes. Roomlings keeps its own server-validated ses
 
 1. Create a Supabase project and enable Email authentication with email confirmation.
 2. Configure custom SMTP under **Authentication > Emails > SMTP Settings**. Use your mail provider's credentials, not a Supabase project key. Hosted template editing may require SMTP first. Do not disable confirmation to work around delivery failures.
-3. Update both **Confirm signup** and **Magic Link (or OTP)** templates. Use **Your Roomlings sign-in code** as the subject and [emails/auth-code.html](../emails/auth-code.html) as the body. Both templates need `{{ .Token }}`, not a confirmation link. Set an appropriate short OTP lifetime.
-4. Copy the account variables from [.env.example](../.env.example) into the ignored `.env`. Keep the project URL, publishable key and administrative credential on the Express server, never in `VITE_*` variables.
-5. Set `APP_ORIGIN=http://localhost:5173` for review, or an HTTPS origin for production. Configure reverse proxies deliberately rather than trusting arbitrary forwarded IP headers.
-6. Restart the API and request a fresh code through sign-in. Template changes apply only to new emails.
+3. Create a public Storage bucket named `brand` and upload [roomlings-icon-flat-256.png](../public/brand/roomlings-icon-flat-256.png). The email header loads the mark from its public URL.
+4. Update both **Confirm signup** and **Magic Link (or OTP)** templates. Use **Your Roomlings sign-in code** as the subject and [emails/auth-code.html](../emails/auth-code.html) as the body. Replace `YOUR-PROJECT-REF` in the image address with your project reference. Both templates need `{{ .Token }}`, not a confirmation link. Set an appropriate short OTP lifetime.
+5. Copy the account variables from [.env.example](../.env.example) into the ignored `.env`. Keep the project URL, publishable key and administrative credential on the Express server, never in `VITE_*` variables.
+6. Set `APP_ORIGIN=http://localhost:5173` for review, or an HTTPS origin for production. Configure reverse proxies deliberately rather than trusting arbitrary forwarded IP headers.
+7. Restart the API and request a fresh code through sign-in. Template changes apply only to new emails.
 
 Without provider configuration, browser-only kitchens and browser recovery still work; email sign-in reports that setup is required. Partial configuration fails explicitly. Production refuses to start without complete account configuration and an HTTPS origin.
 
@@ -21,7 +22,7 @@ Verify a domain with your mail provider and set the sender name to **Roomlings**
 
 SMTP credentials belong in Supabase settings, not browser code or this repository. The administrative Supabase credential supports provider-side account deletion; it does not configure SMTP or hosted templates.
 
-The local template has no external assets, tracking or sign-in links. Copying it into the repository does not update Supabase. Enter the newest code in the app rather than following an old email's confirmation link.
+The template loads one image, the Roomlings mark from the public `brand` bucket, and nothing else. There are no tracking pixels and no sign-in links, and the header falls back to the text wordmark when a client blocks images. Copying the file into the repository does not update Supabase. Enter the newest code in the app rather than following an old email's confirmation link.
 
 References: [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless#with-otp), [templates](https://supabase.com/docs/guides/auth/auth-email-templates), [SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
 
