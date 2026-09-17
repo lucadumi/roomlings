@@ -159,6 +159,17 @@ describe('room-first camera framing', () => {
     assert.equal(stepRoomZoom(0.51, -1), 0.5)
     for (const invalid of [NaN, Infinity, -Infinity]) assert.throws(() => stepRoomZoom(invalid, 1), /finite value/)
   })
+  it('lets the native preview increase room magnification without changing shared zoom defaults', () => {
+    for (const zoom of [0.5, 1, 1.1, 1.5]) {
+      const original = roomCameraZoom(zoom, false, 'kitchen')
+      const portrait = roomCameraZoom(zoom, false, 'kitchen', 1.15)
+      assert.ok(Math.abs(portrait / original - 1.15) < 1e-12)
+      assert.equal(roomCameraZoom(zoom, false, 'kitchen', 1), original)
+    }
+    for (const invalid of [0, -1, NaN, Infinity]) {
+      assert.throws(() => roomCameraZoom(1, false, 'kitchen', invalid), /positive finite/)
+    }
+  })
   it('keeps the immersive phone close-up separate from the measured whole-room overview', () => {
     const close = cameraFraming(390, 636, 'room', false)
     const whole = cameraFraming(390, 636, 'room', true)
