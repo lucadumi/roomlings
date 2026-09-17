@@ -30,9 +30,13 @@ test('the help button beside Edit room has square dimensions and shared rounded 
     const box = await help.boundingBox()
     expect(box).not.toBeNull()
     expect(Math.abs(box!.width - box!.height)).toBeLessThan(0.1)
-    const radius = await edit.evaluate((element) => getComputedStyle(element).borderRadius)
-    expect(Number.parseFloat(radius)).toBeGreaterThan(0)
-    await expect(help).toHaveCSS('border-radius', radius)
+    await expect.poll(async () => {
+      const [radius, helpRadius] = await Promise.all([
+        edit.evaluate((element) => getComputedStyle(element).borderRadius),
+        help.evaluate((element) => getComputedStyle(element).borderRadius),
+      ])
+      return { rounded: Number.parseFloat(radius) > 0, shared: helpRadius === radius }
+    }).toEqual({ rounded: true, shared: true })
   }
   await help.click()
   await expect(page.getByRole('dialog')).toBeVisible()
