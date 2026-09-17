@@ -214,7 +214,9 @@ export function fitRoomBounds(width: number, height: number, bounds: Box3, rotat
   return fitBoundsProjection(width, height, projectRoomBounds(bounds, rotation, pitch))
 }
 
-export function roomCameraZoom(zoom: number, closeRoom: boolean, roomId: RoomId): number {
-  if (!Number.isFinite(zoom) || zoom <= 0) throw new Error('Room camera zoom needs a positive finite value.')
-  return closeRoom ? zoom * roomEntryZoom[roomId] : zoom
+export function roomCameraZoom(zoom: number, closeRoom: boolean, roomId: RoomId, roomScale = 1): number {
+  if (![zoom, roomScale].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error('Room camera zoom needs positive finite values.')
+  }
+  return zoom * (closeRoom ? roomEntryZoom[roomId] : 1) * roomScale
 }
