@@ -12,7 +12,7 @@ import type { ComponentKind, RoomComponent, RoomSlotId } from '../shared/roomCom
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { roomCatalog } from '../shared/rooms.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
-import { baseCameraOffset, cameraOrbitOffset, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomPitchLimits, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import { baseCameraOffset, cameraOrbitOffset, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomEntryFraming, roomFramingArea, roomMagnification, roomPitchLimits, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
 import type { ContactShadow } from './lighting.ts'
@@ -135,6 +135,7 @@ export default function ChoreRoomWorld<Target extends string>({
     !preview && target === 'room' && config.entryFocus ? config.entryFocus : config.focusForRequest(target)
   const [focused, setFocused] = useState<ChoreRoomFocus<Target>>(() => availableFocus(config, requestedFocus(focusRequest.target), installed))
   const [zoom, setZoom] = useState(1)
+  const [zoomPercent, setZoomPercent] = useState(100)
   const [evening, setEvening] = useState(false)
   const [roomViewReset, setRoomViewReset] = useState(preview || focused !== requestedFocus(focusRequest.target))
   const [showLabels, setShowLabels] = useState(true)
@@ -275,6 +276,7 @@ export default function ChoreRoomWorld<Target extends string>({
     let halfHeight = 1
     let halfHeightVelocity = 0
     let zoomVelocity = 0
+    let displayedZoomPercent = -1
     let lightMix = 0
     let lastFocusId = state.current.focusRequest.id
     let lastSelectedComponentKey: string | null = null
@@ -520,6 +522,36 @@ export default function ChoreRoomWorld<Target extends string>({
       if (canvas.dataset.roomRotation !== rotationValue) canvas.dataset.roomRotation = rotationValue
       if (canvas.dataset.cameraOrbit !== rotationValue) canvas.dataset.cameraOrbit = rotationValue
       if (canvas.dataset.hiddenWalls !== cutawayUpdate.hiddenSides) canvas.dataset.hiddenWalls = cutawayUpdate.hiddenSides
+      if (!preview) {
+        const span = (camera.top - camera.bottom) / camera.zoom
+        const wholeReference = !placementCandidate && (latest.wholeRoomView || latest.overviewFocus)
+        const referenceArea = wholeReference ? area : { x: 0, y: 0, ...viewport }
+        const entryFocus = availableFocus(config, config.entryFocus ?? 'room', latestInstalled)
+        const entryComponent = entryFocus === 'room' ? undefined : targetComponent(config, entryFocus, latestInstalled)
+        const entryBounds = entryComponent ? componentScene.getBounds(entryComponent.id) ?? componentScene.bounds
+          : entryFocus === 'room' ? componentScene.bounds : model.actorBounds.get(entryFocus) ?? componentScene.bounds
+        const reference = wholeReference
+          ? latest.wholeRoomView
+            ? fitRoomOrbitBounds(referenceArea.width, referenceArea.height, componentScene.bounds)
+            : config.framing(referenceArea.width, referenceArea.height, componentScene.bounds, 0, 0)
+          : entryFocus === 'room'
+            ? roomEntryFraming(viewport.width, viewport.height, referenceArea)
+            : config.framing(viewport.width, viewport.height, entryBounds, 0, 0)
+        if (!wholeReference && entryFocus !== 'room') {
+          reference.halfHeight = Math.max(config.minimumFocusHalfHeight ?? 0, reference.halfHeight)
+        }
+        const entryZoom = config.cameraZoom ? config.cameraZoom(1, !wholeReference, config.roomId) : 1
+        const percent = Math.round(100 * roomMagnification(
+          reference.halfHeight * viewport.height / referenceArea.height, entryZoom, span))
+        if (percent !== displayedZoomPercent) {
+          displayedZoomPercent = percent
+          setZoomPercent(percent)
+        }
+        const zoomValue = camera.zoom.toFixed(5)
+        const spanValue = span.toFixed(5)
+        if (canvas.dataset.cameraZoom !== zoomValue) canvas.dataset.cameraZoom = zoomValue
+        if (canvas.dataset.cameraSpan !== spanValue) canvas.dataset.cameraSpan = spanValue
+      }
       const hologramUpdate = hologram.update(placementCandidate, componentScene.actors.values())
       shadowsDirty ||= hologramUpdate.shadowsChanged
       const arrowAnimating = placementArrow.update(placementBounds, now, !reduced && !latest.paused, orbitRotation)
@@ -830,7 +862,7 @@ export default function ChoreRoomWorld<Target extends string>({
         <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? config.copy.room : selectedComponent && !roomViewReset ? componentAccessibleName(selectedComponent, installed) : focused === 'room' ? config.copy.room : config.labels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
           <button type="button" className="icon-button" onClick={() => changeZoom(1)} disabled={zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size="1.1875rem" /></button>
-          <span>{Math.round(zoom * 100)}%</span>
+          <span title="Magnification relative to the default room view">{zoomPercent}%</span>
           <button type="button" className="icon-button" onClick={() => changeZoom(-1)} disabled={zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size="1.1875rem" /></button>
           <i />
           <button type="button" className="icon-button" onClick={() => controls.current?.reset()} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size="1.125rem" /></button>

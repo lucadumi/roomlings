@@ -220,3 +220,11 @@ export function roomCameraZoom(zoom: number, closeRoom: boolean, roomId: RoomId,
   }
   return zoom * (closeRoom ? roomEntryZoom[roomId] : 1) * roomScale
 }
+
+// Measure the visible span, not just camera.zoom: object framing also magnifies the view.
+export function roomMagnification(entryHalfHeight: number, entryZoom: number, span: number): number {
+  if (![entryHalfHeight, entryZoom, span].every((value) => Number.isFinite(value) && value > 0)) {
+    throw new Error('Room magnification needs a positive entry framing, zoom and span.')
+  }
+  return 2 * entryHalfHeight / entryZoom / span
+}

@@ -2,7 +2,9 @@
 
 ## Shared rooms and tools
 
-Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. The kitchen and bathroom start with a slightly wider 100% view than the living room. Each room's placement previews use its normal camera scale without resizing objects. The **Zoom in** and **Zoom out** buttons change zoom by 10 percentage points, from 50% to 150%. Scrolling and pinching use the same limits. **Reset room view** restores that room's entry magnification at 100%. Its selected state clears whenever you zoom away from 100%. The toolbar remains available in every room, including when 3D cannot load.
+Open **Rooms** for a preview menu directly beneath the button. Choose the kitchen, bathroom or living room without changing your household or session. Arrow keys move between rooms, Enter selects, and Escape, Tab or an outside click closes the menu. The kitchen and bathroom start with a slightly wider 100% view than the living room. Each room's placement previews use its normal camera scale without resizing objects.
+
+The zoom percentage includes object focus, not just manual zoom. **100%** is the default room view for the current layout; a close-up can read above 150%. The **Zoom in** and **Zoom out** buttons adjust the current framing from 0.5 to 1.5 times its size in steps of 0.1. Scrolling and pinching use the same manual limits. **Reset room view** restores the default framing at 100%, including the fitted overview in the object editor. Its selected state clears when you zoom away from the reset view. The toolbar remains available in every room, including when 3D cannot load.
 
 Drag to orbit the camera freely through 360 degrees. The room stays at its
 authored position. Far walls stay visible; walls and window panels facing the

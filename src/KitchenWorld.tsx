@@ -13,7 +13,7 @@ import { categoryLabels } from '../shared/domain.ts'
 import { kitchenUtilities } from './room.ts'
 import type { KitchenUtility, SceneAction } from './room.ts'
 import { buildKitchenModel } from './kitchenModel.ts'
-import { cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, focusLabels, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomPitchLimits, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
+import { cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, focusLabels, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, roomCameraZoom, roomEntryFraming, roomFramingArea, roomMagnification, roomPitchLimits, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from './camera.ts'
 import type { FramingMeasurements, SceneFocus } from './camera.ts'
 import { batchStaticMeshes } from './batchStaticMeshes.ts'
 import { createContactShadowTexture, createRoomLights, daylight, eveningLight, fitRoomShadowBounds } from './lighting.ts'
@@ -59,9 +59,12 @@ type WorldControls = {
 export type KitchenPreviewProps = Pick<RoomWorldProps, 'roomStyle' | 'paused' | 'components' | 'onComponentSelect'> & {
   onStatus: (status: 'loading' | 'ready' | 'unavailable') => void
   roomZoom?: number
+  // A page preview frames the whole shell; a room someone lives in uses the entry view.
+  wholeRoomView?: boolean
+  cameraToolsInQuickActions?: boolean
 }
 
-export function KitchenPreview({ onComponentSelect, ...props }: KitchenPreviewProps) {
+export function KitchenPreview({ onComponentSelect, wholeRoomView = true, ...props }: KitchenPreviewProps) {
   const [selection, setSelection] = useState<{ componentId: string; request: number } | null>(null)
   const selectedComponentId = onComponentSelect && installedRoomComponents(props.components, 'kitchen')
     .some((component) => component.id === selection?.componentId) ? selection?.componentId ?? null : null
@@ -74,7 +77,7 @@ export function KitchenPreview({ onComponentSelect, ...props }: KitchenPreviewPr
     onComponentSelect?.(componentId)
   }
   const unavailableAction = () => { throw new Error('Household actions are not available in the standalone room preview.') }
-  return <KitchenWorld {...props} previewOnly panelOpen={false} wholeRoomView
+  return <KitchenWorld {...props} previewOnly panelOpen={false} wholeRoomView={wholeRoomView}
     selectedComponentId={selectedComponentId} onComponentSelect={onComponentSelect ? selectComponent : undefined}
     focusRequest={{ target: 'room', id: selection?.request ?? 0 }} counts={{ produce: 0, dairy: 0, pantry: 0, drinks: 0, other: 0 }}
     selected="all" fundFraction={0} memberCount={0} expenseCount={0} stockEvent={null} dueChores={{}}
@@ -84,8 +87,8 @@ export function KitchenPreview({ onComponentSelect, ...props }: KitchenPreviewPr
 export default function KitchenWorld({
   roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
   onSelect, onAction, onOpenChores, onRestock, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
-  previewOnly = false, roomZoom = 1, onStatus,
-}: RoomWorldProps & { previewOnly?: boolean; roomZoom?: number; onStatus?: KitchenPreviewProps['onStatus'] }) {
+  previewOnly = false, roomZoom = 1, cameraToolsInQuickActions = false, onStatus,
+}: RoomWorldProps & { previewOnly?: boolean; roomZoom?: number; cameraToolsInQuickActions?: boolean; onStatus?: KitchenPreviewProps['onStatus'] }) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
@@ -94,6 +97,7 @@ export default function KitchenWorld({
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const [zoomPercent, setZoomPercent] = useState(100)
   const [showLabels, setShowLabels] = useState(true)
   const [hovered, setHovered] = useState<Target | null>(null)
   const hoverRef = useRef(hovered)
@@ -243,6 +247,7 @@ export default function KitchenWorld({
     let shadowsDirty = true
     let lastShadowFrame = -Infinity
     let displayedMinute = -1
+    let displayedZoomPercent = -1
     const viewport = { width: 1, height: 1 }
     const framingArea = { x: 0, y: 0, width: 1, height: 1 }
     let measurements: FramingMeasurements | null = null
@@ -313,6 +318,8 @@ export default function KitchenWorld({
     const observer = new ResizeObserver(resize)
     observer.observe(element)
     observer.observe(stageElement)
+    const cameraRail = stageElement.querySelector('.world-camera-controls')
+    if (cameraRail) observer.observe(cameraRail)
     const cameraControls = stageElement.querySelector('.world-camera-controls')
     if (cameraControls) observer.observe(cameraControls)
     const visibility = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting })
@@ -724,7 +731,22 @@ export default function KitchenWorld({
       if (renderer.domElement.dataset.roomRotation !== rotationValue) renderer.domElement.dataset.roomRotation = rotationValue
       if (renderer.domElement.dataset.cameraOrbit !== rotationValue) renderer.domElement.dataset.cameraOrbit = rotationValue
       const zoomValue = camera.zoom.toFixed(5)
-      const spanValue = ((camera.top - camera.bottom) / camera.zoom).toFixed(5)
+      const span = (camera.top - camera.bottom) / camera.zoom
+      const spanValue = span.toFixed(5)
+      const wholeReference = !placementCandidate && (latest.wholeRoomView || latest.overviewFocus)
+      const referenceArea = wholeReference ? framingArea : { x: 0, y: 0, ...viewport }
+      const reference = wholeReference
+        ? latest.wholeRoomView
+          ? fitRoomOrbitBounds(referenceArea.width, referenceArea.height, roomBounds)
+          : fitRoomBounds(referenceArea.width, referenceArea.height, roomBounds)
+        : roomEntryFraming(viewport.width, viewport.height, referenceArea)
+      const percent = Math.round(100 * roomMagnification(
+        reference.halfHeight * viewport.height / referenceArea.height,
+        roomCameraZoom(1, !wholeReference, 'kitchen', latest.roomZoom), span))
+      if (percent !== displayedZoomPercent) {
+        displayedZoomPercent = percent
+        setZoomPercent(percent)
+      }
       const targetValue = cameraCenter.toArray().map((value) => value.toFixed(5)).join(',')
       const areaValue = [projectedArea.x, projectedArea.y, projectedArea.width, projectedArea.height]
         .map((value) => value.toFixed(3)).join(',')
@@ -808,7 +830,7 @@ export default function KitchenWorld({
   }, [], deferColdStart)
 
   // The loop detects component content changes; refreshed copies must not wake a paused scene.
-  useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, wholeRoomView, selectedComponentId, placementPreviewId, overviewFocus, roomZoom])
+  useEffect(() => { controls.current?.wake(0) }, [showLabels, editMode, wholeRoomView, selectedComponentId, placementPreviewId, overviewFocus, roomZoom, cameraToolsInQuickActions, hasObjectControls])
 
   const toggle = () => {
     if (editMode) {
@@ -834,6 +856,18 @@ export default function KitchenWorld({
     controls.current?.wake()
   }
   const componentFocused = !overviewFocus && !!selectedComponent && !roomViewReset && (!previewOnly || focused === 'room')
+  const toolsWithActions = cameraToolsInQuickActions && !editMode
+  const resetControl = <button className="icon-button" onClick={() => controls.current?.reset()} disabled={interactionBlocked}
+    aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size="1.125rem" /></button>
+  const labelsControl = hasObjectControls && <button className="icon-button" onClick={() => setShowLabels(!showLabels)}
+    disabled={interactionBlocked || placementLabelsHidden} aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'}
+    aria-pressed={labelsShown} title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>
+    {labelsShown ? <Eye size="1.125rem" /> : <EyeOff size="1.125rem" />}
+  </button>
+  const lightControl = <button className="icon-button" onClick={changeLight} disabled={interactionBlocked}
+    aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">
+    {evening ? <Moon size="1.125rem" /> : <Sun size="1.125rem" />}
+  </button>
   return (
     <div className="kitchen-world" ref={stage} data-room-style={roomStyle} data-evening={evening} data-focus={overviewFocus ? 'room' : focused} data-framing={overviewFocus ? 'whole' : 'close'} data-camera-moving={cameraMoving} data-rendering={renderingPaused ? 'paused' : 'active'} data-edit-mode={editMode} data-component-count={installed.length} data-selected-component={overviewFocus ? undefined : selectedComponentId ?? undefined} data-component-focus={componentFocused}>
       <div className="world-canvas" ref={host} role="img" hidden={unavailable} aria-hidden={unavailable} aria-label={previewOnly
@@ -857,11 +891,19 @@ export default function KitchenWorld({
           </button>)}
         </div>}
         <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && componentFocused ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
-        <div className="world-camera-controls"><button className="icon-button" onClick={() => changeZoom(1)} disabled={interactionBlocked || zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size="1.1875rem" /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" onClick={() => changeZoom(-1)} disabled={interactionBlocked || zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size="1.1875rem" /></button><i /><button className="icon-button" onClick={() => controls.current?.reset()} disabled={interactionBlocked} aria-label="Reset room view" title="Reset room view" aria-pressed={roomViewReset && zoom === 1}><Maximize size="1.125rem" /></button>{hasObjectControls && <button className="icon-button" onClick={() => setShowLabels(!showLabels)} disabled={interactionBlocked || placementLabelsHidden} aria-label={labelsShown ? 'Hide object labels' : 'Show object labels'} aria-pressed={labelsShown} title={placementLabelsHidden ? 'Object markers are hidden during placement' : 'Object labels'}>{labelsShown ? <Eye size="1.125rem" /> : <EyeOff size="1.125rem" />}</button>}<button className="icon-button" onClick={changeLight} disabled={interactionBlocked} aria-label={evening ? 'Switch to daylight' : 'Switch to evening lighting'} aria-pressed={evening} title="Kitchen lighting">{evening ? <Moon size="1.125rem" /> : <Sun size="1.125rem" />}</button></div>
+        <div className="world-camera-controls">
+          <button className="icon-button" onClick={() => changeZoom(1)} disabled={interactionBlocked || zoom >= roomZoomLimits.max} aria-label="Zoom in" title="Zoom in"><Plus size="1.1875rem" /></button>
+          <span title="Magnification relative to the default room view">{zoomPercent}%</span>
+          <button className="icon-button" onClick={() => changeZoom(-1)} disabled={interactionBlocked || zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size="1.1875rem" /></button>
+          {!toolsWithActions && <><i />{resetControl}{labelsControl}{lightControl}</>}
+        </div>
         <div className="world-interaction-hint"><Move size="0.8125rem" />{hovered ? ('componentId' in hovered ? hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores' : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : previewOnly && !onComponentSelect ? 'Drag to turn. Pinch to zoom.' : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
         {!editMode && <div className="world-quick-actions" role="group" aria-label="Kitchen quick actions">
           {componentAtSlot(components, 'kitchen-fridge') && <button className="world-fridge-toggle" onClick={toggle} disabled={interactionBlocked} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size="0.9375rem" /><span className="world-action-label">{open ? 'Close the fridge' : 'Peek inside'}</span><span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>}
           {componentAtSlot(components, 'kitchen-kettle') && <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} disabled={interactionBlocked} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size="1rem" /><span className="world-action-label">{brewing ? 'Kettle is on' : 'Tea break'}</span></button>}
+          {toolsWithActions && <div className="world-view-tools" role="group" aria-label="Room view controls">
+            {labelsControl}{resetControl}{lightControl}
+          </div>}
         </div>}
       </>}
     </div>
