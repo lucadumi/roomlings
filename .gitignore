@@ -1,6 +1,6 @@
-node_modules/
-dist/
-data/
+node_modules
+dist
+data
 .env
 .env.*
 supabase-ca.crt
@@ -9,6 +9,6 @@ supabase-ca.crt
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
-test-results/
-playwright-report/
+test-results
+playwright-report
 *.log
