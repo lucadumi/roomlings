@@ -28,7 +28,7 @@ References: [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwor
 
 ## Native iOS sessions
 
-The separate Swift app uses the same accounts, household memberships and ledger as the web app. No database migration, second identity system or Supabase credentials in the client are needed.
+The separate Swift app uses the same accounts, household memberships and ledger as the web app. Native session transport needs no second identity system or Supabase credentials in the client. Optional native push needs the schema upgrade and server configuration in the [storage guide](storage.md#native-push-setup).
 
 Send `X-Roomlings-Client: ios` on native account and household requests. This header selects the session transport; it is not authentication. Native requests never fall back to cookies or legacy kitchen tokens. Unsupported client values return `400 CLIENT_UNSUPPORTED`.
 
@@ -64,6 +64,41 @@ Native sessions use the existing 30-day absolute lifetime, seven-day idle lifeti
 Device revocation and sign-out work across native and browser sessions. `POST /api/account/logout` with `{ "all": false }` revokes only the authenticated native session; `{ "all": true }` also revokes the account's other sessions and linked legacy browser access. An unrelated accompanying cookie is never used or cleared.
 
 Recovery-code management and deletion still require a sign-in within the previous ten minutes. `401 REAUTHENTICATION_REQUIRED` means the user must sign in again before explicitly confirming the action. `503 ACCOUNT_DELETION_PENDING` is not successful deletion: retain the current credential for the deletion-only retry, hide household access, and follow `deletionPending` from `GET /api/account`. Clear the Keychain token after deletion succeeds.
+
+### Native notification preferences and registrations
+
+Push is optional and native-only. The client must obtain explicit opt-in before requesting notification permission or registering with APNs. A default preference does not authorize permission prompts or token registration. No registered installation means no push.
+
+Use the native bearer transport above for every endpoint:
+
+| Endpoint | Request | Response |
+| --- | --- | --- |
+| `GET /api/account/households/:householdId/notifications` | No body | `{ householdId, memberId, preferences: { chores, money }, pushAvailable }` |
+| `PUT /api/account/households/:householdId/notifications` | Exactly `{ chores: boolean, money: boolean }` | Same settings response |
+| `PUT /api/account/push-devices` | Exactly `{ installationId, token, environment }` | `{ registered: true }` |
+| `DELETE /api/account/push-devices/:installationId` | No body | `{ removed: true }` |
+
+Preference reads and writes verify active membership in the requested household, independently of the selected household. Defaults are `true` for both categories. Preferences belong to the account-linked member, survive sign-out, reinstall and a later authorized rejoin, and never increment the household version. They remain available without APNs configuration. Muting a category cancels its queued deliveries, even if subsequently enabled again.
+
+`installationId` is a random UUID persisted by the native installation. `token` is the current APNs token as an even-length hexadecimal string of 2 through 1024 characters, not a fixed-size token. `environment` is `sandbox` or `production` and must match the app's signed `aps-environment` entitlement. The native app must not cache the APNs token on disk; register the current token on each opted-in launch.
+
+The server binds one registration to the authenticated account session and installation. A new registration replaces that session's previous installation and any previous owner of the same installation or token/environment pair. Queued deliveries cannot follow an installation to another account or session. Tokens are encrypted, never returned to clients or logged. Deletion is idempotent for the authenticated account and cannot remove another account's registration.
+
+Browser requests, cookie-only requests and legacy kitchen tokens cannot register devices or use these preferences. Missing or invalid sessions return `401 ACCOUNT_SESSION_REQUIRED`. Inactive membership returns `403`. Missing deployment configuration or an unconfigured APNs environment returns `503 PUSH_NOT_CONFIGURED` on registration, never pretend success. `pushAvailable` reports server configuration readiness, not permission status, Apple acceptance or guaranteed delivery.
+
+Sign-out, session expiry and device revocation remove associated registrations and queued deliveries. Account deletion removes registrations immediately, including while provider deletion is pending. Leaving a household cancels that member's queued deliveries without removing registrations for other households. Previously submitted notifications cannot be recalled from Apple.
+
+### Notification content and taps
+
+- Assigned active due or overdue chores receive one daily summary per member and household at 09:00 in the existing `billingTimeZone`. Completed, archived, upcoming and stored-object-paused chores are excluded.
+- Newly recorded expenses, shopping checkout expenses, recorded bill payments and repayments notify other active members. The mutation actor never receives their own money notification, regardless of who paid or repaid.
+- Lock-screen title is always `Roomlings`. Bodies are only `You have chores due today.`, `A new expense was recorded.` or `A repayment was recorded.` No names, amounts, descriptions or URLs are included.
+
+The custom `roomlings` field contains `{ version: 1, kind, householdId, componentId?, expenseId?, settlementId? }`. `kind` is `chores`, `expense` or `settlement`. Expense and settlement notifications include their matching UUID. A chore summary includes a validated existing `componentId` only when all relevant chores refer to the same single object; otherwise it opens household chores. No other custom fields are accepted by the shared schema.
+
+On a tap, the native app must authenticate again as needed, revalidate active membership and fetch current household data before navigating. Treat all push identifiers as hints, not access grants. Missing or deleted entries and stale membership must fail safely. Push is best effort, not a second ledger or an authoritative event stream.
+
+See [server setup, operation and acceptance prerequisites](storage.md#native-push-setup). No real-device APNs delivery is implied by the automated tests.
 
 ## Account recovery codes
 

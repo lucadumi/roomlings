@@ -18,6 +18,7 @@ Open http://localhost:5173. API: port `4311`.
 - [User guide](docs/usage.md) and [email sign-in setup](docs/accounts.md).
 - Desktop web; [native app](https://github.com/lucadumi/roomlings-ios) for iPhone and iPad.
 - [Configuration](.env.example) and [storage/deployment](docs/storage.md).
+- [Native push setup](docs/storage.md#native-push-setup) and [notification API](docs/accounts.md#native-notification-preferences-and-registrations).
 
 ## Contributing
 
