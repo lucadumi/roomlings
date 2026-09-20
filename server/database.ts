@@ -224,7 +224,7 @@ export class PostgresDatabase implements Database {
     await this.transaction(async () => {
       const version = await this.schemaVersion()
       if (version === applicationSchemaVersion) return
-      if (version === 1 || version === 2) {
+      if (version >= 1 && version < applicationSchemaVersion) {
         throw new Error(`Application schema "${this.schema}" is version ${version}; this build requires version ${applicationSchemaVersion}. Back up Postgres, run npm run database:migrate -- --upgrade for a dry run, then repeat with --apply --confirm-schema ${this.schema}. See docs/storage.md before restarting shared applications.`)
       }
       throw new Error(`Application schema "${this.schema}" is version ${version}; this build only supports version ${applicationSchemaVersion}. Use a compatible application build and review docs/storage.md; do not downgrade migration records.`)

@@ -9,17 +9,20 @@ import { AccountStore } from './accounts-store.ts'
 import { SQLiteDatabase, transactional } from './database.ts'
 import type { Database } from './database.ts'
 import { isRetiredHouseholdState, parseStoredHousehold } from './retired-household.ts'
+import { NotificationStore } from './notifications-store.ts'
 
 export type AuthenticatedSession = { household: Household; memberId: string; sessionId: string }
 
 export class Store {
   private db: Database
   readonly accounts: AccountStore
+  readonly notifications: NotificationStore
   get driver() { return this.db.driver }
 
   constructor(database: string | Database, options: { now?: () => number } = {}) {
     this.db = typeof database === 'string' ? new SQLiteDatabase(database) : database
     this.accounts = new AccountStore(this.db, this, options.now)
+    this.notifications = new NotificationStore(this.db, this, options.now)
     this.get = transactional(this.db, this.get.bind(this))
     this.byInvite = transactional(this.db, this.byInvite.bind(this))
     this.save = transactional(this.db, this.save.bind(this))

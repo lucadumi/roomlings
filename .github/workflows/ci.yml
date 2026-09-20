@@ -103,7 +103,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: node --test tests/postgres.test.ts tests/mutations-api.test.ts
+      - run: node --test tests/postgres.test.ts tests/mutations-api.test.ts tests/notifications*.test.ts
       - name: Run account flows with preinstalled browsers
         run: |
           docker run --rm --init --ipc=host --network host \

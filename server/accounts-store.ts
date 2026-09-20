@@ -546,6 +546,7 @@ export class AccountStore {
     member.inactive = true
     if (pseudonymize) member.name = `Former roommate ${household.members.indexOf(member) + 1}`
     await this.db.prepare('UPDATE account_memberships SET active = 0 WHERE household_id = ? AND member_id = ?').run(household.id, memberId)
+    await this.store.notifications.cancelMember(household.id, memberId)
     await this.db.prepare('DELETE FROM household_room_admins WHERE household_id = ? AND member_id = ?').run(household.id, memberId)
     // Consume existing links for this account; only a new owner-issued invitation can restore access.
     await this.db.prepare(`INSERT INTO account_invitation_uses (invitation_id, account_id)
@@ -605,6 +606,7 @@ export class AccountStore {
       for (const membership of memberships) await this.canLeave((await this.store.get(String(membership.household_id)))!, String(membership.member_id))
       // Persist a deletion barrier before contacting the provider. Retries cannot regain kitchen access.
       await this.db.prepare('UPDATE accounts SET deleting = 1 WHERE id = ?').run(session.accountId)
+      await this.db.prepare('DELETE FROM push_devices WHERE account_id = ?').run(session.accountId)
       await this.db.prepare('DELETE FROM account_recovery_codes WHERE account_id = ?').run(session.accountId)
       await this.db.prepare('DELETE FROM account_sessions WHERE account_id = ? AND id <> ?').run(session.accountId, session.id)
       for (const membership of memberships) await this.deactivate((await this.store.get(String(membership.household_id)))!, String(membership.member_id))

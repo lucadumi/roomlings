@@ -25,6 +25,8 @@ import { ApiError, apiMessages } from './errors.ts'
 import { accountCookieName, installAccounts, isNativeAccountRequest } from './accounts-api.ts'
 import type { AccountOptions } from './accounts-api.ts'
 import { installRoomAccess } from './room-access.ts'
+import { installNotifications } from './notifications-api.ts'
+import type { PushConfiguration } from './apns.ts'
 
 const createSchema = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema })
 const joinSchema = z.object({ inviteCode: z.string().min(8).max(80), name: nameSchema })
@@ -55,7 +57,7 @@ function rateLimit(maximum: number, window: number, message: string): RequestHan
   }
 }
 
-export function createApp(store: Store, options: AccountOptions = {}) {
+export function createApp(store: Store, options: AccountOptions & { push?: PushConfiguration } = {}) {
   const app = express()
   app.disable('x-powered-by')
   app.use((_req, res, next) => {
@@ -69,6 +71,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
   app.use('/api', rateLimit(120, 60_000, 'Too many requests. Wait a minute and try again.'))
 
   const accounts = installAccounts(app, store, options)
+  installNotifications(app, store, accounts.authenticated, options.push)
   const legacyAuthenticated = async (req: Request) => {
     const header = req.get('authorization')
     const token = header?.startsWith('Bearer ') ? header.slice(7) : ''
@@ -113,6 +116,10 @@ export function createApp(store: Store, options: AccountOptions = {}) {
         }
       }
       if (version !== household.version) throw new ApiError(409, apiMessages.householdChanged)
+      const before = {
+        expenses: new Set(household.expenses.map((expense) => expense.id)),
+        settlements: new Set(household.settlements.map((settlement) => settlement.id)),
+      }
       await change(household, memberId)
       household.version++
       if (mutation) household.mutationReceipts = [
@@ -120,6 +127,7 @@ export function createApp(store: Store, options: AccountOptions = {}) {
         { id: mutation.mutationId, memberId, version: household.version, fingerprint },
       ]
       await store.save(household)
+      await store.notifications.enqueueNewEntries(household, memberId, before)
       return { household }
     })
     res.json(result)

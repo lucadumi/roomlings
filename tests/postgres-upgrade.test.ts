@@ -7,7 +7,8 @@ import { PostgresDatabase } from '../server/database.ts'
 import type { Row, Statement, Value } from '../server/database.ts'
 import { initializePostgres, upgradePostgres } from '../server/postgres-schema.ts'
 import {
-  accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, roomAccessSchema, roomAccessTables, sqliteSchema,
+  accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, notificationIndexes, notificationSchema, notificationTables,
+  roomAccessSchema, roomAccessTables, sqliteSchema,
 } from '../server/schema.ts'
 
 const schema = 'roomlings_test_00000000000000000000000000000000'
@@ -64,7 +65,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     await initializePostgres(f.db)
     assert.equal(f.writes[0].sql, `CREATE SCHEMA "${schema}";`)
     assert.equal(f.writes[1].sql, sqliteSchema)
-    for (const table of [...accountRecoveryTables, ...roomAccessTables]) {
+    for (const table of [...accountRecoveryTables, ...roomAccessTables, ...notificationTables]) {
       assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
     }
     assert.match(f.writes.at(-1)!.sql, /^INSERT INTO schema_migrations/)
@@ -109,7 +110,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     }
   })
 
-  it('upgrades version 1 with both additive schemas and private protections before recording the version', async (t) => {
+  it('upgrades version 1 with all additive schemas and private protections before recording the version', async (t) => {
     const f = fixture(t)
     assert.deepEqual(await upgradePostgres(f.db, { apply: true, confirmSchema: schema }), {
       applied: true, schema, fromVersion: 1, toVersion: applicationSchemaVersion,
@@ -131,7 +132,11 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     for (const role of ['PUBLIC', '"anon"', '"authenticated"']) {
       assert.ok(f.writes.some((write) => write.sql.includes(`REVOKE ALL ON TABLE ${roomTables} FROM ${role};`)))
     }
-    assert.equal(f.writes.length, 13)
+    assert.ok(f.writes.some((write) => write.sql === notificationSchema))
+    for (const table of notificationTables) {
+      assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
+    }
+    assert.equal(f.writes.length, 21)
     const recorded = f.writes.at(-1)!
     assert.match(recorded.sql, /^INSERT INTO schema_migrations/)
     assert.equal(recorded.values[0], applicationSchemaVersion)
@@ -176,6 +181,23 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     }
   })
 
+  it('upgrades version 3 with only private notification tables and rejects all notification object collisions', async (t) => {
+    const f = fixture(t, { version: 3 })
+    assert.deepEqual(await upgradePostgres(f.db), { applied: false, schema, fromVersion: 3, toVersion: applicationSchemaVersion })
+    assert.equal(f.writes.length, 0)
+    await upgradePostgres(f.db, { apply: true, confirmSchema: schema })
+    assert.equal(f.writes[0].sql, notificationSchema)
+    assert.ok(!f.writes.some((write) => write.sql.includes('household_room_') || write.sql.includes('account_recovery')))
+    for (const table of notificationTables) {
+      assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
+    }
+    for (const collision of [...notificationTables, ...notificationTables.map((table) => `${table}_pkey`), ...notificationIndexes]) {
+      const blocked = fixture(t, { version: 3, collision })
+      await assert.rejects(upgradePostgres(blocked.db, { apply: true, confirmSchema: schema }), /already contains notification objects/)
+      assert.deepEqual(blocked.writes, [])
+    }
+  })
+
   it('reports no change for an already-current schema, including a confirmed apply', async (t) => {
     const f = fixture(t, { version: applicationSchemaVersion })
     for (const options of [{}, { apply: true, confirmSchema: schema }]) {
@@ -194,6 +216,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     for (const [version, message] of [
       [1, /npm run database:migrate -- --upgrade/],
       [2, /npm run database:migrate -- --upgrade/],
+      [3, /npm run database:migrate -- --upgrade/],
       [applicationSchemaVersion + 1, /compatible application build/],
       [0, /unsupported schema version/],
     ] as const) {
