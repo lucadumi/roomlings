@@ -7,7 +7,8 @@ import { PostgresDatabase } from '../server/database.ts'
 import type { Row, Statement, Value } from '../server/database.ts'
 import { initializePostgres, upgradePostgres } from '../server/postgres-schema.ts'
 import {
-  accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, notificationIndexes, notificationSchema, notificationTables,
+  accountRecoverySchema, accountRecoveryTables, analyticsSchema, analyticsTables,
+  applicationSchemaVersion, notificationIndexes, notificationSchema, notificationTables,
   roomAccessSchema, roomAccessTables, sqliteSchema,
 } from '../server/schema.ts'
 
@@ -136,7 +137,11 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     for (const table of notificationTables) {
       assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
     }
-    assert.equal(f.writes.length, 21)
+    assert.ok(f.writes.some((write) => write.sql === analyticsSchema))
+    for (const table of analyticsTables) {
+      assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
+    }
+    assert.equal(f.writes.length, 26)
     const recorded = f.writes.at(-1)!
     assert.match(recorded.sql, /^INSERT INTO schema_migrations/)
     assert.equal(recorded.values[0], applicationSchemaVersion)

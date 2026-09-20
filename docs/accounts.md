@@ -100,6 +100,20 @@ On a tap, the native app must authenticate again as needed, revalidate active me
 
 See [server setup, operation and acceptance prerequisites](storage.md#native-push-setup). No real-device APNs delivery is implied by the automated tests.
 
+### Retention analytics
+
+`POST /api/account/households/:householdId/analytics` records what the server cannot already infer from its own mutations. Everything else about retention is derivable from existing timestamped chore, expense and settlement rows.
+
+The body is `{ events: [{ kind, occurredAt, localDate }] }`, up to 50 at a time. `kind` is `app_opened`, `notification_opened`, `invite_shared` or `invite_accepted`. Nothing else is accepted; unknown kinds and extra fields are rejected rather than ignored.
+
+- The household and member come from the authenticated session, never the payload, so a caller cannot attribute activity to anyone else.
+- No message content, amounts, item names or URLs are recorded. There is no free-text field to put them in.
+- Rows are one per member, kind and local date, carrying an occurrence count rather than a stream. The table answers who came back on a given day, not what they did.
+- `localDate` may sit a day either side of `occurredAt` for time zones and clock drift. Anything further, or outside the 30-day retention window, is refused.
+- Rows expire 30 days after the day they cover and are deleted hourly.
+
+Count the members active on a day with `SELECT COUNT(*) FROM analytics_events WHERE household_id = ? AND kind = 'app_opened' AND local_date = ?`.
+
 ## Account recovery codes
 
 Account recovery codes provide another way to sign in when email delivery or mailbox access is unavailable. They belong to the Roomlings account, not to an individual browser-only kitchen.

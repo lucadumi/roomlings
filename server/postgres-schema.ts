@@ -1,6 +1,7 @@
 import { PostgresDatabase } from './database.ts'
 import {
-  accountRecoverySchema, accountRecoveryTables, applicationSchemaVersion, applicationTables,
+  accountRecoverySchema, accountRecoveryTables, analyticsIndexes, analyticsSchema, analyticsTables,
+  applicationSchemaVersion, applicationTables,
   notificationIndexes, notificationSchema, notificationTables, roomAccessSchema, roomAccessTables, sqliteSchema,
 } from './schema.ts'
 import { backfillRoomOwners } from './room-access-migration.ts'
@@ -58,13 +59,16 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
     const fromVersion = await db.schemaVersion()
     const result = { applied: false, schema: db.schema, fromVersion, toVersion: applicationSchemaVersion }
     if (fromVersion === applicationSchemaVersion) return result
-    if (fromVersion < 1 || fromVersion > 3) {
-      throw new Error(`Cannot upgrade unsupported application schema version ${fromVersion}; only versions 1, 2 and 3 to ${applicationSchemaVersion} are supported. Use a compatible build and review docs/storage.md.`)
+    if (fromVersion < 1 || fromVersion > 4) {
+      throw new Error(`Cannot upgrade unsupported application schema version ${fromVersion}; only versions 1, 2, 3 and 4 to ${applicationSchemaVersion} are supported. Use a compatible build and review docs/storage.md.`)
     }
+    const notificationObjects = fromVersion < 4
+      ? [...notificationTables, ...notificationTables.map((table) => `${table}_pkey`), ...notificationIndexes] : []
+    const analyticsObjects = [...analyticsTables, ...analyticsTables.map((table) => `${table}_pkey`), ...analyticsIndexes]
     const objects = [
       ...(fromVersion === 1 ? [...accountRecoveryTables, 'account_recovery_codes_account'] : []),
       ...(fromVersion < 3 ? [...roomAccessTables, ...roomAccessTables.map((table) => `${table}_pkey`)] : []),
-      ...notificationTables, ...notificationTables.map((table) => `${table}_pkey`), ...notificationIndexes,
+      ...notificationObjects, ...analyticsObjects,
     ]
     const collision = await db.prepare(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = ? AND c.relname IN (${objects.map(() => '?').join(', ')})`)
@@ -72,7 +76,7 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
     if (collision) {
       const feature = [...accountRecoveryTables, 'account_recovery_codes_account'].includes(String(collision.relname))
         ? 'account recovery' : [...roomAccessTables, ...roomAccessTables.map((table) => `${table}_pkey`)].includes(String(collision.relname))
-          ? 'room access' : 'notification'
+          ? 'room access' : analyticsObjects.includes(String(collision.relname)) ? 'analytics' : 'notification'
       throw new Error(`A version ${fromVersion} schema already contains ${feature} objects. Review its migration history before upgrading; no changes were made.`)
     }
     if (!options.apply) return result
@@ -85,8 +89,12 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
       await backfillRoomOwners(db)
       await protectPrivateTables(db, roomAccessTables)
     }
-    await db.exec(notificationSchema)
-    await protectPrivateTables(db, notificationTables)
+    if (fromVersion < 4) {
+      await db.exec(notificationSchema)
+      await protectPrivateTables(db, notificationTables)
+    }
+    await db.exec(analyticsSchema)
+    await protectPrivateTables(db, analyticsTables)
     await recordSchemaVersion(db)
     return { ...result, applied: true }
   })
