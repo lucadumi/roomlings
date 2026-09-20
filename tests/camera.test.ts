@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import { baseCameraOffset, cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, projectRoomBounds, projectRoomOrbitBounds, roomCameraZoom, roomEntryFraming, roomFramingArea, roomPitchLimits, roomRotationPeriod, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
+import { baseCameraOffset, cameraOrbitOffset, cameraFraming, cameraProjection, fitRoomBounds, fitRoomOrbitBounds, nearestRoomRotation, normalizeRoomRotation, preferredRoomRotation, projectRoomBounds, projectRoomOrbitBounds, roomCameraZoom, roomEntryFraming, roomFramingArea, roomMagnification, roomPitchLimits, roomRotationPeriod, roomZoomLimits, stepRoomZoom, usesRoomEntryFraming } from '../src/camera.ts'
 import type { SceneFocus } from '../src/camera.ts'
 import { roomIds } from '../shared/rooms.ts'
 import { Box3, Group, Mesh, OrthographicCamera, Vector3 } from 'three'
@@ -168,6 +168,37 @@ describe('room-first camera framing', () => {
     }
     for (const invalid of [0, -1, NaN, Infinity]) {
       assert.throws(() => roomCameraZoom(1, false, 'kitchen', invalid), /positive finite/)
+    }
+  })
+  it('measures focused magnification against the responsive room view, independently of manual zoom limits', () => {
+    for (const scale of [0.3, 0.6, 1, 1.35]) {
+      for (const roomId of roomIds) {
+        const entryZoom = roomCameraZoom(1, true, roomId, scale)
+        const halfHeight = 4.6
+        const entrySpan = 2 * halfHeight / entryZoom
+        assert.equal(roomMagnification(halfHeight, entryZoom, entrySpan), 1)
+        assert.equal(roomMagnification(halfHeight, entryZoom, entrySpan / 3), 3)
+        assert.equal(roomMagnification(halfHeight, entryZoom, entrySpan * 2), 0.5)
+        assert.ok(Math.abs(roomMagnification(halfHeight, entryZoom, entrySpan / 1.1) - 1.1) < 1e-12)
+      }
+    }
+    for (const invalid of [0, -1, NaN, Infinity]) {
+      assert.throws(() => roomMagnification(invalid, 1, 10), /positive/)
+      assert.throws(() => roomMagnification(5, invalid, 10), /positive/)
+      assert.throws(() => roomMagnification(5, 1, invalid), /positive/)
+    }
+  })
+  it('keeps the displayed zoom stable when an entry view pans into a smaller clear area', () => {
+    for (const [width, height] of [[390, 844], [844, 390], [1440, 960]]) {
+      const entry = cameraFraming(width, height, 'room', false)
+      for (const roomId of roomIds) for (const zoom of [0.5, 1, 1.5]) {
+        const entryZoom = roomCameraZoom(1, true, roomId)
+        const area = { x: width * 0.3, y: 80, width: width * 0.6, height: height - 180 }
+        const frame = roomEntryFraming(width, height, area)
+        const projection = cameraProjection(width, height, area, frame.halfHeight, zoom * entryZoom)
+        const span = (projection.top - projection.bottom) / (zoom * entryZoom)
+        assert.ok(Math.abs(roomMagnification(entry.halfHeight, entryZoom, span) - zoom) < 1e-12)
+      }
     }
   })
   it('keeps the immersive phone close-up separate from the measured whole-room overview', () => {

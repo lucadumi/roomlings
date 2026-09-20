@@ -281,9 +281,13 @@ for (const roomId of roomIds) {
       await expect(world.locator('canvas')).toHaveAttribute('data-placement-arrow', 'true')
     }
     await settleView(page)
+    const readout = world.locator('.world-camera-controls > span')
+    const initialPercent = await readout.innerText()
+    if (stage === 'focused object') expect(Number.parseInt(initialPercent, 10)).toBeGreaterThan(100)
+    else expect(initialPercent).toBe('100%')
     await trackCamera(page, name)
     expectFixedEditorFraming(await dragView(page, stage === 'whole room' ? 80 : stage === 'focused object' ? -100 : 60))
-    await expect(world.locator('.world-camera-controls')).toContainText('100%')
+    await expect(readout).toHaveText(initialPercent)
     expect(await accounts.store.get(owner.household.id)).toEqual(household)
   })
 }
