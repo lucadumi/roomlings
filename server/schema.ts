@@ -1,6 +1,6 @@
 // TEXT deliberately preserves the original household JSON byte-for-byte on migration.
 // Rules and integer-cent calculations remain in the shared domain helpers.
-export const applicationSchemaVersion = 4
+export const applicationSchemaVersion = 5
 export const accountRecoveryTables = ['account_recovery_settings', 'account_recovery_codes'] as const
 export const accountRecoverySchema = `
 CREATE TABLE IF NOT EXISTS account_recovery_settings (
@@ -60,6 +60,23 @@ CREATE INDEX IF NOT EXISTS notification_deliveries_device ON notification_delive
 CREATE INDEX IF NOT EXISTS notification_deliveries_ready ON notification_deliveries(status, next_attempt_at, claim_until);
 CREATE UNIQUE INDEX IF NOT EXISTS notification_deliveries_event_device ON notification_deliveries(event_id, installation_id);
 `
+// Retention reporting only. One row per member, event kind and local date, carrying a count
+// rather than a stream, so the table answers "who opened the app that day" without recording
+// what anyone did, referred to or spent.
+export const analyticsTables = ['analytics_events'] as const
+export const analyticsIndexes = ['analytics_events_dedup', 'analytics_events_expiry', 'analytics_events_reporting'] as const
+export const analyticsSchema = `
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id TEXT PRIMARY KEY, dedup_key TEXT NOT NULL,
+  household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE, member_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('app_opened', 'notification_opened', 'invite_shared', 'invite_accepted')),
+  local_date TEXT NOT NULL, occurrences INTEGER NOT NULL DEFAULT 1 CHECK(occurrences > 0),
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, expires_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS analytics_events_dedup ON analytics_events(dedup_key);
+CREATE INDEX IF NOT EXISTS analytics_events_expiry ON analytics_events(expires_at);
+CREATE INDEX IF NOT EXISTS analytics_events_reporting ON analytics_events(household_id, kind, local_date);
+`
 export const sqliteSchema = `
 CREATE TABLE IF NOT EXISTS households (id TEXT PRIMARY KEY, invite TEXT UNIQUE NOT NULL, state TEXT NOT NULL);
 ${roomAccessSchema}
@@ -102,12 +119,13 @@ CREATE TABLE IF NOT EXISTS account_invitation_uses (
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, PRIMARY KEY(invitation_id, account_id)
 );
 ${notificationSchema}
+${analyticsSchema}
 `
 
 export const applicationTables = [
   'households', ...roomAccessTables, 'sessions', 'recovery_codes', 'accounts', ...accountRecoveryTables, 'deleted_account_providers',
   'account_sessions', 'household_accounts', 'account_memberships', 'account_invitations', 'account_invitation_uses',
-  ...notificationTables,
+  ...notificationTables, ...analyticsTables,
 ] as const
 
 export const tableColumns = {
@@ -131,5 +149,9 @@ export const tableColumns = {
   notification_deliveries: [
     'id', 'event_id', 'installation_id', 'member_id', 'status', 'attempts', 'next_attempt_at',
     'claim_token', 'claim_until', 'finished_at', 'last_error',
+  ],
+  analytics_events: [
+    'id', 'dedup_key', 'household_id', 'member_id', 'kind', 'local_date',
+    'occurrences', 'created_at', 'updated_at', 'expires_at',
   ],
 } as const

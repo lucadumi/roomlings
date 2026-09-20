@@ -35,6 +35,15 @@ const cleanPush = () => {
 const pushCleanupTimer = !pushWorker ? setInterval(cleanPush, 60_000) : undefined
 pushCleanupTimer?.unref()
 if (!pushWorker) cleanPush()
+let analyticsCleanup: Promise<void> | undefined
+const cleanAnalytics = () => {
+  if (!analyticsCleanup) analyticsCleanup = store.analytics.cleanup().catch(() => {
+    console.error('Analytics retention cleanup could not finish; it will retry in an hour.')
+  }).finally(() => { analyticsCleanup = undefined })
+}
+const analyticsCleanupTimer = setInterval(cleanAnalytics, 60 * 60_000)
+analyticsCleanupTimer.unref()
+cleanAnalytics()
 if (!provider) console.warn('Account sign-in is unavailable: configure SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, and SUPABASE_SECRET_KEY.')
 let retrying = false
 const retryDeletions = async () => {
@@ -58,9 +67,11 @@ const server = app.listen(port, process.env.HOST ?? '127.0.0.1', () => {
 const shutdown = () => {
   clearInterval(deletionTimer)
   clearInterval(pushCleanupTimer)
+  clearInterval(analyticsCleanupTimer)
   server.close(async () => {
     await pushWorker?.stop()
     await pushCleanup
+    await analyticsCleanup
     push?.provider.close()
     await store.close()
     process.exit(0)

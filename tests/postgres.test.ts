@@ -9,7 +9,8 @@ import type { Database, Row } from '../server/database.ts'
 import { initializePostgres, schemaExists, upgradePostgres } from '../server/postgres-schema.ts'
 import { migrateSqlite } from '../server/migration.ts'
 import {
-  accountRecoveryTables, applicationSchemaVersion, applicationTables, notificationIndexes, notificationTables, roomAccessTables, tableColumns,
+  accountRecoveryTables, analyticsIndexes, analyticsTables, applicationSchemaVersion, applicationTables,
+  notificationIndexes, notificationTables, roomAccessTables, tableColumns,
 } from '../server/schema.ts'
 import { Store } from '../server/store.ts'
 import { createApp } from '../server/app.ts'
@@ -40,13 +41,14 @@ async function removeTestSchema(db: PostgresDatabase) {
   await db.transaction(async () => { await db.exec(`DROP SCHEMA IF EXISTS "${db.schema}" CASCADE`) })
 }
 
-const addedTables = new Set<string>([...accountRecoveryTables, ...roomAccessTables, ...notificationTables])
+const addedTables = new Set<string>([...accountRecoveryTables, ...roomAccessTables, ...notificationTables, ...analyticsTables])
 const originalTables = applicationTables.filter((table) => !addedTables.has(table))
 
 async function initializeVersionOne(db: PostgresDatabase) {
   if (!/^roomlings_test_[a-f0-9]{32}$/.test(db.schema)) throw new Error('A version 1 fixture needs a disposable test schema.')
   await initializePostgres(db)
   await db.transaction(async () => {
+    await db.exec([...analyticsTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
     await db.exec([...notificationTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
     await db.exec('DROP TABLE account_recovery_codes; DROP TABLE account_recovery_settings; DROP TABLE household_room_admins; DROP TABLE household_room_owners;')
     await db.prepare('UPDATE schema_migrations SET version = 1 WHERE version = ?').run(applicationSchemaVersion)
@@ -238,6 +240,7 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       assert.deepEqual(afterObjects.filter((object) => previousNames.has(object.name)), beforeObjects)
       assert.deepEqual(afterObjects.filter((object) => !previousNames.has(object.name)).map((object) => object.name).sort(),
         [...accountRecoveryTables, ...roomAccessTables, ...notificationTables, ...notificationTables.map((table) => `${table}_pkey`), ...notificationIndexes,
+          ...analyticsTables, ...analyticsTables.map((table) => `${table}_pkey`), ...analyticsIndexes,
           'account_recovery_settings_pkey', 'account_recovery_codes_pkey',
           'account_recovery_codes_account', 'household_room_owners_pkey', 'household_room_admins_pkey'].sort())
       assert.deepEqual(await applicationRows(db, accountRecoveryTables), { account_recovery_settings: [], account_recovery_codes: [] })
@@ -321,9 +324,10 @@ describe('real PostgreSQL storage', { skip: !enabled }, () => {
       const accepted = await store.accounts.accept(successor.session, invitation.code, 'Ben')
       const transferred = await store.accounts.transfer(original.session, household.id, accepted.session!.memberId, accepted.session!.household.version)
       const recovery = await store.accounts.generateRecoveryCodes(original.session, 0)
-      const versionTwoTables = applicationTables.filter((table) => !new Set<string>([...roomAccessTables, ...notificationTables]).has(table))
+      const versionTwoTables = applicationTables.filter((table) => !new Set<string>([...roomAccessTables, ...notificationTables, ...analyticsTables]).has(table))
       const before = await applicationRows(db, versionTwoTables)
       await db.transaction(async () => {
+        await db.exec([...analyticsTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
         await db.exec([...notificationTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
         await db.exec('DROP TABLE household_room_admins; DROP TABLE household_room_owners;')
         await db.prepare('UPDATE schema_migrations SET version = 2 WHERE version = ?').run(applicationSchemaVersion)

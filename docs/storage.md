@@ -28,7 +28,7 @@ Rows carrying the retired example marker are preserved byte for byte during migr
 
 ## Postgres schema upgrades
 
-Application schema version 4 adds `notification_preferences`, `push_devices`, `notification_events` and `notification_deliveries`, including uniqueness, claim and retention indexes. Versions 1, 2 and 3 can upgrade directly to version 4. Version 1 also receives version 2's recovery tables; versions 1 and 2 receive version 3's `household_room_owners` and `household_room_admins`. Version 3 upgrades leave all existing tables and rows untouched.
+Application schema version 5 adds `analytics_events`, including its dedup, expiry and reporting indexes. Application schema version 4 adds `notification_preferences`, `push_devices`, `notification_events` and `notification_deliveries`, including uniqueness, claim and retention indexes. Versions 1, 2, 3 and 4 can upgrade directly to version 5. Version 1 also receives version 2's recovery tables; versions 1 and 2 receive version 3's `household_room_owners` and `household_room_admins`; versions 1, 2 and 3 receive version 4's notification tables. Version 4 upgrades leave all existing tables and rows untouched.
 
 The upgrade is additive: it does not rewrite existing rows, rotate sessions, change account/member IDs or recalculate the ledger. It records the original creator ID from each legitimate existing household, skips retired examples, and leaves current account-managed ownership untouched. It neither grants delegated admin rights nor generates recovery codes.
 
@@ -42,7 +42,7 @@ Startup only checks the supported version. It never applies Postgres DDL or fall
    npm run database:migrate -- --upgrade
    ```
 
-   The JSON result contains `schema`, `fromVersion`, `toVersion` and `applied`. A pending upgrade reports `fromVersion: 1`, `2` or `3`, `toVersion: 4`, and `applied: false`. Dry runs inspect metadata under the shared advisory lock without writing tables, privileges, owner rows or migration records. Supplying confirmation without `--apply` is still a dry run.
+   The JSON result contains `schema`, `fromVersion`, `toVersion` and `applied`. A pending upgrade reports `fromVersion: 1`, `2`, `3` or `4`, `toVersion: 5`, and `applied: false`. Dry runs inspect metadata under the shared advisory lock without writing tables, privileges, owner rows or migration records. Supplying confirmation without `--apply` is still a dry run.
 
 4. Only after reviewing the target and backup, explicitly apply to the exact configured schema name:
 
@@ -50,11 +50,11 @@ Startup only checks the supported version. It never applies Postgres DDL or fall
    npm run database:migrate -- --upgrade --apply --confirm-schema roomlings
    ```
 
-   Both flags are required to mutate. Missing or mismatched confirmation, absent/unversioned schemas, unsupported versions and conflicting newly introduced objects fail without upgrading. Required DDL, any original-creator backfill, RLS, schema/table/default-privilege protections and the version 4 record commit together under the application transaction and advisory lock. Unsafe or invalid creator data aborts older-schema upgrades. A failure rolls the whole upgrade back. Browser roles retain no application-schema or private-table access, including encrypted registrations and outbox data.
+   Both flags are required to mutate. Missing or mismatched confirmation, absent/unversioned schemas, unsupported versions and conflicting newly introduced objects fail without upgrading. Required DDL, any original-creator backfill, RLS, schema/table/default-privilege protections and the version 5 record commit together under the application transaction and advisory lock. Unsafe or invalid creator data aborts older-schema upgrades. A failure rolls the whole upgrade back. Browser roles retain no application-schema or private-table access, including encrypted registrations, outbox and retention-analytics data.
 
-5. After success, restart the API and any push workers with the schema-version-4-compatible build and matching Postgres settings. `preview:local` does not watch API files, so its API needs an explicit coordinated restart. Verify existing sign-ins, household membership, room roles and ledger data without clearing browser storage or replacing session tokens. Repeating either upgrade command on version 4 safely returns `applied: false` with both versions set to `4`; it does not change roles, replace codes or append a migration record.
+5. After success, restart the API and any push workers with the schema-version-5-compatible build and matching Postgres settings. `preview:local` does not watch API files, so its API needs an explicit coordinated restart. Verify existing sign-ins, household membership, room roles and ledger data without clearing browser storage or replacing session tokens. Repeating either upgrade command on version 5 safely returns `applied: false` with both versions set to `5`; it does not change roles, replace codes or append a migration record.
 
-**Compatibility and rollback:** older version-1, version-2 and version-3 builds reject a version-4 database when they start or restart, even though the DDL is additive. Do not upgrade a shared preview database while another feature still requires an incompatible build. Reverting the checkout alone is not a rollback, and there is no automatic down migration. Do not drop private tables or edit migration markers to bypass version checks. Prefer a compatible forward fix. Restoring an older backup requires stopping all writers and restoring the complete approved backup with a matching build; after version-4 writes, restoration would lose newer preferences, registrations, notifications, account, ledger and session changes unless reconciled.
+**Compatibility and rollback:** older version-1 to version-4 builds reject a version-5 database when they start or restart, even though the DDL is additive. Do not upgrade a shared preview database while another feature still requires an incompatible build. Reverting the checkout alone is not a rollback, and there is no automatic down migration. Do not drop private tables or edit migration markers to bypass version checks. Prefer a compatible forward fix. Restoring an older backup requires stopping all writers and restoring the complete approved backup with a matching build; after version-5 writes, restoration would lose newer preferences, registrations, notifications, retention analytics, account, ledger and session changes unless reconciled.
 
 ## SQLite migration
 

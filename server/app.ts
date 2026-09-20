@@ -26,6 +26,7 @@ import { accountCookieName, installAccounts, isNativeAccountRequest } from './ac
 import type { AccountOptions } from './accounts-api.ts'
 import { installRoomAccess } from './room-access.ts'
 import { installNotifications } from './notifications-api.ts'
+import { installAnalytics } from './analytics-api.ts'
 import type { PushConfiguration } from './apns.ts'
 
 const createSchema = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema })
@@ -72,6 +73,7 @@ export function createApp(store: Store, options: AccountOptions & { push?: PushC
 
   const accounts = installAccounts(app, store, options)
   installNotifications(app, store, accounts.authenticated, options.push)
+  installAnalytics(app, store, accounts.authenticated)
   const legacyAuthenticated = async (req: Request) => {
     const header = req.get('authorization')
     const token = header?.startsWith('Bearer ') ? header.slice(7) : ''
