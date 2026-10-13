@@ -159,6 +159,38 @@ describe('durable daily summaries and current authorization', () => {
     assert.notEqual(f.provider.requests[0].collapseId, f.provider.requests[1].collapseId)
   })
 
+  it('says when a turn is overdue and opens the most overdue installed object, rechecking at send time', async (t) => {
+    const f = await notificationFixture(t, { now: '2026-09-20T09:00:00Z' })
+    const { owner, household, ownerId } = await f.home()
+    const components = getRoomComponents(household)
+    const sink = components.find((entry) => entry.kind === 'sink')!
+    const hob = components.find((entry) => entry.kind === 'hob')!
+    const linked = (component: typeof sink, dueDate: string) => testChore(household, ownerId, f.now(), {
+      componentId: component.id, roomId: component.roomId, area: componentChoreArea(component), dueDate,
+    })
+    household.chores.items = [linked(hob, '2026-09-19'), linked(sink, '2026-09-13'), testChore(household, ownerId, f.now())]
+    await f.store.save(household)
+    await f.register(owner.session)
+    await f.store.notifications.scheduleChores()
+    assert.equal((await f.worker.runOnce({ schedule: false })).sent, 1)
+    const [request] = f.provider.requests
+    assert.equal(request.payload.aps.alert.body, 'A chore is overdue and your room is getting dirty.')
+    assert.deepEqual(request.payload.roomlings, { version: 1, kind: 'chores', householdId: household.id, componentId: sink.id })
+    assert.ok(!JSON.stringify(request.payload).includes('Private'))
+
+    // Completing the overdue turns before delivery restores the ordinary wording.
+    const next = await notificationFixture(t, { now: '2026-09-20T09:00:00Z' })
+    const home = await next.home()
+    home.household.chores.items = [testChore(home.household, home.ownerId, next.now(), { dueDate: '2026-09-18' }), testChore(home.household, home.ownerId, next.now())]
+    await next.store.save(home.household)
+    await next.register(home.owner.session)
+    await next.store.notifications.scheduleChores()
+    home.household.chores.items[0].dueDate = null
+    await next.store.save(home.household)
+    assert.equal((await next.worker.runOnce({ schedule: false })).sent, 1)
+    assert.equal(next.provider.requests[0].payload.aps.alert.body, 'You have chores due today.')
+  })
+
   it('does not invent a late summary after opt-in, a new registration or a new chore after the daily snapshot', async (t) => {
     const f = await notificationFixture(t, { now: '2026-09-20T09:00:00Z' })
     const { owner, household, ownerId } = await f.home()
