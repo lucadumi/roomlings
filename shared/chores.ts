@@ -92,3 +92,26 @@ export function undoChoreCompletion(
     completion: choreCompletionSchema.parse({ ...completion, undoneAt, undoneBy: memberId }),
   }
 }
+
+export type ChoreGrime = { level: 1 | 2 | 3; overdueDays: number }
+
+// Dirt grows from one, three and seven days overdue so rooms show neglect, not ordinary due dates.
+export function choreGrime(chore: Chore, today: string): ChoreGrime | null {
+  if (choreStatus(chore, today) !== 'overdue') return null
+  const overdueDays = Math.round((Date.parse(`${dateSchema.parse(today)}T00:00:00Z`) - Date.parse(`${chore.dueDate}T00:00:00Z`)) / 86_400_000)
+  return { level: overdueDays >= 7 ? 3 : overdueDays >= 3 ? 2 : 1, overdueDays }
+}
+
+export function componentGrime(
+  chores: readonly Chore[], components: readonly { id: string; installed: boolean }[], today: string,
+): Record<string, ChoreGrime> {
+  const installed = new Set(components.filter((component) => component.installed).map((component) => component.id))
+  const result: Record<string, ChoreGrime> = {}
+  for (const chore of chores) {
+    if (!chore.componentId || !installed.has(chore.componentId)) continue
+    const grime = choreGrime(chore, today)
+    const current = result[chore.componentId]
+    if (grime && (!current || grime.overdueDays > current.overdueDays)) result[chore.componentId] = grime
+  }
+  return result
+}
