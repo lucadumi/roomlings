@@ -236,6 +236,8 @@ Add a chore with a room or whole-home scope, an optional area or installed objec
 
 Dates use the household time zone. Late recurring completions advance to the next future scheduled date, without creating fake missed completions. Former roommates are skipped in rotations; if no active assignee remains, the task is unassigned until edited.
 
+An object gets dirty when one of its chores is overdue: light crumbs after 1 day, more mess after 3 days and filthy after 7 days. Completing the chore cleans it at once, and undo brings the dirt back. Room-wide chores and objects in Storage stay clean.
+
 History retains the original task title, room, object name where applicable, and scheduled date. Undo restores the previous scheduled turn only if there has been no later edit or completion. Archived tasks keep their history and can be restored when their object is installed.
 
 Bathroom fixtures open their related chores; the cleaning caddy opens the room's list. The kitchen has the same chore controls alongside its existing finance tools. Restocking pre-fills a shopping item for review and avoids adding a supply already on the active list. It never records a paid expense.

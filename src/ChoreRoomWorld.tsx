@@ -23,6 +23,9 @@ import {
 import type { ComponentBindings, ComponentFixtures } from './roomComponentTypes.ts'
 import type { RoomStyleMaterials } from './roomStyles.ts'
 import type { RoomWorldProps } from './roomViewTypes.ts'
+import type { ChoreGrime } from '../shared/chores.ts'
+
+const noGrime: Readonly<Record<string, ChoreGrime>> = {}
 import { createRoomHologram } from './roomHologram.ts'
 import { createPlacementArrow, placementPreviewCenter, placementPreviewSize } from './placementArrow.ts'
 import { createRoomCutaway } from './roomCutaway.ts'
@@ -97,7 +100,7 @@ type ChoreRoomControls<Target extends string> = {
 type ChoreRoomHit<Target extends string> = Target | { componentId: string } | { lighting: true }
 
 export type ChoreRoomWorldProps<Target extends string> = Pick<RoomWorldProps,
-  'roomStyle' | 'paused' | 'deferColdStart' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores'
+  'roomStyle' | 'paused' | 'deferColdStart' | 'panelOpen' | 'onOpenChores' | 'onRestock' | 'dueChores' | 'grime'
   | 'components' | 'editMode' | 'wholeRoomView' | 'selectedComponentId' | 'placementPreviewId' | 'onComponentSelect' | 'overviewFocus'> & {
   focusRequest: { target: SceneFocus | ChoreRoomFocus<Target>; id: number }
   preview?: boolean
@@ -120,7 +123,7 @@ function availableFocus<Target extends string>(config: ChoreRoomConfig<Target>, 
 }
 
 export default function ChoreRoomWorld<Target extends string>({
-  config, roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, onOpenChores, onRestock, dueChores,
+  config, roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, onOpenChores, onRestock, dueChores, grime = noGrime,
   preview = false, motionReduced, onStatus, tour, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
 }: ChoreRoomWorldProps<Target> & { config: ChoreRoomConfig<Target> }) {
   const host = useRef<HTMLDivElement>(null)
@@ -128,8 +131,8 @@ export default function ChoreRoomWorld<Target extends string>({
   const labels = useRef(new Map<Target, HTMLButtonElement>())
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
   const controls = useRef<ChoreRoomControls<Target> | null>(null)
-  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus })
-  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus }
+  const state = useRef({ roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus, grime })
+  state.current = { roomStyle, focusRequest, onOpenChores, onRestock, paused, panelOpen, motionReduced, onStatus, tour, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus, grime }
   const installed = installedRoomComponents(components, config.roomId)
   const requestedFocus = (target: SceneFocus | ChoreRoomFocus<Target>) =>
     !preview && target === 'room' && config.entryFocus ? config.entryFocus : config.focusForRequest(target)
@@ -218,7 +221,7 @@ export default function ChoreRoomWorld<Target extends string>({
       bindings: model.componentBindings, fixtures: model.componentFixtures, styleMaterials: model.styleMaterials, shadowTexture,
     })
     componentScene.update(state.current.components, state.current.roomStyle,
-      state.current.editMode && state.current.selectedComponentId !== state.current.placementPreviewId ? state.current.selectedComponentId : null)
+      state.current.editMode && state.current.selectedComponentId !== state.current.placementPreviewId ? state.current.selectedComponentId : null, state.current.grime)
     batchStaticMeshes(room, model.preserved ?? new Set())
     const lightingBounds = componentScene.bounds.clone()
     const { group: lighting, sunlight, skyLight, fillLights } = createRoomLights(lightingBounds)
@@ -374,7 +377,7 @@ export default function ChoreRoomWorld<Target extends string>({
       const latestInstalled = installedRoomComponents(latest.components, config.roomId)
       const previewId = latest.editMode && !preview && !latest.tour ? latest.placementPreviewId : null
       const componentUpdate = componentScene.update(latest.components, latest.roomStyle,
-        latest.editMode && !latest.overviewFocus && latest.selectedComponentId !== previewId ? latest.selectedComponentId : null)
+        latest.editMode && !latest.overviewFocus && latest.selectedComponentId !== previewId ? latest.selectedComponentId : null, latest.grime)
       const placementCandidate = previewId ? componentScene.actors.get(previewId) ?? null : null
       shadowsDirty ||= componentUpdate.shadowsChanged
       tourBoundsDirty ||= componentUpdate.changed
@@ -853,7 +856,7 @@ export default function ChoreRoomWorld<Target extends string>({
             ref={(button) => { if (button) componentLabels.current.set(component.id, button); else componentLabels.current.delete(component.id) }}
             className="world-hotspot hotspot-component" data-component-id={component.id} data-component-kind={component.kind}
             {...{ [`data-${config.roomId}-target`]: config.targets.find((target) => componentMatchesTarget(config, target, component)) }}
-            data-selected={!overviewFocus && selectedComponentId === component.id} aria-label={componentChoresLabel(component, installed)}
+            data-selected={!overviewFocus && selectedComponentId === component.id} data-grime={grime[component.id]?.level} aria-label={componentChoresLabel(component, installed, grime[component.id])}
             onClick={() => activate({ componentId: component.id })} onMouseEnter={() => setHovered({ componentId: component.id })}
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
             <span className="hotspot-dot"><Plus size="0.75rem" /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
@@ -873,7 +876,7 @@ export default function ChoreRoomWorld<Target extends string>({
         </div>
         <div className="world-interaction-hint"><Move size="0.8125rem" />{hovered && typeof hovered !== 'string'
           ? 'lighting' in hovered ? (evening ? 'Switch to daylight' : 'Switch to evening lighting')
-            : hoveredComponent ? componentChoresLabel(hoveredComponent, installed) : 'Open object chores'
+            : hoveredComponent ? componentChoresLabel(hoveredComponent, installed, grime[hoveredComponent.id]) : 'Open object chores'
           : hoveredTarget === config.suppliesTarget ? config.copy.restockHint : hoveredTarget ? hoveredTarget === config.choresTarget ? 'Open room chores' : config.labels[hoveredTarget]
             : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
       </>}

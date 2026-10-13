@@ -12,6 +12,7 @@ import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import { roomViews } from './roomViews.ts'
 import { getRoomComponents } from '../shared/roomComponents.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
+import type { ChoreGrime } from '../shared/chores.ts'
 
 type Props = {
   roomId: RoomId
@@ -19,6 +20,7 @@ type Props = {
   roomsOpen: boolean
   busy: boolean
   dueChores: Partial<Record<ChoreArea, number>>
+  grime: Readonly<Record<string, ChoreGrime>>
   dueChoreCount: number
   onOpenChores: (area: ChoreArea | null) => void
   onRestock: () => void
@@ -70,7 +72,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 }
 
 export function GameHome({
-  roomId, onRooms, roomsOpen, busy, dueChores, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
+  roomId, onRooms, roomsOpen, busy, dueChores, grime, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, deferColdStart = false, panelOpen, activeTool, onAction, onInvite, onSelect,
   components, editMode, wholeRoomView, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
   panelSide = 'right',
@@ -155,7 +157,7 @@ export function GameHome({
     <h1 className="sr-only">{household.name}: {roomCatalog[roomId].label}</h1>
     <SceneBoundary key={`${roomId}:${household.id}`}>
       <Suspense fallback={<SceneLoading label={`Opening ${roomCatalog[roomId].label.toLowerCase()}...`} />}>
-        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || roomsOpen || (panelOpen && !editMode)} panelOpen={panelOpen && !overviewFocus} overviewFocus={overviewFocus} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores}
+        <World key={`${roomId}:${household.id}`} roomStyle={household.roomStyle} paused={inert || busy || roomsOpen || (panelOpen && !editMode)} panelOpen={panelOpen && !overviewFocus} overviewFocus={overviewFocus} focusRequest={focusRequest} counts={counts} selected={selected} fundFraction={remaining / household.budget} memberCount={activeMembers.length} expenseCount={receiptCount} stockEvent={stockEvent} onSelect={onSelect} onAction={onAction} onOpenChores={onOpenChores} onRestock={onRestock} dueChores={dueChores} grime={grime}
           components={components ?? getRoomComponents(household)} editMode={editMode} wholeRoomView={wholeRoomView && !overviewFocus} selectedComponentId={selectedComponentId} deferColdStart={deferColdStart}
           placementPreviewId={placementPreviewId} onComponentSelect={onComponentSelect} />
       </Suspense>

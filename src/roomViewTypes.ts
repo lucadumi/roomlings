@@ -3,6 +3,7 @@ import type { ChoreArea } from '../shared/rooms.ts'
 import type { FocusRequest } from './camera.ts'
 import type { KitchenAction } from './room.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
+import type { ChoreGrime } from '../shared/chores.ts'
 
 export type RoomWorldProps = {
   roomStyle: RoomStyle
@@ -22,6 +23,8 @@ export type RoomWorldProps = {
   onOpenChores: (area: ChoreArea | null) => void
   onRestock: () => void
   dueChores: Partial<Record<ChoreArea, number>>
+  // Overdue chore dirt for installed objects, keyed by component ID.
+  grime?: Readonly<Record<string, ChoreGrime>>
   components?: readonly RoomComponent[]
   editMode?: boolean
   wholeRoomView?: boolean

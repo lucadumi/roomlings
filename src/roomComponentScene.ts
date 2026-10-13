@@ -15,6 +15,8 @@ import type { RoomStyleMaterials } from './roomStyles.ts'
 import { cloneRoomMaterial } from './surfaceMaterials.ts'
 import { roomWallSide } from './roomCutaway.ts'
 import { componentDisplayName } from './componentNames.ts'
+import type { ChoreGrime } from '../shared/chores.ts'
+import { createRoomGrime, grimeColor, grimeTint } from './roomGrime.ts'
 
 const defaults = defaultRoomComponents()
 
@@ -62,8 +64,9 @@ export function componentAccessibleName(component: RoomComponent, components: re
   return componentDisplayName(component, components)
 }
 
-export function componentChoresLabel(component: RoomComponent, components: readonly RoomComponent[]): string {
-  return `Chores for ${componentAccessibleName(component, components)}`
+export function componentChoresLabel(component: RoomComponent, components: readonly RoomComponent[], grime?: ChoreGrime): string {
+  const label = `Chores for ${componentAccessibleName(component, components)}`
+  return grime ? `${label}, dirty: ${grime.overdueDays} ${grime.overdueDays === 1 ? 'day' : 'days'} overdue` : label
 }
 
 export function isSceneObjectVisible(object: Object3D, root?: Object3D): boolean {
@@ -130,6 +133,7 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
     map: options.shadowTexture ?? null, color: '#535d45', opacity: 0.22,
     transparent: true, depthWrite: false, toneMapped: false,
   })
+  const grimeLayers = createRoomGrime(room)
   let disposed = false
   let visualKey = ''
   let activeStyle: RoomStyle = 'original'
@@ -168,6 +172,7 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
     model.materials.forEach((material) => material.dispose())
   }
   const removeActor = (record: Actor) => {
+    grimeLayers.remove(record.component.id)
     record.anchor.removeFromParent()
     record.contacts.removeFromParent()
     if (record.generated) disposeGenerated(record.generated)
@@ -214,11 +219,12 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
   }
   return {
     actors, anchors, bounds,
-    update(components: readonly RoomComponent[] | undefined, style: RoomStyle, selectedId: string | null = null) {
+    update(components: readonly RoomComponent[] | undefined, style: RoomStyle, selectedId: string | null = null,
+      grime: Readonly<Record<string, ChoreGrime>> = {}) {
       if (disposed) throw new Error('The disposed room component scene cannot be updated.')
       const installed = installedRoomComponents(components, roomId)
       const key = JSON.stringify([style, selectedId, installed.map(({ id, kind, slotId, variant, name, finish, state }) =>
-        [id, kind, slotId, variant, name, finish, state])])
+        [id, kind, slotId, variant, name, finish, state, grime[id]?.level ?? 0])])
       if (key === visualKey) return { changed: false, shadowsChanged: false }
       visualKey = key
       activeStyle = style
@@ -286,6 +292,8 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
           else if (source) material.color.copy(source.color)
           else if (surface) material.color.set(roomPresets[style].colors[surface])
           else material.color.copy(record.baseColors.get(material)!)
+          const level = grime[component.id]?.level
+          if (level) material.color.lerp(grimeColor, grimeTint[level])
           material.emissive.copy(source?.emissive ?? new Color('#000000'))
           material.emissiveIntensity = source?.emissiveIntensity ?? 1
           if (component.id === selectedId) {
@@ -296,6 +304,19 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
         actors.set(component.id, record.binding.root)
         anchors.set(component.id, record.anchor)
         rootIds.set(record.binding.root, component.id)
+      }
+      const owners = new Set<Object3D>([...boundaries, ...rootIds.keys()])
+      for (const [id, record] of records) {
+        const root = record.binding.root
+        grimeLayers.update(id, {
+          root,
+          accepts: (object) => {
+            if (!isSceneObjectVisible(object, room)) return false
+            let item: Object3D | null = object
+            while (item && !owners.has(item)) item = item.parent
+            return item === root
+          },
+        }, grime[id], record.component.state ?? '')
       }
       if (shadowsChanged || bounds.isEmpty()) bounds.copy(visibleRoomBounds(room))
       return { changed: true, shadowsChanged }
@@ -321,6 +342,7 @@ export function createRoomComponentScene(room: Group, roomId: RoomId, options: {
       if (disposed) return
       disposed = true
       for (const record of records.values()) removeActor(record)
+      grimeLayers.dispose()
       room.traverse((object) => {
         if (!(object instanceof Mesh)) return
         const restore = (material: MeshStandardMaterial) => clonedMaterials.get(material) ?? material

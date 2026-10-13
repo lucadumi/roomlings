@@ -16,7 +16,7 @@ import type { AccountState, KitchenSession } from '../shared/accounts.ts'
 import { billOccurrence, billPauseMonth, latestBillRevision } from '../shared/bills.ts'
 import type { BillOccurrence } from '../shared/bills.ts'
 import { canEditShoppingItem, inBasket } from '../shared/shopping.ts'
-import { canUndoChore, choreAssignee, choreStatus } from '../shared/chores.ts'
+import { canUndoChore, choreAssignee, choreStatus, componentGrime } from '../shared/chores.ts'
 import { choreLocationLabel, roomCatalog, roomIdSchema } from '../shared/rooms.ts'
 import type { ChoreArea, RoomId } from '../shared/rooms.ts'
 import {
@@ -981,6 +981,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     && ['due', 'overdue'].includes(choreStatus(chore, today)))
   const dueChores: Partial<Record<ChoreArea, number>> = {}
   for (const chore of roomDue) if (chore.area) dueChores[chore.area] = (dueChores[chore.area] ?? 0) + 1
+  const grime = componentGrime(household.chores.items, savedComponents, today)
   const filtered = expenses.filter((expense) => (filter === 'all' || expense.category === filter)
     && `${expense.description} ${memberName(expense.paidBy)}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
@@ -1031,7 +1032,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         setRoomMenuAnchor(anchor)
         if (dialog === 'rooms') setDialog(null)
         else openDialog('rooms')
-      }} dueChores={dueChores} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
+      }} dueChores={dueChores} grime={grime} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
       panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : page === 'objects' || page === 'room-edit' ? page : null}
       panelSide={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
       components={activeComponentPreview?.components ?? savedComponents}

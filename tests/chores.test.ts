@@ -6,7 +6,9 @@ import {
   choreInputSchema, choreLimit, choreSchema, choreVersionSchema, householdSchema,
 } from '../shared/domain.ts'
 import type { Chore, ChoreInput, Household } from '../shared/domain.ts'
-import { canUndoChore, choreAssignee, choreStatus, completeChore, nextChoreDate, undoChoreCompletion } from '../shared/chores.ts'
+import {
+  canUndoChore, choreAssignee, choreGrime, choreStatus, completeChore, componentGrime, nextChoreDate, undoChoreCompletion,
+} from '../shared/chores.ts'
 import { roomCatalog, roomIds } from '../shared/rooms.ts'
 
 const createdAt = '2026-09-01T12:00:00.000Z'
@@ -287,5 +289,45 @@ describe('chore completion and undo', () => {
     assert.throws(() => completeChore({ ...first.chore, archived: true }, state.members, state.members[0].id, randomUUID(), completedAt, '2026-09-08'), /Restore/)
     state.members[0].inactive = true
     assert.throws(() => undoChoreCompletion(first.chore, first.completion, state.members, state.members[0].id, undoneAt), /active roommate/)
+  })
+})
+
+describe('overdue chore dirt', () => {
+  it('grows from one, three and seven days overdue and stays clean while due or completed', () => {
+    const state = household()
+    const item = chore(state, { dueDate: '2026-09-08' })
+    assert.equal(choreGrime(item, '2026-09-07'), null)
+    assert.equal(choreGrime(item, '2026-09-08'), null)
+    assert.deepEqual(choreGrime(item, '2026-09-09'), { level: 1, overdueDays: 1 })
+    assert.deepEqual(choreGrime(item, '2026-09-11'), { level: 2, overdueDays: 3 })
+    assert.deepEqual(choreGrime(item, '2026-09-15'), { level: 3, overdueDays: 7 })
+    assert.equal(choreGrime(chore(state, { dueDate: null, repeatDays: null }), '2026-09-15'), null)
+    assert.equal(choreGrime(chore(state, { archived: true }), '2026-09-15'), null)
+  })
+
+  it('uses the most overdue chore per installed object and ignores stored or room-only chores', () => {
+    const state = household()
+    const sink = randomUUID()
+    const stored = randomUUID()
+    const chores = [
+      chore(state, { componentId: sink, componentName: 'Sink', dueDate: '2026-09-13' }),
+      chore(state, { componentId: sink, componentName: 'Sink', dueDate: '2026-09-05' }),
+      chore(state, { componentId: stored, componentName: 'Bin', dueDate: '2026-09-01' }),
+      chore(state, { dueDate: '2026-09-01' }),
+    ]
+    const grime = componentGrime(chores, [{ id: sink, installed: true }, { id: stored, installed: false }], '2026-09-14')
+    assert.deepEqual(grime, { [sink]: { level: 3, overdueDays: 9 } })
+  })
+
+  it('cleans the object again when the overdue chore is completed and returns on undo', () => {
+    const state = household()
+    const sink = randomUUID()
+    const item = chore(state, { componentId: sink, componentName: 'Sink', dueDate: '2026-09-04' })
+    const components = [{ id: sink, installed: true }]
+    assert.equal(componentGrime([item], components, '2026-09-08')[sink]?.level, 2)
+    const done = completeChore(item, state.members, state.members[0].id, randomUUID(), completedAt, '2026-09-08')
+    assert.deepEqual(componentGrime([done.chore], components, '2026-09-08'), {})
+    const undone = undoChoreCompletion(done.chore, done.completion, state.members, state.members[0].id, undoneAt)
+    assert.equal(componentGrime([undone.chore], components, '2026-09-08')[sink]?.level, 2)
   })
 })
