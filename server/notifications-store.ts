@@ -11,16 +11,19 @@ import { transactional } from './database.ts'
 import type { Store } from './store.ts'
 import { ApiError } from './errors.ts'
 import { assignedDueChores, dailyChoreWindow, summaryComponent } from './notification-schedule.ts'
-import { pushTokenContext } from './push-crypto.ts'
+import { PushTokenProtectionError, pushTokenContext } from './push-crypto.ts'
 import type { PushTokenCipher } from './push-crypto.ts'
 import type { PushRequest, PushResult } from './apns.ts'
+import { browserSubscriptionSchema } from './web-push.ts'
+import type { BrowserPushRequest, BrowserSubscription } from './web-push.ts'
 
 export const pushClaimLifetime = 60_000
 export const pushAttemptLimit = 8
 export const pushEventLifetime = 24 * 60 * 60_000
 export const pushRetention = 30 * 24 * 60 * 60_000
 export type NotificationClaim = { id: string; claimToken: string }
-export type PreparedPush = { request: PushRequest; installationId: string; revision: string }
+export type PreparedPush = { installationId: string; revision: string }
+  & ({ transport: 'apns'; request: PushRequest } | { transport: 'browser'; request: BrowserPushRequest })
 export type EntryIds = { expenses: ReadonlySet<string>; settlements: ReadonlySet<string> }
 
 export class NotificationStore {
@@ -34,6 +37,7 @@ export class NotificationStore {
     this.now = now
     this.settings = transactional(db, this.settings.bind(this))
     this.register = transactional(db, this.register.bind(this))
+    this.registerBrowser = transactional(db, this.registerBrowser.bind(this))
     this.removeDevice = transactional(db, this.removeDevice.bind(this))
     this.cancelMember = transactional(db, this.cancelMember.bind(this))
     this.enqueueNewEntries = transactional(db, this.enqueueNewEntries.bind(this))
@@ -72,9 +76,19 @@ export class NotificationStore {
   }
 
   async register(session: AccountSession, input: PushDevice, cipher: PushTokenCipher): Promise<void> {
-    await this.assertSession(session)
     const checked = pushDeviceSchema.parse(input)
-    const tokenHash = cipher.fingerprint(checked.token)
+    await this.saveDevice(session, checked, cipher.fingerprint(checked.token), cipher, false)
+  }
+
+  // A browser subscription is stored like a device token, keyed by its endpoint, and marked as browser delivery.
+  async registerBrowser(session: AccountSession, installationId: string, subscription: BrowserSubscription, cipher: PushTokenCipher): Promise<void> {
+    const checked = browserSubscriptionSchema.parse(subscription)
+    await this.saveDevice(session, { installationId, token: JSON.stringify(checked), environment: 'production' },
+      cipher.fingerprint(`browser:${checked.endpoint}`), cipher, true)
+  }
+
+  private async saveDevice(session: AccountSession, checked: PushDevice, tokenHash: string, cipher: PushTokenCipher, browser: boolean) {
+    await this.assertSession(session)
     const existing = await this.db.prepare('SELECT account_id, session_id FROM push_devices WHERE installation_id = ?').get(checked.installationId)
     if (existing && (existing.account_id !== session.accountId || existing.session_id !== session.id)) {
       await this.db.prepare('DELETE FROM push_devices WHERE installation_id = ?').run(checked.installationId)
@@ -95,6 +109,8 @@ export class NotificationStore {
       revision = excluded.revision, updated_at = excluded.updated_at`)
       .run(checked.installationId, session.accountId, session.id, checked.environment, tokenHash,
         cipher.encrypt(checked.token, context), revision, new Date(this.now()).toISOString())
+    if (browser) await this.db.prepare('INSERT INTO browser_push_devices (installation_id) VALUES (?) ON CONFLICT(installation_id) DO NOTHING').run(checked.installationId)
+    else await this.db.prepare('DELETE FROM browser_push_devices WHERE installation_id = ?').run(checked.installationId)
   }
 
   async removeDevice(session: AccountSession, installationId: string): Promise<void> {
@@ -205,9 +221,11 @@ export class NotificationStore {
     const now = new Date(this.now()).toISOString()
     const row = await this.db.prepare(`SELECT d.member_id, d.installation_id, e.household_id, e.kind, e.entity_id, e.local_date,
       e.dedup_key, e.expires_at, p.account_id, p.session_id, p.environment, p.token_ciphertext, p.revision,
-      COALESCE(n.chores, 1) AS chores, COALESCE(n.money, 1) AS money
+      COALESCE(n.chores, 1) AS chores, COALESCE(n.money, 1) AS money,
+      CASE WHEN b.installation_id IS NULL THEN 0 ELSE 1 END AS browser
       FROM notification_deliveries d JOIN notification_events e ON e.id = d.event_id
       JOIN push_devices p ON p.installation_id = d.installation_id
+      LEFT JOIN browser_push_devices b ON b.installation_id = p.installation_id
       JOIN account_sessions s ON s.id = p.session_id AND s.account_id = p.account_id
       JOIN accounts a ON a.id = p.account_id
       JOIN account_memberships m ON m.account_id = p.account_id AND m.household_id = e.household_id AND m.member_id = d.member_id
@@ -225,6 +243,7 @@ export class NotificationStore {
     }
     const kind = row.kind as NotificationKind
     let componentId: string | undefined
+    const body: string = notificationBodies[kind]
     if (kind === 'chores') {
       const window = dailyChoreWindow(household.billingTimeZone, new Date(this.now()))
       if (!window || window.date !== row.local_date || !assignedDueChores(household, String(row.member_id), window.date).length) {
@@ -244,15 +263,25 @@ export class NotificationStore {
       installationId: String(row.installation_id), accountId: String(row.account_id), sessionId: String(row.session_id),
       environment: String(row.environment) as PushEnvironment, revision: String(row.revision),
     }
+    const token = cipher.decrypt(String(row.token_ciphertext), pushTokenContext(device))
+    const collapseId = createHash('sha256').update(`${row.dedup_key}:${row.member_id}`).digest('hex')
+    const expiration = Math.floor(Date.parse(String(row.expires_at)) / 1000)
+    const thread = `roomlings:${household.id}:${kind === 'chores' ? 'chores' : 'money'}`
+    if (row.browser === 1) {
+      const subscription = browserSubscriptionSchema.safeParse(JSON.parse(token))
+      if (!subscription.success) throw new PushTokenProtectionError()
+      return {
+        installationId: device.installationId, revision: device.revision, transport: 'browser',
+        request: { subscription: subscription.data, topic: collapseId.slice(0, 32), expiration, payload: { title: 'Roomlings', body, tag: thread, target } },
+      }
+    }
     return {
-      installationId: device.installationId, revision: device.revision,
+      installationId: device.installationId, revision: device.revision, transport: 'apns',
       request: {
-        id: claim.id, environment: device.environment, token: cipher.decrypt(String(row.token_ciphertext), pushTokenContext(device)),
-        collapseId: createHash('sha256').update(`${row.dedup_key}:${row.member_id}`).digest('hex'),
-        expiration: Math.floor(Date.parse(String(row.expires_at)) / 1000),
+        id: claim.id, environment: device.environment, token, collapseId, expiration,
         payload: {
-          aps: { alert: { title: 'Roomlings', body: notificationBodies[target.kind] },
-            'thread-id': `roomlings:${household.id}:${kind === 'chores' ? 'chores' : 'money'}`, sound: 'default' },
+          aps: { alert: { title: 'Roomlings', body },
+            'thread-id': thread, sound: 'default' },
           roomlings: target,
         },
       },

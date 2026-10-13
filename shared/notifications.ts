@@ -26,6 +26,15 @@ export const notificationBodies = {
   settlement: 'A repayment was recorded.',
 } as const
 
+export const browserNotificationSettingsSchema = z.object({
+  preferences: notificationPreferencesSchema, available: z.boolean(), publicKey: z.string().nullable(),
+}).strict()
+export const browserPushRegistrationSchema = z.object({
+  installationId: z.string().uuid(),
+  subscription: z.object({ endpoint: z.string(), keys: z.object({ p256dh: z.string(), auth: z.string() }).strict() }).strict(),
+}).strict()
+
+export type BrowserNotificationSettings = z.infer<typeof browserNotificationSettingsSchema>
 export type NotificationPreferences = z.infer<typeof notificationPreferencesSchema>
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>
 export type PushDevice = z.infer<typeof pushDeviceSchema>

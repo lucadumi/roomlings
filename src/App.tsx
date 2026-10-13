@@ -55,6 +55,8 @@ import { hasComponentConfigurationChanges } from './componentConfiguration.ts'
 import { RoomAdminPanel } from './RoomAdminPanel.tsx'
 import { Feedback, FeedbackAction } from './Feedback.tsx'
 import { InboxPanel, useInbox } from './Inbox.tsx'
+import { BrowserAlerts } from './BrowserAlerts.tsx'
+import { refreshBrowserPush } from './browserPush.ts'
 import type { InboxItem } from '../shared/inbox.ts'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
@@ -127,6 +129,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   accountRef.current = account
   const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
+  const openNotificationsRef = useRef<() => void>(() => {})
   const inbox = useInbox(session?.household ?? null,
     session ? { token: session.token, householdId: session.household.id, memberId: session.memberId, csrfToken: account?.csrfToken } : null,
     (message) => setError(message))
@@ -979,6 +982,30 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     return null
   }
 
+  openNotificationsRef.current = () => visit('notifications')
+  const notificationSessionKey = session ? `${session.household.id}:${session.memberId}` : ''
+  useEffect(() => {
+    if (!notificationSessionKey) return
+    // Alerts open the app at #notifications, or message an already open tab.
+    const fromHash = () => {
+      if (!new URLSearchParams(location.hash.slice(1)).has('notifications')) return
+      history.replaceState(history.state, '', `${location.pathname}${location.search}`)
+      openNotificationsRef.current()
+    }
+    const fromWorker = (event: MessageEvent) => { if (event.data?.type === 'roomlings:open-notifications') openNotificationsRef.current() }
+    fromHash()
+    window.addEventListener('hashchange', fromHash)
+    navigator.serviceWorker?.addEventListener('message', fromWorker)
+    return () => {
+      window.removeEventListener('hashchange', fromHash)
+      navigator.serviceWorker?.removeEventListener('message', fromWorker)
+    }
+  }, [notificationSessionKey])
+  const accountCsrf = session?.token === null ? account?.csrfToken : undefined
+  useEffect(() => {
+    if (accountCsrf) void refreshBrowserPush(accountCsrf)
+  }, [accountCsrf])
+
   if (!household || !session) return <div className="entry-shell">
     <div inert={!!dialog}>
       <Suspense fallback={<SceneLoading label="Opening your home..." />}>
@@ -1106,7 +1133,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           onArchive={(chore) => openDialog({ archiveChore: chore })} onUndo={(completion) => openDialog({ undoChore: completion })}
           onRestock={() => openSupplies(choreFilter.room === 'all' || choreFilter.room === 'home' ? currentRoom : choreFilter.room)} />}
         {page === 'notifications' && <InboxPanel household={household} items={inbox.items} state={inbox.state} loadError={inbox.loadError}
-          onRetry={inbox.retry} onReadAll={inbox.readAll} onOpen={openNotification} />}
+          onRetry={inbox.retry} onReadAll={inbox.readAll} onOpen={openNotification}
+          alerts={session.token === null ? <BrowserAlerts householdId={household.id} csrfToken={account?.csrfToken} /> : undefined} />}
         {page === 'supplies' && <RestockPanel household={household} roomId={supplyRoom} busy={busy}
           onAdd={(item) => openDialog({ restockItem: item })} onShopping={() => { setShoppingView('list'); visit('shopping') }} />}
         {page === 'shopping' && <ShoppingPanel household={household} memberId={session.memberId} view={shoppingView} onView={setShoppingView} busy={busy}

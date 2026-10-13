@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Bell, CheckCheck, ChevronRight, ListChecks, ReceiptText, Wallet } from 'lucide-react'
 import { billingDate, money } from '../shared/domain.ts'
 import type { Household } from '../shared/domain.ts'
@@ -82,14 +83,14 @@ export function InboxButton({ unread, active, disabled, onClick }: { unread: num
   </button>
 }
 
-export function InboxPanel({ household, items, state, loadError, onRetry, onOpen, onReadAll }: {
-  household: Household; items: readonly InboxItem[]; state: InboxState | null; loadError: string
+export function InboxPanel({ household, items, state, loadError, alerts, onRetry, onOpen, onReadAll }: {
+  household: Household; items: readonly InboxItem[]; state: InboxState | null; loadError: string; alerts?: ReactNode
   onRetry: () => void; onOpen: (item: InboxItem) => void; onReadAll: () => void
 }) {
-  if (!state && loadError) return <Feedback actions={<FeedbackAction onClick={onRetry}>Retry</FeedbackAction>}>{loadError}</Feedback>
-  if (!state) return <p className="section-description" role="status">Loading notifications...</p>
-  if (!items.length) return <div className="empty-state inbox-empty"><Bell size="2rem" /><h3>All caught up.</h3>
-    <p>Your chore turns and the money that involves you will show up here.</p></div>
+  if (!state && loadError) return <>{alerts}<Feedback actions={<FeedbackAction onClick={onRetry}>Retry</FeedbackAction>}>{loadError}</Feedback></>
+  if (!state) return <>{alerts}<p className="section-description" role="status">Loading notifications...</p></>
+  if (!items.length) return <>{alerts}<div className="empty-state inbox-empty"><Bell size="2rem" /><h3>All caught up.</h3>
+    <p>Your chore turns and the money that involves you will show up here.</p></div></>
   const today = billingDate(household.billingTimeZone)
   // Chores you still owe stay at the top until they are done.
   const current = items.filter((item) => item.kind === 'chore' || billingDate(household.billingTimeZone, new Date(item.at)) === today)
@@ -106,9 +107,9 @@ export function InboxPanel({ household, items, state, loadError, onRetry, onOpen
       <ChevronRight size="1rem" className="inbox-chevron" />
     </button></li>
   }
-  return <section className="inbox" aria-label="Notifications">
+  return <>{alerts}<section className="inbox" aria-label="Notifications">
     {current.length > 0 && <><h3 className="inbox-group">Today</h3><ul>{current.map(row)}</ul></>}
     {earlier.length > 0 && <><h3 className="inbox-group">Earlier</h3><ul>{earlier.map(row)}</ul></>}
     <div className="inbox-actions"><button type="button" className="text-button" disabled={!unread} onClick={onReadAll}><CheckCheck size="1rem" />Mark all read</button></div>
-  </section>
+  </section></>
 }
