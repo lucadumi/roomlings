@@ -27,6 +27,7 @@ import type { AccountOptions } from './accounts-api.ts'
 import { installRoomAccess } from './room-access.ts'
 import { installNotifications } from './notifications-api.ts'
 import { installAnalytics } from './analytics-api.ts'
+import { inboxReadSchema } from '../shared/inbox.ts'
 import type { PushConfiguration } from './apns.ts'
 
 const createSchema = z.object({ name: nameSchema, memberName: nameSchema, currency: z.enum(currencies), budget: centsSchema })
@@ -247,6 +248,15 @@ export function createApp(store: Store, options: AccountOptions & { push?: PushC
     if (result === 'current') throw new ApiError(409, 'Use another signed-in browser to revoke this session.')
     if (result === 'missing') throw new ApiError(404, 'That browser session was not found for your roommate identity.')
     res.json(result)
+  })
+  app.get('/api/inbox', async (req, res) => {
+    const { household, memberId } = await authenticated(req, res)
+    res.json(await store.inbox.state(household.id, memberId))
+  })
+  app.put('/api/inbox', async (req, res) => {
+    const input = inboxReadSchema.parse(req.body)
+    const { household, memberId } = await authenticated(req, res)
+    res.json(await store.inbox.read(household.id, memberId, input))
   })
   app.get('/api/household', async (req, res) => {
     const { household, memberId } = (await authenticated(req, res))

@@ -4,6 +4,7 @@ import { Boxes, CircleHelp, Coins, Grid2X2, Home, ListChecks, Palette, Plus, Rec
 import { money } from '../shared/domain.ts'
 import type { Category, Household } from '../shared/domain.ts'
 import { Avatar } from './components.tsx'
+import { InboxButton } from './Inbox.tsx'
 import { Brand, SceneLoading } from './Branding.tsx'
 import type { KitchenAction } from './room.ts'
 import type { FocusRequest } from './camera.ts'
@@ -42,7 +43,9 @@ type Props = {
   panelOpen: boolean
   overviewFocus?: boolean
   panelSide?: 'left' | 'right'
-  activeTool: KitchenAction | 'chores' | 'objects' | 'room-edit' | null
+  activeTool: KitchenAction | 'chores' | 'objects' | 'room-edit' | 'notifications' | null
+  unreadNotifications: number
+  onNotifications: () => void
   components?: readonly RoomComponent[]
   editMode: boolean
   wholeRoomView: boolean
@@ -74,7 +77,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 export function GameHome({
   roomId, onRooms, roomsOpen, busy, dueChores, grime, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, deferColdStart = false, panelOpen, activeTool, onAction, onInvite, onSelect,
-  components, editMode, wholeRoomView, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings,
+  components, editMode, wholeRoomView, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings, unreadNotifications, onNotifications,
   panelSide = 'right',
   overviewFocus = false,
 }: Props) {
@@ -181,6 +184,7 @@ export function GameHome({
       {canEditRooms && <button className="icon-button control-surface" disabled={busy} onClick={onRoomStyle} aria-label="Room style" title="Room colors" aria-haspopup="dialog"><Palette size="1.1875rem" /></button>}
       <button className="icon-button control-surface" disabled={busy} onClick={onHelp} aria-label="How to play" aria-haspopup="dialog"><CircleHelp size="1.1875rem" /></button>
       <button className="icon-button control-surface" disabled={busy} onClick={onSettings} aria-label="House rules" aria-haspopup="dialog"><Settings2 size="1.1875rem" /></button>
+      <InboxButton unread={unreadNotifications} active={activeTool === 'notifications'} disabled={busy} onClick={onNotifications} />
     </div>
     <div className="game-bottom" ref={dock}>
       <button className="game-balance control-surface" onClick={() => onAction('settle')} aria-label="Your household balance" aria-pressed={activeTool === 'settle'}><span className="balance-caption">YOUR SHARE</span><strong>{money(Math.abs(yourBalance), household.currency)}</strong><span>{yourBalance > 0 ? 'coming back' : yourBalance < 0 ? 'to settle' : 'all square'}</span></button>

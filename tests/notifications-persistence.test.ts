@@ -9,7 +9,7 @@ import { PostgresDatabase, SQLiteDatabase, postgresFromEnvironment } from '../se
 import { Store } from '../server/store.ts'
 import { PushTokenCipher } from '../server/push-crypto.ts'
 import { NotificationWorker } from '../server/notification-worker.ts'
-import { analyticsTables, notificationTables, tableColumns } from '../server/schema.ts'
+import { analyticsTables, applicationSchemaVersion, inboxTables, notificationTables, tableColumns } from '../server/schema.ts'
 import { pushClaimLifetime } from '../server/notifications-store.ts'
 import { migrateSqlite } from '../server/migration.ts'
 import { upgradePostgres } from '../server/postgres-schema.ts'
@@ -112,7 +112,7 @@ it('claims once across independent PostgreSQL workers and upgrades version 3 ato
   const { owner, other, household, ownerId } = await f.home()
   const original = await f.db.prepare('SELECT state FROM households WHERE id = ?').get(household.id)
   await f.db.transaction(async () => {
-    await f.db.exec([...analyticsTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
+    await f.db.exec([...inboxTables, ...[...analyticsTables].reverse()].map((table) => `DROP TABLE ${table};`).join('\n'))
     await f.db.exec([...notificationTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
     await f.db.prepare('UPDATE schema_migrations SET version = 3').run()
   })
@@ -143,25 +143,25 @@ it('claims once across independent PostgreSQL workers and upgrades version 3 ato
 
 // A version 4 schema already holds the notification tables, so the upgrade must expect them
 // there rather than treating them as objects it is about to introduce.
-it('upgrades version 4 to 5 without mistaking existing notification tables for a conflict', { skip: !postgres }, async (t) => {
+it('upgrades version 4 to the current version without mistaking existing notification tables for a conflict', { skip: !postgres }, async (t) => {
   const f = await notificationFixture(t)
   assert.ok(f.db instanceof PostgresDatabase)
   const { owner, household } = await f.home()
   const original = await f.db.prepare('SELECT state FROM households WHERE id = ?').get(household.id)
   await f.db.transaction(async () => {
-    await f.db.exec([...analyticsTables].reverse().map((table) => `DROP TABLE ${table};`).join('\n'))
+    await f.db.exec([...inboxTables, ...[...analyticsTables].reverse()].map((table) => `DROP TABLE ${table};`).join('\n'))
     await f.db.prepare('UPDATE schema_migrations SET version = 4').run()
   })
   const planned = await upgradePostgres(f.db)
   assert.equal(planned.fromVersion, 4)
   assert.equal(planned.applied, false)
   assert.equal((await upgradePostgres(f.db, { apply: true, confirmSchema: f.db.schema })).applied, true)
-  assert.equal(await f.db.schemaVersion(), 5)
+  assert.equal(await f.db.schemaVersion(), applicationSchemaVersion)
   assert.deepEqual(await f.db.prepare('SELECT state FROM households WHERE id = ?').get(household.id), original)
   assert.equal((await f.store.accounts.authenticate(owner.token))?.id, owner.session.id)
   const privateTables = await f.db.prepare(`SELECT c.relname AS name, CASE WHEN c.relrowsecurity THEN 1 ELSE 0 END AS rls
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = ? AND c.relkind = 'r'`).all(f.db.schema)
-  for (const table of [...notificationTables, ...analyticsTables]) {
+  for (const table of [...notificationTables, ...analyticsTables, ...inboxTables]) {
     assert.equal(privateTables.find((row) => row.name === table)?.rls, 1)
   }
 })
