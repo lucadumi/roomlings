@@ -121,7 +121,7 @@ export const test = base.extend<{
   page: async ({ page, accounts }, use) => {
     await routeAccountApi(page, accounts)
     await use(page)
-    if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'ignoreErrors' })
   },
   emptyHousehold: async ({ page, accounts }, use) => {
     const session = await accounts.store.create('The browser household', 'You', 'EUR', 45000)
@@ -145,7 +145,7 @@ export async function rememberBrowserHousehold(page: Page, session: Session): Pr
 
 export async function closeAccountContext(context: BrowserContext): Promise<void> {
   for (const page of context.pages()) {
-    if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'ignoreErrors' })
   }
   await context.close()
 }
