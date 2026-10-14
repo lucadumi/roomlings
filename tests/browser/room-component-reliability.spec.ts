@@ -28,7 +28,8 @@ test('the shared header keeps its existing tools while Edit room stays inside th
   const tools = page.locator('.house-tools')
   await expect(tools.getByRole('button', { name: 'Room objects', exact: true })).toBeVisible()
   await expect(tools.getByRole('button', { name: 'Edit room', exact: true })).toHaveCount(0)
-  await expect(tools.getByRole('button')).toHaveCount(4)
+  await expect(tools.getByRole('button')).toHaveCount(5)
+  await expect(tools.getByRole('button', { name: /^Notifications/ })).toBeVisible()
   await expect(tools.getByRole('button', { name: 'Room objects', exact: true })).toHaveText('')
   for (const name of ['Room style', 'How to play', 'House rules']) {
     await tools.getByRole('button', { name, exact: true }).click()
