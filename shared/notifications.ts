@@ -26,6 +26,9 @@ export const notificationBodies = {
   settlement: 'A repayment was recorded.',
 } as const
 
+// Used instead of the daily chores body when one of the member's turns is overdue.
+export const overdueChoresBody = 'A chore is overdue and your room is getting dirty.'
+
 export const browserNotificationSettingsSchema = z.object({
   preferences: notificationPreferencesSchema, available: z.boolean(), publicKey: z.string().nullable(),
 }).strict()

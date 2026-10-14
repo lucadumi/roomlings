@@ -12,7 +12,7 @@ import {
 import { ApnsProvider, apnsHeaders, apnsJwt, apnsResult, apnsTopic, pushFromEnvironment } from '../server/apns.ts'
 import type { PushRequest } from '../server/apns.ts'
 import { PushTokenCipher, PushTokenProtectionError } from '../server/push-crypto.ts'
-import { dailyChoreWindow, assignedDueChores, summaryComponent } from '../server/notification-schedule.ts'
+import { dailyChoreWindow, assignedDueChores, overdueChores, summaryComponent } from '../server/notification-schedule.ts'
 import { componentChoreArea, getRoomComponents } from '../shared/roomComponents.ts'
 import { notificationFixture, testChore } from './notifications-fixture.ts'
 
@@ -221,6 +221,16 @@ describe('household-local daily scheduling', () => {
     household.chores.items.push(testChore(household, ownerId, f.now(), { dueDate: '2026-09-19' }))
     assert.equal(assignedDueChores(household, ownerId, '2026-09-20').length, 2)
     assert.equal(summaryComponent(household, ownerId, '2026-09-20'), undefined)
+    const hob = getRoomComponents(household).find((entry) => entry.kind === 'hob')!
+    const linked = (target: typeof hob, dueDate: string) => testChore(household, ownerId, f.now(), {
+      componentId: target.id, roomId: target.roomId, area: componentChoreArea(target), dueDate,
+    })
+    household.chores.items.push(linked(hob, '2026-09-18'))
+    assert.deepEqual(overdueChores(household, ownerId, '2026-09-20').map((chore) => chore.componentId ?? null), [hob.id, null])
+    assert.equal(summaryComponent(household, ownerId, '2026-09-20'), hob.id)
+    household.roomComponents = getRoomComponents(household).map((entry) => entry.id === hob.id ? { ...entry, installed: false } : entry)
+    assert.equal(summaryComponent(household, ownerId, '2026-09-20'), undefined)
+    household.chores.items.pop()
     household.roomComponents = getRoomComponents(household).map((entry) => entry.id === component.id ? { ...entry, installed: false } : entry)
     assert.equal(assignedDueChores(household, ownerId, '2026-09-20').length, 1)
   })

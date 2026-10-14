@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
-  notificationBodies, notificationPreferencesSchema, notificationSettingsSchema, notificationTargetSchema, pushDeviceSchema,
+  notificationBodies, notificationPreferencesSchema, overdueChoresBody, notificationSettingsSchema, notificationTargetSchema, pushDeviceSchema,
 } from '../shared/notifications.ts'
 import type { NotificationKind, NotificationPreferences, PushDevice, PushEnvironment } from '../shared/notifications.ts'
 import type { Household } from '../shared/domain.ts'
@@ -10,7 +10,7 @@ import type { Database, Row } from './database.ts'
 import { transactional } from './database.ts'
 import type { Store } from './store.ts'
 import { ApiError } from './errors.ts'
-import { assignedDueChores, dailyChoreWindow, summaryComponent } from './notification-schedule.ts'
+import { assignedDueChores, dailyChoreWindow, overdueChores, summaryComponent } from './notification-schedule.ts'
 import { PushTokenProtectionError, pushTokenContext } from './push-crypto.ts'
 import type { PushTokenCipher } from './push-crypto.ts'
 import type { PushRequest, PushResult } from './apns.ts'
@@ -243,7 +243,7 @@ export class NotificationStore {
     }
     const kind = row.kind as NotificationKind
     let componentId: string | undefined
-    const body: string = notificationBodies[kind]
+    let body: string = notificationBodies[kind]
     if (kind === 'chores') {
       const window = dailyChoreWindow(household.billingTimeZone, new Date(this.now()))
       if (!window || window.date !== row.local_date || !assignedDueChores(household, String(row.member_id), window.date).length) {
@@ -251,6 +251,7 @@ export class NotificationStore {
         return null
       }
       componentId = summaryComponent(household, String(row.member_id), window.date)
+      if (overdueChores(household, String(row.member_id), window.date).length) body = overdueChoresBody
     } else if (!(kind === 'expense' ? household.expenses : household.settlements).some((entry) => entry.id === row.entity_id)) {
       await this.terminal(claim, 'skipped')
       return null
