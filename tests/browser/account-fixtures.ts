@@ -135,12 +135,21 @@ export async function closeAccountContext(context: BrowserContext): Promise<void
 export async function routeAccountApi(page: Page, accounts: AccountHarness): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
-    const response = await route.fetch({
-      url: `${accounts.origin}${url.pathname}${url.search}`,
-      maxRedirects: 0,
-      // Retry a dropped read connection without replaying a mutation.
-      maxRetries: route.request().method() === 'GET' ? 1 : 0,
-    })
+    let response
+    try {
+      response = await route.fetch({
+        url: `${accounts.origin}${url.pathname}${url.search}`,
+        maxRedirects: 0,
+        // Retry a dropped read connection without replaying a mutation.
+        maxRetries: route.request().method() === 'GET' ? 1 : 0,
+        // A bounded fetch keeps fixture teardown from waiting on a request the page abandoned.
+        timeout: 20_000,
+      })
+    } catch {
+      // The page sees an ordinary network failure, as it would without the proxy.
+      await route.abort('failed').catch(() => {})
+      return
+    }
     try {
       await route.fulfill({ response })
     } catch (error) {
