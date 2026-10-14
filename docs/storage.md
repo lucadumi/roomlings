@@ -6,7 +6,7 @@ Run commands from the repository root. Keep database files, credentials, recover
 
 SQLite is the default, at `data/kitchen.sqlite`. Back it up before operational changes. [.env.example](../.env.example) documents `DATA_DIR`, `HOST` and `PORT`; the Vite proxy expects the API on port 4311.
 
-SQLite startup adds account-recovery, room-permission, notification, analytics and inbox tables transactionally while retaining existing account, browser-session and kitchen data. It records existing legitimate kitchens' original creator IDs without rewriting household JSON or granting delegated rights. Postgres requires the explicit upgrade below.
+SQLite startup adds account-recovery, room-permission, notification, analytics, inbox and browser push tables transactionally while retaining existing account, browser-session and kitchen data. It records existing legitimate kitchens' original creator IDs without rewriting household JSON or granting delegated rights. Postgres requires the explicit upgrade below.
 
 Use `npm run preview:local` for a stable API with frontend hot reload. Restart it after server, schema or environment changes. `npm run dev` also watches the API.
 
@@ -28,7 +28,7 @@ Rows carrying the retired example marker are preserved byte for byte during migr
 
 ## Postgres schema upgrades
 
-Application schema version 6 adds `inbox_reads`, each roommate's private notification read state; version 5 upgrades receive only that table. Application schema version 5 adds `analytics_events`, including its dedup, expiry and reporting indexes. Application schema version 4 adds `notification_preferences`, `push_devices`, `notification_events` and `notification_deliveries`, including uniqueness, claim and retention indexes. Versions 1 to 5 can upgrade directly to version 6, receiving any earlier tables they lack. Version 1 also receives version 2's recovery tables; versions 1 and 2 receive version 3's `household_room_owners` and `household_room_admins`; versions 1, 2 and 3 receive version 4's notification tables. Version 4 upgrades leave all existing tables and rows untouched.
+Application schema version 7 adds `browser_push_devices`, which marks a push registration as a browser subscription; version 6 upgrades receive only that table. Application schema version 6 adds `inbox_reads`, each roommate's private notification read state; version 5 upgrades receive only that table. Application schema version 5 adds `analytics_events`, including its dedup, expiry and reporting indexes. Application schema version 4 adds `notification_preferences`, `push_devices`, `notification_events` and `notification_deliveries`, including uniqueness, claim and retention indexes. Versions 1 to 6 can upgrade directly to version 7, receiving any earlier tables they lack. Version 1 also receives version 2's recovery tables; versions 1 and 2 receive version 3's `household_room_owners` and `household_room_admins`; versions 1, 2 and 3 receive version 4's notification tables. Version 4 upgrades leave all existing tables and rows untouched.
 
 The upgrade is additive: it does not rewrite existing rows, rotate sessions, change account/member IDs or recalculate the ledger. It records the original creator ID from each legitimate existing household, skips retired examples, and leaves current account-managed ownership untouched. It neither grants delegated admin rights nor generates recovery codes.
 
@@ -50,11 +50,11 @@ Startup only checks the supported version. It never applies Postgres DDL or fall
    npm run database:migrate -- --upgrade --apply --confirm-schema roomlings
    ```
 
-   Both flags are required to mutate. Missing or mismatched confirmation, absent/unversioned schemas, unsupported versions and conflicting newly introduced objects fail without upgrading. Required DDL, any original-creator backfill, RLS, schema/table/default-privilege protections and the version 6 record commit together under the application transaction and advisory lock. Unsafe or invalid creator data aborts older-schema upgrades. A failure rolls the whole upgrade back. Browser roles retain no application-schema or private-table access, including encrypted registrations, outbox and retention-analytics data.
+   Both flags are required to mutate. Missing or mismatched confirmation, absent/unversioned schemas, unsupported versions and conflicting newly introduced objects fail without upgrading. Required DDL, any original-creator backfill, RLS, schema/table/default-privilege protections and the version 7 record commit together under the application transaction and advisory lock. Unsafe or invalid creator data aborts older-schema upgrades. A failure rolls the whole upgrade back. Browser roles retain no application-schema or private-table access, including encrypted registrations, outbox and retention-analytics data.
 
-5. After success, restart the API and any push workers with the schema-version-6-compatible build and matching Postgres settings. `preview:local` does not watch API files, so its API needs an explicit coordinated restart. Verify existing sign-ins, household membership, room roles and ledger data without clearing browser storage or replacing session tokens. Repeating either upgrade command on version 6 safely returns `applied: false` with both versions set to `6`; it does not change roles, replace codes or append a migration record.
+5. After success, restart the API and any push workers with the schema-version-7-compatible build and matching Postgres settings. `preview:local` does not watch API files, so its API needs an explicit coordinated restart. Verify existing sign-ins, household membership, room roles and ledger data without clearing browser storage or replacing session tokens. Repeating either upgrade command on version 7 safely returns `applied: false` with both versions set to `7`; it does not change roles, replace codes or append a migration record.
 
-**Compatibility and rollback:** older version-1 to version-5 builds reject a version-6 database when they start or restart, even though the DDL is additive. Do not upgrade a shared preview database while another feature still requires an incompatible build. Reverting the checkout alone is not a rollback, and there is no automatic down migration. Do not drop private tables or edit migration markers to bypass version checks. Prefer a compatible forward fix. Restoring an older backup requires stopping all writers and restoring the complete approved backup with a matching build; after version-6 writes, restoration would lose newer inbox read state, preferences, registrations, notifications, retention analytics, account, ledger and session changes unless reconciled.
+**Compatibility and rollback:** older version-1 to version-6 builds reject a version-7 database when they start or restart, even though the DDL is additive. Do not upgrade a shared preview database while another feature still requires an incompatible build. Reverting the checkout alone is not a rollback, and there is no automatic down migration. Do not drop private tables or edit migration markers to bypass version checks. Prefer a compatible forward fix. Restoring an older backup requires stopping all writers and restoring the complete approved backup with a matching build; after version-7 writes, restoration would lose newer inbox read state, preferences, registrations, notifications, retention analytics, account, ledger and session changes unless reconciled.
 
 ## SQLite migration
 
@@ -90,6 +90,14 @@ Push is optional. Missing, incomplete or invalid push configuration leaves ordin
 5. Apply the approved database upgrade first, then restart compatible processes with the same database, secrets and mode. Never apply an upgrade to a shared review or production database just to test another branch.
 
 The native project must separately enable its Push Notifications capability, provisioning profile and signed `aps-environment` entitlement. This web repository does not configure native signing or embed Apple secrets. Ordinary alert pushes do not require a background-fetch mode.
+
+### Browser alerts
+
+Signed-in accounts can turn on alerts in a browser from the Notifications panel. They use the same outbox, retries, chores and money preferences and generic lock-screen text as native push, and they work without Apple keys.
+
+1. Generate a key pair once with `npx web-push generate-vapid-keys`. Set `WEB_PUSH_PUBLIC_KEY`, `WEB_PUSH_PRIVATE_KEY` and a contact `WEB_PUSH_SUBJECT` (`mailto:` or `https://`), plus `PUSH_TOKEN_ENCRYPTION_KEY`. Keep the private key server-only; replacing the pair invalidates every browser subscription.
+2. Serve the app over HTTPS (or `localhost`). Browsers only allow alerts in secure contexts, and `/roomlings-sw.js` must be served from the site root.
+3. Subscriptions are stored encrypted like device tokens, refreshed when the app opens, and removed when the push service reports them gone or the account session ends. Browser-only kitchen links without an account cannot receive alerts.
 
 ### Worker operation
 

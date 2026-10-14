@@ -234,6 +234,8 @@ An appliance state is a roommate's manual update, not a sensor reading. Marking 
 
 The bell in the top-right tools opens your notifications: chores due or overdue on your turn, expenses and bills someone else paid that you share, and repayments made to you. Select one to open its chore list, receipt book month or repayments. **Mark all read** clears the count; later entries stay unread. Read state is yours alone, follows you across devices and never changes the household ledger.
 
+With an account, **Alerts in this browser** at the top of the panel sends your chore turns and shared money to this browser, using the same Chores and Money choices as the iPhone app. Your browser asks for permission first; **Turn off** stops alerts on this browser only.
+
 ## Chores and restocking
 
 Add a chore with a room or whole-home scope, an optional area or installed object, a due date and a one-off or recurring schedule. One assigned person keeps the task; multiple people rotate in the chosen order. The next turn advances only after a saved completion. Any active roommate can do the task, and history records who actually completed it.

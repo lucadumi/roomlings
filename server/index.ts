@@ -25,7 +25,7 @@ const app = createApp(store, {
 })
 const pushWorker = push?.mode === 'inline' ? new NotificationWorker(store, push) : undefined
 pushWorker?.start(true)
-if (!push) console.warn('Push notifications are unavailable; configure APNs and protected-token storage to enable them.')
+if (!push) console.warn('Push notifications are unavailable; configure APNs or browser push keys and protected-token storage to enable them.')
 let pushCleanup: Promise<void> | undefined
 const cleanPush = () => {
   if (!pushCleanup) pushCleanup = store.notifications.cleanup().catch(() => {

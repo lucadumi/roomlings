@@ -34,8 +34,15 @@ export function BrowserAlerts({ householdId, csrfToken }: { householdId: string;
   }
   const toggle = (key: keyof NotificationPreferences) => {
     if (!settings) return
+    const previous = settings
     const preferences = { ...settings.preferences, [key]: !settings.preferences[key] }
-    void run(async () => setSettings(await saveBrowserPreferences(householdId, csrfToken, preferences)), 'Could not save alert settings. Try again.')
+    setSettings({ ...settings, preferences })
+    void run(async () => {
+      try { setSettings(await saveBrowserPreferences(householdId, csrfToken, preferences)) } catch (failure) {
+        setSettings(previous)
+        throw failure
+      }
+    }, 'Could not save alert settings. Try again.')
   }
   const blocked = support === 'supported' && Notification.permission === 'denied'
   return <section className="browser-alerts" aria-label="Alerts in this browser">
