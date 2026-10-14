@@ -141,7 +141,12 @@ export async function routeAccountApi(page: Page, accounts: AccountHarness): Pro
       // Retry a dropped read connection without replaying a mutation.
       maxRetries: route.request().method() === 'GET' ? 1 : 0,
     })
-    await route.fulfill({ response })
+    try {
+      await route.fulfill({ response })
+    } catch (error) {
+      // A reload or navigation can cancel a read while the proxy is still fetching it.
+      if (!(error instanceof Error && error.message.includes('Route is already handled'))) throw error
+    }
   })
 }
 
