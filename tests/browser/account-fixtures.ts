@@ -103,7 +103,7 @@ export const test = base.extend<{
   page: async ({ page, accounts }, use) => {
     await routeAccountApi(page, accounts)
     await use(page)
-    if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'ignoreErrors' })
   },
   emptyHousehold: async ({ page, accounts }, use) => {
     const session = await accounts.store.create('The browser household', 'You', 'EUR', 45000)
@@ -127,7 +127,7 @@ export async function rememberBrowserHousehold(page: Page, session: Session): Pr
 
 export async function closeAccountContext(context: BrowserContext): Promise<void> {
   for (const page of context.pages()) {
-    if (!page.isClosed()) await page.unrouteAll({ behavior: 'wait' })
+    if (!page.isClosed()) await page.unrouteAll({ behavior: 'ignoreErrors' })
   }
   await context.close()
 }
@@ -135,13 +135,27 @@ export async function closeAccountContext(context: BrowserContext): Promise<void
 export async function routeAccountApi(page: Page, accounts: AccountHarness): Promise<void> {
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
-    const response = await route.fetch({
-      url: `${accounts.origin}${url.pathname}${url.search}`,
-      maxRedirects: 0,
-      // Retry a dropped read connection without replaying a mutation.
-      maxRetries: route.request().method() === 'GET' ? 1 : 0,
-    })
-    await route.fulfill({ response })
+    let response
+    try {
+      response = await route.fetch({
+        url: `${accounts.origin}${url.pathname}${url.search}`,
+        maxRedirects: 0,
+        // Retry a dropped read connection without replaying a mutation.
+        maxRetries: route.request().method() === 'GET' ? 1 : 0,
+        // A bounded fetch keeps fixture teardown from waiting on a request the page abandoned.
+        timeout: 20_000,
+      })
+    } catch {
+      // The page sees an ordinary network failure, as it would without the proxy.
+      await route.abort('failed').catch(() => {})
+      return
+    }
+    try {
+      await route.fulfill({ response })
+    } catch (error) {
+      // A reload or navigation can cancel a read while the proxy is still fetching it.
+      if (!(error instanceof Error && error.message.includes('Route is already handled'))) throw error
+    }
   })
 }
 

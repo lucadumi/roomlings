@@ -11,6 +11,7 @@ import type { Database } from './database.ts'
 import { isRetiredHouseholdState, parseStoredHousehold } from './retired-household.ts'
 import { NotificationStore } from './notifications-store.ts'
 import { AnalyticsStore } from './analytics-store.ts'
+import { InboxStore } from './inbox-store.ts'
 
 export type AuthenticatedSession = { household: Household; memberId: string; sessionId: string }
 
@@ -19,6 +20,7 @@ export class Store {
   readonly accounts: AccountStore
   readonly notifications: NotificationStore
   readonly analytics: AnalyticsStore
+  readonly inbox: InboxStore
   get driver() { return this.db.driver }
 
   constructor(database: string | Database, options: { now?: () => number } = {}) {
@@ -26,6 +28,7 @@ export class Store {
     this.accounts = new AccountStore(this.db, this, options.now)
     this.notifications = new NotificationStore(this.db, this, options.now)
     this.analytics = new AnalyticsStore(this.db, this, options.now)
+    this.inbox = new InboxStore(this.db, options.now)
     this.get = transactional(this.db, this.get.bind(this))
     this.byInvite = transactional(this.db, this.byInvite.bind(this))
     this.save = transactional(this.db, this.save.bind(this))

@@ -1,6 +1,6 @@
 // TEXT deliberately preserves the original household JSON byte-for-byte on migration.
 // Rules and integer-cent calculations remain in the shared domain helpers.
-export const applicationSchemaVersion = 5
+export const applicationSchemaVersion = 6
 export const accountRecoveryTables = ['account_recovery_settings', 'account_recovery_codes'] as const
 export const accountRecoverySchema = `
 CREATE TABLE IF NOT EXISTS account_recovery_settings (
@@ -77,6 +77,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS analytics_events_dedup ON analytics_events(ded
 CREATE INDEX IF NOT EXISTS analytics_events_expiry ON analytics_events(expires_at);
 CREATE INDEX IF NOT EXISTS analytics_events_reporting ON analytics_events(household_id, kind, local_date);
 `
+// Each roommate's private read cursor, kept outside household JSON so reading never conflicts with ledger edits.
+export const inboxTables = ['inbox_reads'] as const
+export const inboxSchema = `
+CREATE TABLE IF NOT EXISTS inbox_reads (
+  household_id TEXT NOT NULL REFERENCES households(id) ON DELETE CASCADE, member_id TEXT NOT NULL,
+  read_through TEXT, read_ids TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(household_id, member_id)
+);
+`
 export const sqliteSchema = `
 CREATE TABLE IF NOT EXISTS households (id TEXT PRIMARY KEY, invite TEXT UNIQUE NOT NULL, state TEXT NOT NULL);
 ${roomAccessSchema}
@@ -120,12 +128,12 @@ CREATE TABLE IF NOT EXISTS account_invitation_uses (
 );
 ${notificationSchema}
 ${analyticsSchema}
-`
+${inboxSchema}`
 
 export const applicationTables = [
   'households', ...roomAccessTables, 'sessions', 'recovery_codes', 'accounts', ...accountRecoveryTables, 'deleted_account_providers',
   'account_sessions', 'household_accounts', 'account_memberships', 'account_invitations', 'account_invitation_uses',
-  ...notificationTables, ...analyticsTables,
+  ...notificationTables, ...analyticsTables, ...inboxTables,
 ] as const
 
 export const tableColumns = {
@@ -154,4 +162,5 @@ export const tableColumns = {
     'id', 'dedup_key', 'household_id', 'member_id', 'kind', 'local_date',
     'occurrences', 'created_at', 'updated_at', 'expires_at',
   ],
+  inbox_reads: ['household_id', 'member_id', 'read_through', 'read_ids', 'updated_at'],
 } as const

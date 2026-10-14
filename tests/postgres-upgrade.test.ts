@@ -8,7 +8,7 @@ import type { Row, Statement, Value } from '../server/database.ts'
 import { initializePostgres, upgradePostgres } from '../server/postgres-schema.ts'
 import {
   accountRecoverySchema, accountRecoveryTables, analyticsSchema, analyticsTables,
-  applicationSchemaVersion, notificationIndexes, notificationSchema, notificationTables,
+  applicationSchemaVersion, inboxSchema, inboxTables, notificationIndexes, notificationSchema, notificationTables,
   roomAccessSchema, roomAccessTables, sqliteSchema,
 } from '../server/schema.ts'
 
@@ -66,7 +66,7 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     await initializePostgres(f.db)
     assert.equal(f.writes[0].sql, `CREATE SCHEMA "${schema}";`)
     assert.equal(f.writes[1].sql, sqliteSchema)
-    for (const table of [...accountRecoveryTables, ...roomAccessTables, ...notificationTables]) {
+    for (const table of [...accountRecoveryTables, ...roomAccessTables, ...notificationTables, ...analyticsTables, ...inboxTables]) {
       assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
     }
     assert.match(f.writes.at(-1)!.sql, /^INSERT INTO schema_migrations/)
@@ -141,7 +141,8 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     for (const table of analyticsTables) {
       assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
     }
-    assert.equal(f.writes.length, 26)
+    assert.ok(f.writes.some((write) => write.sql === inboxSchema))
+    assert.equal(f.writes.length, 31)
     const recorded = f.writes.at(-1)!
     assert.match(recorded.sql, /^INSERT INTO schema_migrations/)
     assert.equal(recorded.values[0], applicationSchemaVersion)
@@ -203,6 +204,25 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     }
   })
 
+  it('upgrades version 5 with only the private inbox table and rejects inbox object collisions', async (t) => {
+    const f = fixture(t, { version: 5 })
+    assert.deepEqual(await upgradePostgres(f.db), { applied: false, schema, fromVersion: 5, toVersion: applicationSchemaVersion })
+    assert.equal(f.writes.length, 0)
+    await upgradePostgres(f.db, { apply: true, confirmSchema: schema })
+    assert.equal(f.writes[0].sql, inboxSchema)
+    assert.ok(!f.writes.some((write) => write.sql === notificationSchema || write.sql === analyticsSchema
+      || write.sql.includes('household_room_') || write.sql.includes('account_recovery')))
+    for (const table of inboxTables) {
+      assert.ok(f.writes.some((write) => write.sql === `ALTER TABLE "${schema}"."${table}" ENABLE ROW LEVEL SECURITY;`))
+    }
+    assert.equal(f.writes.at(-1)!.values[0], applicationSchemaVersion)
+    for (const collision of [...inboxTables, ...inboxTables.map((table) => `${table}_pkey`)]) {
+      const blocked = fixture(t, { version: 5, collision })
+      await assert.rejects(upgradePostgres(blocked.db, { apply: true, confirmSchema: schema }), /already contains inbox objects/)
+      assert.deepEqual(blocked.writes, [])
+    }
+  })
+
   it('reports no change for an already-current schema, including a confirmed apply', async (t) => {
     const f = fixture(t, { version: applicationSchemaVersion })
     for (const options of [{}, { apply: true, confirmSchema: schema }]) {
@@ -222,6 +242,8 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
       [1, /npm run database:migrate -- --upgrade/],
       [2, /npm run database:migrate -- --upgrade/],
       [3, /npm run database:migrate -- --upgrade/],
+      [4, /npm run database:migrate -- --upgrade/],
+      [5, /npm run database:migrate -- --upgrade/],
       [applicationSchemaVersion + 1, /compatible application build/],
       [0, /unsupported schema version/],
     ] as const) {

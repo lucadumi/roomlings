@@ -54,6 +54,8 @@ import { RoomEditor, RoomObjectsPanel } from './RoomComponents.tsx'
 import { hasComponentConfigurationChanges } from './componentConfiguration.ts'
 import { RoomAdminPanel } from './RoomAdminPanel.tsx'
 import { Feedback, FeedbackAction } from './Feedback.tsx'
+import { InboxPanel, useInbox } from './Inbox.tsx'
+import type { InboxItem } from '../shared/inbox.ts'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const isRoomEntry = () => resolveEntry(location.pathname, location.hash).kind === 'room'
@@ -61,10 +63,11 @@ const browserStorageMessage = 'Could not save browser access. Keep this tab open
 const browserAccessEndedMessage = 'Browser access ended. Sign in or recover your access.'
 const roomHelpHint = 'Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.'
 
-type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit'
+type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit' | 'notifications'
 const pageFocus: Record<Page, FocusRequest['target']> = {
   overview: 'room', shopping: 'stock', groceries: 'ledger', bills: 'ledger', settle: 'settle',
   kitchen: 'roommates', budget: 'budget', chores: 'chores', supplies: 'supplies', objects: 'room', 'room-edit': 'room',
+  notifications: 'room',
 }
 type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help' | 'room-admins'
   | { account: AccountIntent }
@@ -124,6 +127,9 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
   accountRef.current = account
   const startupAttempt = useRef(0)
   const [page, setPage] = useState<Page>('overview')
+  const inbox = useInbox(session?.household ?? null,
+    session ? { token: session.token, householdId: session.household.id, memberId: session.memberId, csrfToken: account?.csrfToken } : null,
+    (message) => setError(message))
   const [dialog, setDialog] = useState<Dialog>(initialAccountInvite ? { account: 'join' }
     : initialAccount ? { account: initialAccountIntent === 'create' || initialAccountIntent === 'join' ? initialAccountIntent : 'manage' }
       : initialInvite ? 'join' : initialRecovery ? 'recover' : null)
@@ -646,6 +652,23 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     setChoreMine(false)
     visit('chores', area ? null : 'chores')
   }
+  const openNotification = (item: InboxItem) => {
+    inbox.open(item)
+    const target = item.target
+    if (target.page === 'chores') {
+      const chore = session?.household.chores.items.find((entry) => entry.id === target.choreId)
+      setChoreFilter({ room: chore?.roomId ?? 'home', area: null })
+      setChoreView('active')
+      setChoreMine(true)
+      visit('chores', null)
+    } else if (target.page === 'groceries') {
+      setMonth(target.month)
+      visit('groceries')
+    } else if (target.page === 'bills') {
+      setBillMonth(target.month)
+      visit('bills')
+    } else visit('settle')
+  }
   const openSupplies = (roomId = currentRoom) => {
     setSupplyRoom(roomId)
     visit('supplies')
@@ -1033,13 +1056,14 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
         if (dialog === 'rooms') setDialog(null)
         else openDialog('rooms')
       }} dueChores={dueChores} grime={grime} dueChoreCount={roomDue.length} onOpenChores={openChores} onRestock={() => openSupplies()}
-      panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : page === 'objects' || page === 'room-edit' ? page : null}
+      panelOpen={page !== 'overview'} activeTool={page === 'chores' || page === 'supplies' ? 'chores' : page === 'shopping' ? 'stock' : page === 'groceries' || page === 'bills' ? 'ledger' : page === 'budget' ? 'budget' : page === 'settle' ? 'settle' : page === 'kitchen' ? 'roommates' : page === 'objects' || page === 'room-edit' || page === 'notifications' ? page : null}
       panelSide={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
       components={activeComponentPreview?.components ?? savedComponents}
       placementPreviewId={activePlacement?.id ?? null}
       editMode={page === 'room-edit'} wholeRoomView={page === 'objects' || page === 'room-edit'} selectedComponentId={selectedComponentId} onComponentSelect={selectRoomComponent}
       onObjects={() => { if (page === 'room-edit') setSelectedComponentId(null); else openRoomObjects() }}
       canEditRooms={canEditRooms} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')} onSettings={() => openDialog('settings')}
+      unreadNotifications={inbox.unreadCount} onNotifications={() => visit(page === 'notifications' ? 'overview' : 'notifications')}
       onAction={interact} onInvite={() => openDialog('invite')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
@@ -1053,8 +1077,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     </div>}
     {page !== 'overview' && (!dialog || dialog === 'rooms' || page === 'room-edit') && <RoomPanel
       title={activePlacement ? `Try ${activePlacement.name.trim() || componentCatalog[activePlacement.kind].name}`
-        : { shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
-      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
+        : { shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', notifications: 'Notifications.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
+      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', notifications: 'Your chore turns and the money that involves you.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
       view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}:${choreFilter.componentId ?? ''}` : page === 'objects' ? `objects:${selectedComponentId ?? ''}` : page}
       suspended={dialog !== null && dialog !== 'rooms'} busy={page === 'room-edit' && busy}
       side={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
@@ -1081,6 +1105,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           onEdit={(chore) => openDialog({ editChore: chore })} onComplete={(chore) => openDialog({ completeChore: chore })}
           onArchive={(chore) => openDialog({ archiveChore: chore })} onUndo={(completion) => openDialog({ undoChore: completion })}
           onRestock={() => openSupplies(choreFilter.room === 'all' || choreFilter.room === 'home' ? currentRoom : choreFilter.room)} />}
+        {page === 'notifications' && <InboxPanel household={household} items={inbox.items} state={inbox.state} loadError={inbox.loadError}
+          onRetry={inbox.retry} onReadAll={inbox.readAll} onOpen={openNotification} />}
         {page === 'supplies' && <RestockPanel household={household} roomId={supplyRoom} busy={busy}
           onAdd={(item) => openDialog({ restockItem: item })} onShopping={() => { setShoppingView('list'); visit('shopping') }} />}
         {page === 'shopping' && <ShoppingPanel household={household} memberId={session.memberId} view={shoppingView} onView={setShoppingView} busy={busy}
