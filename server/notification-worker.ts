@@ -39,7 +39,11 @@ export class NotificationWorker {
       }
       if (!prepared) { counts.skipped++; continue }
       let result: PushResult
-      try { result = await this.push.provider.send(prepared.request) } catch {
+      try {
+        result = prepared.transport === 'browser'
+          ? this.push.browser ? await this.push.browser.send(prepared.request) : { status: 'failed', reason: 'provider-auth' }
+          : await this.push.provider.send(prepared.request)
+      } catch {
         this.log('Push transport failed; the notification remains subject to bounded retries.')
         result = { status: 'retry', reason: 'network' }
       }

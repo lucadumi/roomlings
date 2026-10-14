@@ -1,7 +1,7 @@
 import { PostgresDatabase } from './database.ts'
 import {
   accountRecoverySchema, accountRecoveryTables, analyticsIndexes, analyticsSchema, analyticsTables,
-  applicationSchemaVersion, applicationTables, inboxSchema, inboxTables,
+  applicationSchemaVersion, applicationTables, browserPushSchema, browserPushTables, inboxSchema, inboxTables,
   notificationIndexes, notificationSchema, notificationTables, roomAccessSchema, roomAccessTables, sqliteSchema,
 } from './schema.ts'
 import { backfillRoomOwners } from './room-access-migration.ts'
@@ -59,17 +59,18 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
     const fromVersion = await db.schemaVersion()
     const result = { applied: false, schema: db.schema, fromVersion, toVersion: applicationSchemaVersion }
     if (fromVersion === applicationSchemaVersion) return result
-    if (fromVersion < 1 || fromVersion > 5) {
-      throw new Error(`Cannot upgrade unsupported application schema version ${fromVersion}; only versions 1 to 5 to ${applicationSchemaVersion} are supported. Use a compatible build and review docs/storage.md.`)
+    if (fromVersion < 1 || fromVersion > 6) {
+      throw new Error(`Cannot upgrade unsupported application schema version ${fromVersion}; only versions 1 to 6 to ${applicationSchemaVersion} are supported. Use a compatible build and review docs/storage.md.`)
     }
     const notificationObjects = fromVersion < 4
       ? [...notificationTables, ...notificationTables.map((table) => `${table}_pkey`), ...notificationIndexes] : []
     const analyticsObjects = fromVersion < 5 ? [...analyticsTables, ...analyticsTables.map((table) => `${table}_pkey`), ...analyticsIndexes] : []
-    const inboxObjects = [...inboxTables, ...inboxTables.map((table) => `${table}_pkey`)]
+    const inboxObjects = fromVersion < 6 ? [...inboxTables, ...inboxTables.map((table) => `${table}_pkey`)] : []
+    const browserPushObjects = [...browserPushTables, ...browserPushTables.map((table) => `${table}_pkey`)]
     const objects = [
       ...(fromVersion === 1 ? [...accountRecoveryTables, 'account_recovery_codes_account'] : []),
       ...(fromVersion < 3 ? [...roomAccessTables, ...roomAccessTables.map((table) => `${table}_pkey`)] : []),
-      ...notificationObjects, ...analyticsObjects, ...inboxObjects,
+      ...notificationObjects, ...analyticsObjects, ...inboxObjects, ...browserPushObjects,
     ]
     const collision = await db.prepare(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = ? AND c.relname IN (${objects.map(() => '?').join(', ')})`)
@@ -78,7 +79,8 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
       const feature = [...accountRecoveryTables, 'account_recovery_codes_account'].includes(String(collision.relname))
         ? 'account recovery' : [...roomAccessTables, ...roomAccessTables.map((table) => `${table}_pkey`)].includes(String(collision.relname))
           ? 'room access' : analyticsObjects.includes(String(collision.relname)) ? 'analytics'
-            : inboxObjects.includes(String(collision.relname)) ? 'inbox' : 'notification'
+            : inboxObjects.includes(String(collision.relname)) ? 'inbox'
+              : browserPushObjects.includes(String(collision.relname)) ? 'browser push' : 'notification'
       throw new Error(`A version ${fromVersion} schema already contains ${feature} objects. Review its migration history before upgrading; no changes were made.`)
     }
     if (!options.apply) return result
@@ -99,8 +101,12 @@ export async function upgradePostgres(db: PostgresDatabase, options: {
       await db.exec(analyticsSchema)
       await protectPrivateTables(db, analyticsTables)
     }
-    await db.exec(inboxSchema)
-    await protectPrivateTables(db, inboxTables)
+    if (fromVersion < 6) {
+      await db.exec(inboxSchema)
+      await protectPrivateTables(db, inboxTables)
+    }
+    await db.exec(browserPushSchema)
+    await protectPrivateTables(db, browserPushTables)
     await recordSchemaVersion(db)
     return { ...result, applied: true }
   })

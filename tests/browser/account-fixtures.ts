@@ -1,4 +1,5 @@
-import { randomInt, randomUUID } from 'node:crypto'
+import { randomBytes, randomInt, randomUUID } from 'node:crypto'
+import webpush from 'web-push'
 import { once } from 'node:events'
 import type { BrowserContext, Page } from '@playwright/test'
 import { expect, test as base } from '@playwright/test'
@@ -10,6 +11,8 @@ import { createApp } from '../../server/app.ts'
 import { ApiError } from '../../server/errors.ts'
 import type { AccountProvider } from '../../server/provider.ts'
 import { retryAccountDeletions } from '../../server/accounts-api.ts'
+import { PushTokenCipher } from '../../server/push-crypto.ts'
+import { BrowserPushProvider } from '../../server/web-push.ts'
 import { databaseFixture } from '../database-fixture.ts'
 import { createPopulatedHousehold } from '../household-fixture.ts'
 import { savedKitchen } from './fixtures.ts'
@@ -51,16 +54,22 @@ export class TestMailbox {
   }
 }
 
-export type AccountHarness = { origin: string; store: Store; provider: TestMailbox; retryDeletions: () => Promise<void> }
+export type AccountHarness = {
+  origin: string; store: Store; provider: TestMailbox; retryDeletions: () => Promise<void>
+  // Payloads the fake browser push service received when browserPushEnabled is set.
+  browserPushes: string[]
+}
 
 export const test = base.extend<{
   accounts: AccountHarness
   emptyHousehold: Session
   populatedHousehold: Session
   providerEnabled: boolean
+  browserPushEnabled: boolean
 }>({
   providerEnabled: [true, { option: true }],
-  accounts: async ({ baseURL, providerEnabled }, use) => {
+  browserPushEnabled: [false, { option: true }],
+  accounts: async ({ baseURL, providerEnabled, browserPushEnabled }, use) => {
     if (!baseURL) throw new Error('Account browser flows need a configured base URL.')
     const database = await databaseFixture()
     const store = database.store
@@ -73,8 +82,17 @@ export const test = base.extend<{
       },
       deleteUser: (id) => mailbox.remove(id),
     }
+    const browserPushes: string[] = []
+    const push = browserPushEnabled ? {
+      provider: { supports: () => false, send: async () => ({ status: 'failed' as const, reason: 'provider-auth' as const }), close: () => {} },
+      browser: new BrowserPushProvider({ ...webpush.generateVAPIDKeys(), subject: 'mailto:alerts@example.com' }, {
+        sender: async (_subscription, payload) => { browserPushes.push(payload); return { statusCode: 201 } },
+      }),
+      cipher: new PushTokenCipher(randomBytes(32)), mode: 'external' as const,
+    } : undefined
     const server = createApp(store, {
       ...(providerEnabled ? { provider } : {}),
+      ...(push ? { push } : {}),
       appOrigin: new URL(baseURL).origin,
       allowLocalDevelopment: true,
     }).listen(0, '127.0.0.1')
@@ -82,7 +100,7 @@ export const test = base.extend<{
       await once(server, 'listening')
       const address = server.address()
       if (!address || typeof address === 'string') throw new Error('The isolated account API did not open a TCP port.')
-      await use({ origin: `http://127.0.0.1:${address.port}`, store, provider: mailbox, retryDeletions: () => retryAccountDeletions(store, provider) })
+      await use({ origin: `http://127.0.0.1:${address.port}`, store, provider: mailbox, retryDeletions: () => retryAccountDeletions(store, provider), browserPushes })
     } finally {
       if (server.listening) {
         const closed = once(server, 'close')

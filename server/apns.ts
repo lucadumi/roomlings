@@ -5,6 +5,7 @@ import { connect, constants, sensitiveHeaders } from 'node:http2'
 import type { ClientHttp2Session, ClientHttp2Stream, OutgoingHttpHeaders } from 'node:http2'
 import type { NotificationTarget, PushEnvironment } from '../shared/notifications.ts'
 import { PushTokenCipher } from './push-crypto.ts'
+import { BrowserPushProvider, browserPushFromEnvironment } from './web-push.ts'
 
 export type PushPayload = {
   aps: { alert: { title: 'Roomlings'; body: string }; 'thread-id': string; sound: 'default' }
@@ -169,7 +170,16 @@ export class ApnsProvider implements PushProvider {
   }
 }
 
-export type PushConfiguration = { provider: PushProvider; cipher: PushTokenCipher; mode: 'inline' | 'external' }
+export type PushConfiguration = {
+  provider: PushProvider; browser?: BrowserPushProvider; cipher: PushTokenCipher; mode: 'inline' | 'external'
+}
+
+// Browser-only servers have no Apple credentials; native registration then reports push as unavailable.
+const noApns: PushProvider = { supports: () => false, send: async () => ({ status: 'failed', reason: 'provider-auth' }), close: () => {} }
+
+export function apnsAvailable(push: PushConfiguration | undefined): boolean {
+  return !!push && (push.provider.supports('sandbox') || push.provider.supports('production'))
+}
 
 export function pushFromEnvironment(env: NodeJS.ProcessEnv = process.env): PushConfiguration | undefined {
   if (env.PUSH_WORKER_MODE === 'disabled') return undefined
@@ -177,10 +187,12 @@ export function pushFromEnvironment(env: NodeJS.ProcessEnv = process.env): PushC
     throw new Error('PUSH_WORKER_MODE must be inline, external or disabled.')
   }
   const credentials: Partial<Record<PushEnvironment, ApnsCredential>> = {}
-  const configured = ['APNS_TEAM_ID', 'PUSH_TOKEN_ENCRYPTION_KEY', 'APNS_SANDBOX_KEY_ID', 'APNS_SANDBOX_KEY_PATH',
+  const apnsConfigured = ['APNS_TEAM_ID', 'APNS_SANDBOX_KEY_ID', 'APNS_SANDBOX_KEY_PATH',
     'APNS_PRODUCTION_KEY_ID', 'APNS_PRODUCTION_KEY_PATH'].some((name) => !!env[name])
-  if (!configured) return undefined
-  if (!/^[A-Z0-9]{10}$/.test(env.APNS_TEAM_ID ?? '') || (env.APNS_TOPIC && env.APNS_TOPIC !== apnsTopic)) {
+  const browserKeys = browserPushFromEnvironment(env)
+  if (!apnsConfigured && !browserKeys && !env.PUSH_TOKEN_ENCRYPTION_KEY) return undefined
+  if ((apnsConfigured || !browserKeys)
+    && (!/^[A-Z0-9]{10}$/.test(env.APNS_TEAM_ID ?? '') || (env.APNS_TOPIC && env.APNS_TOPIC !== apnsTopic))) {
     throw new Error('Push requires a valid APNS_TEAM_ID and the com.roomlings.app topic.')
   }
   const encodedKey = env.PUSH_TOKEN_ENCRYPTION_KEY ?? ''
@@ -205,6 +217,10 @@ export function pushFromEnvironment(env: NodeJS.ProcessEnv = process.env): PushC
     }
     credentials[environment] = { keyId, teamId: env.APNS_TEAM_ID!, key: signingKey }
   }
-  if (!Object.keys(credentials).length) throw new Error('Configure at least one APNs environment key.')
-  return { provider: new ApnsProvider(credentials), cipher: new PushTokenCipher(key), mode: env.PUSH_WORKER_MODE === 'external' ? 'external' : 'inline' }
+  if (apnsConfigured && !Object.keys(credentials).length) throw new Error('Configure at least one APNs environment key.')
+  return {
+    provider: Object.keys(credentials).length ? new ApnsProvider(credentials) : noApns,
+    ...(browserKeys ? { browser: new BrowserPushProvider(browserKeys) } : {}),
+    cipher: new PushTokenCipher(key), mode: env.PUSH_WORKER_MODE === 'external' ? 'external' : 'inline',
+  }
 }

@@ -279,6 +279,7 @@ describe('worker claims, retry limits and invalid registrations', () => {
     assert.equal(reclaimed.id, first.id)
     assert.notEqual(reclaimed.claimToken, first.claimToken)
     const current = (await f.store.notifications.prepare(reclaimed, f.cipher))!
+    assert.ok(current.transport === 'apns' && prepared.transport === 'apns')
     assert.equal(current.request.id, prepared.request.id)
     assert.equal(current.request.collapseId, prepared.request.collapseId)
     await f.store.notifications.finish(first, prepared, { status: 'invalid' })
