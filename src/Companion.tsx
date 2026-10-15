@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, ChevronRight, MessageCircleQuestion } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronRight, MessageCircleQuestion } from 'lucide-react'
 import type { RoomId } from '../shared/rooms.ts'
 import { companionActionLabels, companionEntries } from './companionAnswers.ts'
 import type { CompanionAction, CompanionEntry } from './companionAnswers.ts'
@@ -15,7 +15,8 @@ export function CompanionPanel({ roomId, available, onAction }: {
   const [query, setQuery] = useState('')
   const [answerId, setAnswerId] = useState<string | null>(null)
   const [unanswered, setUnanswered] = useState('')
-  const heading = useRef<HTMLHeadingElement>(null)
+  const [collapsed, setCollapsed] = useState(false)
+  const heading = useRef<HTMLButtonElement>(null)
   const focusAnswer = useRef(false)
   const typed = query.trim()
   const starters = useMemo(() => companionStarterEntries(roomId), [roomId])
@@ -32,6 +33,7 @@ export function CompanionPanel({ roomId, available, onAction }: {
   const show = (entry: CompanionEntry) => {
     focusAnswer.current = true
     setAnswerId(entry.id)
+    setCollapsed(false)
     setUnanswered('')
   }
   const ask = () => {
@@ -58,11 +60,18 @@ export function CompanionPanel({ roomId, available, onAction }: {
       {typed ? matches.length ? `${matches.length} suggested ${matches.length === 1 ? 'question' : 'questions'}` : 'No suggested questions' : ''}
     </p>
     {answer && <article className="companion-answer" aria-labelledby="companion-answer-title">
-      <h3 id="companion-answer-title" ref={heading} tabIndex={-1}>{answer.question}</h3>
-      <p>{answer.answer}</p>
-      {action && <button type="button" className="button secondary small-button" onClick={() => onAction(action)}>
-        {companionActionLabels[action]}<ArrowRight size="0.9375rem" aria-hidden="true" />
-      </button>}
+      <h3 id="companion-answer-title">
+        <button type="button" ref={heading} className="companion-answer-toggle" aria-expanded={!collapsed} aria-controls="companion-answer-body"
+          onClick={() => setCollapsed(!collapsed)}>
+          <span>{answer.question}</span><ChevronDown size="1.125rem" aria-hidden="true" />
+        </button>
+      </h3>
+      <div className="companion-answer-body" id="companion-answer-body" hidden={collapsed}>
+        <p>{answer.answer}</p>
+        {action && <button type="button" className="button secondary small-button" onClick={() => onAction(action)}>
+          {companionActionLabels[action]}<ArrowRight size="0.9375rem" aria-hidden="true" />
+        </button>}
+      </div>
     </article>}
     {unanswered && <Feedback tone="info">I do not know that one yet. Try asking about groceries, bills, chores or rooms, or pick a question below.</Feedback>}
     <section className="companion-suggestions" aria-labelledby="companion-suggestions-title">
