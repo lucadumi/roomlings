@@ -699,3 +699,10 @@ h2 { font-size: 1.5rem; letter-spacing: -0.75px; line-height: 1.2; color: var(--
   .modal { --control-height: 44px; --control-compact-height: 44px; }
   .modal .field :is(input, select, textarea) { font-size: max(16px, 1rem); }
 }
+
+.app-recovery { min-height: 100dvh; display: grid; place-items: center; padding: 1.5rem 1rem; }
+.app-recovery-card { width: min(100%, 26rem); display: flex; flex-direction: column; align-items: center; gap: 0.875rem; padding: 2rem; text-align: center; background: var(--control-surface); border: 1px solid var(--control-border); border-radius: 0.9375rem; box-shadow: var(--modal-shadow); }
+.app-recovery-card h1 { margin: 0.25rem 0 0; font-family: var(--font-heading); font-size: 1.75rem; line-height: 1.2; }
+.app-recovery-card h1:focus { outline: none; }
+.app-recovery-card p { margin: 0; max-width: 20rem; color: var(--muted); font-size: max(13px, 0.875rem); line-height: 1.6; }
+.app-recovery-card .button { margin-top: 0.5rem; min-width: 8rem; }

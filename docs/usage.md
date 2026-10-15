@@ -256,6 +256,8 @@ Roommates see the same saved household. If an object, shopping item, chore, mont
 
 An interrupted response does not mean the server rejected a save. Retrying the same change confirms an already-saved result without adding another expense, bill, chore, shopping item or repayment. If you changed the draft after an earlier save succeeded, review the saved record before starting a new change. Shopping checkouts retain their own run identifier and purchased-item history.
 
+If the app cannot load or stops rendering, a recovery card replaces the blank page. Reload runs only when pressed and never replays a save. When a save was still waiting for an answer, the card says the last change may not have saved, so check it after reloading. A 3D-only failure keeps the household tools open instead.
+
 Repayments can combine balances from multiple expenses and months. Their limits follow the actual outstanding balances, not the maximum size of an individual grocery receipt. The app still records money already paid; it never transfers money.
 
 Household name changes refresh saved browser shortcuts. Account refreshes update saved profile and browser names without replacing unfinished drafts, and remove kitchens whose membership has ended. Conflicted membership actions refresh their settings before you confirm or retry them.

@@ -4,6 +4,7 @@ import { accountStateSchema } from '../shared/accounts.ts'
 import type { AccountMembership, AccountState, KitchenSession } from '../shared/accounts.ts'
 import { requestFailureMessage } from '../shared/requestMessages.ts'
 import { z } from 'zod'
+import { trackWrite } from './appFailure.ts'
 
 export class RequestError extends Error {
   status: number
@@ -20,6 +21,10 @@ export async function request<T>(path: string, options: {
   body?: unknown; method?: string; signal?: AbortSignal
 } = {}): Promise<T> {
   const method = options.method ?? (options.body === undefined ? 'GET' : 'POST')
+  return method === 'GET' ? send<T>(path, method, options) : trackWrite(() => send<T>(path, method, options))
+}
+
+async function send<T>(path: string, method: string, options: Parameters<typeof request>[1] = {}): Promise<T> {
   let response: Response
   try {
     response = await fetch(`/api${path}`, {
