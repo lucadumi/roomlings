@@ -83,12 +83,13 @@ test('supply cards use compact adaptive columns and preserve their shopping sour
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 })
     await expect(grid).toHaveCSS('display', 'grid')
-    const layout = await grid.evaluate((element) => ({
-      columns: getComputedStyle(element).gridTemplateColumns.split(' ').length, width: element.getBoundingClientRect().width,
-      panelWidth: element.closest('.room-panel')!.clientWidth,
-    }))
-    const minimumCardWidth = layout.panelWidth <= 390 ? 128 : 176
-    expect(layout.columns).toBe(Math.max(1, Math.floor((layout.width + 12) / (minimumCardWidth + 12))))
+    // The panel can still be resizing after the viewport changes; compare once its width settles.
+    await expect.poll(() => grid.evaluate((element) => {
+      const width = element.getBoundingClientRect().width
+      const minimumCardWidth = element.closest('.room-panel')!.clientWidth <= 390 ? 128 : 176
+      return getComputedStyle(element).gridTemplateColumns.split(' ').length
+        - Math.max(1, Math.floor((width + 12) / (minimumCardWidth + 12)))
+    })).toBe(0)
     for (const title of await grid.getByRole('heading', { level: 3 }).all()) await expect(title).toHaveCSS('font-size', '14px')
     expect(await grid.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(await grid.locator('.restock-item').evaluateAll((cards) => cards.every((card) => card.scrollWidth <= card.clientWidth))).toBe(true)
