@@ -1106,7 +1106,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       onObjects={() => { if (page === 'room-edit') setSelectedComponentId(null); else openRoomObjects() }}
       canEditRooms={canEditRooms} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')} onSettings={() => openDialog('settings')}
       unreadNotifications={inbox.unreadCount} onNotifications={() => visit(page === 'notifications' ? 'overview' : 'notifications')}
-      onCompanion={() => visit('companion', null)}
+      companionActive={page === 'companion'} onCompanion={() => visit('companion', null)}
       onAction={interact} onInvite={() => openDialog('invite')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />

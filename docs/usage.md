@@ -238,7 +238,7 @@ With an account, **Alerts in this browser** at the top of the panel sends your c
 
 ## Asking the kettle
 
-A small sage kettle stands just inside each room's door. Select it, or its **Ask the kettle** marker, to open a question panel. Each room starts with four of its own questions. As you type, the panel suggests matching questions, tolerating typos and half-typed words; **Ask** or Enter shows the best answer. Answers with a related tool include a button that opens it, and admin-only tools appear only for admins.
+A small sage kettle sits in the bottom-right corner of every room, beside the save status. Select it to open a question panel. Its tiny 3D view draws only to blink or hop; without 3D it shows **Ask** and still works. Each room starts with four of its own questions. As you type, the panel suggests matching questions, tolerating typos and half-typed words; **Ask** or Enter shows the best answer. Answers with a related tool include a button that opens it, and admin-only tools appear only for admins.
 
 Answers come from a fixed guide bundled with the app. Matching runs in the browser, so questions are never sent to a server or an AI model. The kettle explains how Roomlings works; balances still come only from the shared ledger. It steps aside while a room is being edited.
 

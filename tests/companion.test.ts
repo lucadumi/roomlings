@@ -1,11 +1,9 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { roomIds } from '../shared/rooms.ts'
-import { roomSlots } from '../shared/roomComponents.ts'
 import { companionActionLabels, companionEntries, companionStarters } from '../src/companionAnswers.ts'
 import { companionStarterEntries, normalizeQuestion, searchCompanion, stem, terms } from '../src/companionSearch.ts'
-import { companionPosition } from '../src/companionModel.ts'
-import { componentPlacements, roomFootprints } from '../src/roomLayout.ts'
+import { untilCompanionBlink } from '../src/companionModel.ts'
 
 const top = (question: string, roomId: Parameters<typeof searchCompanion>[1] = 'kitchen') => searchCompanion(question, roomId)[0]?.entry.id
 
@@ -74,19 +72,10 @@ describe('companion questions', () => {
   })
 })
 
-describe('companion placement', () => {
-  it('stands inside each room, clear of every object position', () => {
-    for (const roomId of roomIds) {
-      const [x, , z] = companionPosition(roomId)
-      const footprint = roomFootprints[roomId]
-      assert.ok(Math.abs(x) < footprint.width / 2 - 0.5, roomId)
-      assert.ok(Math.abs(z - footprint.centerZ) < footprint.depth / 2 - 0.5, roomId)
-      for (const slot of roomSlots.filter((candidate) => candidate.roomId === roomId)) {
-        const placement = componentPlacements[slot.id]
-        if (!placement || placement.surface === 'wall') continue
-        const distance = Math.hypot(placement.position[0] - x, placement.position[2] - z)
-        assert.ok(distance >= 1, `${roomId} kettle is ${distance.toFixed(2)} from ${slot.id}`)
-      }
-    }
+describe('companion kettle view', () => {
+  it('wakes only for the next blink', () => {
+    assert.equal(untilCompanionBlink(0), 3800)
+    assert.equal(untilCompanionBlink(1000), 2800)
+    assert.equal(untilCompanionBlink(7599), 1)
   })
 })

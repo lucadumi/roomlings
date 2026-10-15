@@ -18,4 +18,18 @@
 .companion-suggestion:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
 .companion-suggestion svg { flex: none; color: var(--muted); }
 .companion .field-hint { margin: 0; }
-.hotspot-companion .hotspot-dot { background: var(--leaf-soft); color: var(--leaf-ink); border-color: var(--leaf-border); }
+
+.companion-kettle { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 4.75rem; height: 4.75rem; margin-left: auto; padding: 0; border-radius: 1.125rem; cursor: pointer; }
+.companion-kettle:hover { background: var(--control-hover); }
+.companion-kettle[aria-pressed="true"] { border-color: var(--leaf-border); background: var(--leaf-soft); }
+.companion-kettle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.companion-kettle-view { position: absolute; inset: 0.25rem 0.25rem 0.875rem; }
+.companion-kettle-view canvas { display: block; width: 100%; height: 100%; }
+.companion-kettle[data-unavailable="true"] { flex-direction: column; gap: 0.25rem; color: var(--leaf-ink); }
+.companion-kettle-label { position: absolute; bottom: 0.3125rem; left: 50%; transform: translateX(-50%); padding: 0.0625rem 0.5rem; border-radius: 0.5rem; background: var(--leaf-soft); color: var(--leaf-ink); font-size: max(10px, 0.625rem); font-weight: 700; line-height: 1.4; letter-spacing: 0.02em; white-space: nowrap; }
+.companion-kettle[data-unavailable="true"] .companion-kettle-label { position: static; transform: none; }
+/* The status keeps its own spot beside the kettle instead of sharing the free space. */
+.companion-kettle + .room-sync { margin-left: 0; }
+@media (max-width: 560px) {
+  .companion-kettle { position: absolute; right: 0.625rem; bottom: calc(var(--game-dock-space, 5.8125rem) + 0.5rem); z-index: 10; width: 3.75rem; height: 3.75rem; border-radius: 0.875rem; }
+}

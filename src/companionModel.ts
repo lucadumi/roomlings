@@ -1,50 +1,38 @@
 import { CircleGeometry, Color, CylinderGeometry, Float32BufferAttribute, Group, LatheGeometry, Mesh, MeshBasicMaterial, Object3D, SphereGeometry, Vector2 } from 'three'
 import type { BufferGeometry, Material } from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import type { RoomId } from '../shared/rooms.ts'
-import { roomEntryDoors, roomFootprints } from './roomLayout.ts'
-import type { RoomPosition } from './roomLayout.ts'
 import { createRoomTorusGeometry, roomRadialSegments } from './roomGeometry.ts'
 import { roomAccents } from './roomStyles.ts'
 import { createRoomMaterial, prepareRoomSurfaceGeometry } from './surfaceMaterials.ts'
 
-// The kettle greets each room from just inside its entry door, clear of every object slot.
-// The kitchen kettle steps toward the stove return so the table stools and HUD hint stay clear.
-const doorstep: Record<RoomId, { inset: number; shift: number }> = {
-  kitchen: { inset: 1.75, shift: 0.6 },
-  bathroom: { inset: 0.95, shift: 0 },
-  'living-room': { inset: 0.95, shift: 0 },
-}
-export function companionPosition(roomId: RoomId): RoomPosition {
-  const footprint = roomFootprints[roomId]
-  const { inset, shift } = doorstep[roomId]
-  return [roomEntryDoors[roomId].centerX + shift, 0.02, footprint.centerZ + footprint.depth / 2 - inset]
-}
-// Faces the default camera so the face reads from the entry view.
-const facing = 0.6
-const scale = 1.15
+// A slight turn shows the spout without hiding the face.
+const facing = 0.45
 const hopSeconds = 1.4
 const steamSeconds = 2.6
 const blinkEvery = 3800
 const blinkLength = 140
+
+// Milliseconds until the next blink starts, so an on-demand view can wake just for it.
+export function untilCompanionBlink(now: number): number {
+  return blinkEvery - (now % blinkEvery)
+}
+export const companionBlinkLength = blinkLength
 
 function stripGroups(geometry: BufferGeometry): BufferGeometry {
   geometry.clearGroups()
   return geometry
 }
 
-export type RoomCompanion = {
+export type CompanionKettle = {
   root: Group
-  anchor: Object3D
-  contains: (object: Object3D | null | undefined) => boolean
   greet: (now: number) => void
-  // Returns whether the companion still needs frames and whether shadow casters moved.
-  update: (now: number, options: { reducedMotion: boolean; hidden: boolean }) => { animating: boolean; shadowsChanged: boolean }
+  // Poses the kettle for a frame and returns whether a hop or steam still needs frames.
+  update: (now: number, reducedMotion: boolean) => boolean
   dispose: () => void
 }
 
-export function createRoomCompanion(roomId: RoomId): RoomCompanion {
-  // One vertex-colored body and one pair of eyes keep the kettle to three draws with its shadow.
+export function createCompanionKettle(): CompanionKettle {
+  // One vertex-colored body and one pair of eyes keep the kettle to two draws.
   const glazed = createRoomMaterial('#ffffff', 0.64, 'paint', 'Companion kettle')
   glazed.vertexColors = true
   const ink = createRoomMaterial(roomAccents.ink, 0.9, 'rubber', 'Companion kettle eyes')
@@ -53,10 +41,7 @@ export function createRoomCompanion(roomId: RoomId): RoomCompanion {
 
   const root = new Group()
   root.name = 'Companion kettle'
-  root.userData.companion = true
-  root.position.set(...companionPosition(roomId))
   root.rotation.y = facing
-  root.scale.setScalar(scale)
   const body = new Group()
   root.add(body)
 
@@ -115,8 +100,6 @@ export function createRoomCompanion(roomId: RoomId): RoomCompanion {
   ]
   const kettle = new Mesh(mergeGeometries(parts.map(stripGroups)), glazed)
   parts.forEach((geometry) => geometry.dispose())
-  kettle.castShadow = true
-  kettle.receiveShadow = true
   body.add(kettle)
 
   const eyeParts = [-1, 1].map((side) => {
@@ -138,48 +121,28 @@ export function createRoomCompanion(roomId: RoomId): RoomCompanion {
     body.add(puff)
     return puff
   })
-  const anchor = new Group()
-  anchor.position.y = 0.95
-  root.add(anchor)
   prepareRoomSurfaceGeometry(root)
 
   let greeted = -Infinity
-  let wasVisible = true
-  let lastHop = 0
   return {
     root,
-    anchor,
-    contains(object) {
-      for (let current = object; current; current = current.parent) if (current === root) return true
-      return false
-    },
     greet(now) { greeted = now },
-    update(now, { reducedMotion, hidden }) {
-      const visible = !hidden
-      let shadowsChanged = visible !== wasVisible
-      wasVisible = visible
-      root.visible = visible
+    update(now, reducedMotion) {
       const age = (now - greeted) / 1000
-      const hopping = visible && !reducedMotion && age >= 0 && age < hopSeconds
+      const hopping = !reducedMotion && age >= 0 && age < hopSeconds
       const hop = hopping ? Math.abs(Math.sin(age * Math.PI * 2.5)) * 0.14 * (1 - age / hopSeconds) : 0
-      if (hop !== lastHop) shadowsChanged = true
-      lastHop = hop
       body.position.y = hop
       body.scale.set(1 + hop * 0.35, 1 - hop * 0.45, 1 + hop * 0.35)
-      const steaming = visible && !reducedMotion && age >= 0 && age < steamSeconds
+      const steaming = !reducedMotion && age >= 0 && age < steamSeconds
+      steam.opacity = steaming ? 0.45 * (1 - age / steamSeconds) : 0
       puffs.forEach((puff, index) => {
         const phase = ((age * 0.9) + index / puffs.length) % 1
         puff.visible = steaming
-        if (!steaming) return
-        const fade = Math.sin(phase * Math.PI) * (1 - age / steamSeconds)
         puff.position.set(0.5 + phase * 0.12, 0.5 + phase * 0.45, Math.sin(phase * 5 + index) * 0.04)
-        puff.scale.setScalar(0.6 + phase * 1.4)
-        steam.opacity = Math.max(steam.opacity * 0.5, fade * 0.45)
+        puff.scale.setScalar((0.6 + phase * 1.4) * Math.sin(phase * Math.PI))
       })
-      if (!steaming) steam.opacity = 0
-      const blinking = !reducedMotion && now % blinkEvery < blinkLength
-      eyes.scale.y = blinking ? 0.15 : 1
-      return { animating: hopping || steaming, shadowsChanged }
+      eyes.scale.y = !reducedMotion && now % blinkEvery < blinkLength ? 0.15 : 1
+      return hopping || steaming
     },
     dispose() {
       root.traverse((object) => { if (object instanceof Mesh) object.geometry.dispose() })
