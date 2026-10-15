@@ -8,6 +8,7 @@ import './game.css'
 import { resolveEntry } from './roomNavigation.ts'
 import { landingDevice } from './landing/device.ts'
 import { Feedback } from './Feedback.tsx'
+import { AppBoundary } from './AppRecovery.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
 const App = lazy(() => import('./App.tsx').then(({ App }) => ({ default: App })))
@@ -33,5 +34,5 @@ function Entry() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><Entry /></React.StrictMode>,
+  <React.StrictMode><AppBoundary><Entry /></AppBoundary></React.StrictMode>,
 )
