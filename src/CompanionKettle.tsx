@@ -1,117 +1,56 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageCircleQuestion } from 'lucide-react'
-import { ACESFilmicToneMapping, DirectionalLight, HemisphereLight, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three'
-import { companionBlinkLength, createCompanionKettle, untilCompanionBlink } from './companionModel.ts'
 import './companion.css'
 
-type Controls = { greet: () => void }
+const greetingLength = 1600
 
-// A corner companion with its own tiny view. It draws only to blink, hop or steam, never continuously.
-export function CompanionKettle({ active, paused, onOpen }: { active: boolean; paused: boolean; onOpen: () => void }) {
-  const host = useRef<HTMLSpanElement>(null)
-  const controls = useRef<Controls | null>(null)
-  const pausedRef = useRef(paused)
-  pausedRef.current = paused
-  const [unavailable, setUnavailable] = useState(false)
-
-  useEffect(() => {
-    const element = host.current
-    if (!element) return
-    let renderer: WebGLRenderer
-    try {
-      renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' })
-    } catch (error) {
-      console.warn('The kettle companion could not start:', error instanceof Error ? error.message : error)
-      setUnavailable(true)
-      return
-    }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.outputColorSpace = SRGBColorSpace
-    renderer.toneMapping = ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.05
-    renderer.setClearColor(0x000000, 0)
-    renderer.domElement.setAttribute('aria-hidden', 'true')
-    element.appendChild(renderer.domElement)
-
-    const scene = new Scene()
-    scene.add(new HemisphereLight('#fffaf1', '#b0d0bd', 2.1))
-    const sun = new DirectionalLight('#fff4e0', 1.6)
-    sun.position.set(1.5, 2.5, 2.2)
-    scene.add(sun)
-    const kettle = createCompanionKettle()
-    scene.add(kettle.root)
-    const camera = new PerspectiveCamera(26, 1, 0.1, 20)
-    camera.position.set(0, 0.55, 1.75)
-    camera.lookAt(0.07, 0.33, 0)
-
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
-    let frame = 0
-    let blinkTimer = 0
-    let disposed = false
-    let lost = false
-    const draw = () => {
-      frame = 0
-      if (disposed || lost) return
-      const now = performance.now()
-      const animating = kettle.update(now, reducedMotion.matches)
-      renderer.render(scene, camera)
-      renderer.domElement.dataset.renderReady = 'true'
-      if (animating && !document.hidden) frame = requestAnimationFrame(draw)
-      else scheduleBlink()
-    }
-    const request = () => { if (!frame && !disposed && !lost) frame = requestAnimationFrame(draw) }
-    // Two quick frames close and reopen the eyes; nothing draws between blinks.
-    const scheduleBlink = () => {
-      window.clearTimeout(blinkTimer)
-      if (disposed || lost || reducedMotion.matches) return
-      const wait = untilCompanionBlink(performance.now())
-      blinkTimer = window.setTimeout(() => {
-        if (document.hidden || pausedRef.current) { scheduleBlink(); return }
-        request()
-        blinkTimer = window.setTimeout(request, companionBlinkLength + 20)
-      }, wait + 10)
-    }
-    const resize = () => {
-      const { width, height } = element.getBoundingClientRect()
-      if (!width || !height) return
-      renderer.setSize(width, height, false)
-      camera.aspect = width / height
-      camera.updateProjectionMatrix()
-      request()
-    }
-    const observer = new ResizeObserver(resize)
-    observer.observe(element)
-    const onLost = (event: Event) => {
-      event.preventDefault()
-      lost = true
-      setUnavailable(true)
-    }
-    renderer.domElement.addEventListener('webglcontextlost', onLost)
-    reducedMotion.addEventListener('change', request)
-    document.addEventListener('visibilitychange', request)
-    controls.current = { greet: () => { kettle.greet(performance.now()); request() } }
-    resize()
-    return () => {
-      disposed = true
-      cancelAnimationFrame(frame)
-      window.clearTimeout(blinkTimer)
-      observer.disconnect()
-      reducedMotion.removeEventListener('change', request)
-      document.removeEventListener('visibilitychange', request)
-      renderer.domElement.removeEventListener('webglcontextlost', onLost)
-      controls.current = null
-      kettle.dispose()
-      renderer.dispose()
-      renderer.forceContextLoss()
-      renderer.domElement.remove()
-    }
-  }, [])
-
-  return <button type="button" className="companion-kettle control-surface" data-unavailable={unavailable}
-    aria-label="Ask the kettle a question" title="Ask the kettle" aria-pressed={active}
-    onClick={() => { controls.current?.greet(); onOpen() }}>
-    <span className="companion-kettle-view" ref={host} hidden={unavailable} />
-    {unavailable && <MessageCircleQuestion size="1.375rem" aria-hidden="true" />}
-    <span className="companion-kettle-label">Ask</span>
+// A flat cartoon kettle in the corner. CSS handles its blink, hop and steam, so it costs no WebGL.
+export function CompanionKettle({ active, onOpen }: { active: boolean; onOpen: () => void }) {
+  const [greeting, setGreeting] = useState(0)
+  const timer = useRef(0)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const greet = () => {
+    window.clearTimeout(timer.current)
+    setGreeting((count) => count + 1)
+    timer.current = window.setTimeout(() => setGreeting(0), greetingLength)
+  }
+  return <button type="button" className="companion-kettle" aria-label="Ask the kettle a question" title="Ask the kettle"
+    aria-pressed={active} data-greeting={greeting > 0} onClick={() => { greet(); onOpen() }}>
+    <span className="companion-kettle-bubble" aria-hidden="true">Ask me</span>
+    <KettleCartoon key={greeting} />
   </button>
+}
+
+function KettleCartoon() {
+  return <svg className="companion-kettle-art" viewBox="0 0 120 112" aria-hidden="true" focusable="false">
+    <ellipse cx="60" cy="104" rx="36" ry="5" fill="#a9b194" opacity=".3" />
+    <g className="companion-kettle-steam" fill="#c3c7d3">
+      <circle cx="110" cy="30" r="4" />
+      <circle cx="104" cy="20" r="5" />
+      <circle cx="112" cy="10" r="6" />
+    </g>
+    <g className="companion-kettle-body">
+      <path d="M38 48C15 46 12 84 34 88" stroke="#527861" strokeWidth="8" strokeLinecap="round" fill="none" />
+      <path d="M84 66C96 60 101 50 106 40C108 36 113 37 112 42C110 55 102 72 90 82Z" fill="#81b29a" />
+      <ellipse cx="109.5" cy="39" rx="3" ry="2" fill="#527861" />
+      <ellipse cx="46" cy="99" rx="9" ry="5" fill="#3d405b" />
+      <ellipse cx="74" cy="99" rx="9" ry="5" fill="#3d405b" />
+      <path d="M60 34C86 34 100 52 100 72C100 90 86 100 60 100C34 100 20 90 20 72C20 52 34 34 60 34Z" fill="#81b29a" />
+      <path d="M22 78C26 94 40 100 60 100C80 100 94 94 98 78C90 90 76 94 60 94C44 94 30 90 22 78Z" fill="#6c9d85" />
+      <ellipse cx="38" cy="52" rx="8" ry="3.5" transform="rotate(-32 38 52)" fill="#b0d0bd" />
+      <path d="M36 37C38 29 82 29 84 37Z" fill="#527861" />
+      <ellipse cx="60" cy="37" rx="25" ry="4" fill="#527861" />
+      <rect x="57.5" y="25" width="5" height="6" rx="1.5" fill="#527861" />
+      <circle cx="60" cy="23" r="6" fill="#e07a5f" />
+      <circle cx="58" cy="21" r="1.6" fill="#faece7" />
+      <g className="companion-kettle-eyes" fill="#3d405b">
+        <ellipse cx="49" cy="64" rx="3.6" ry="4.6" />
+        <ellipse cx="71" cy="64" rx="3.6" ry="4.6" />
+        <circle cx="50.2" cy="62.4" r="1.2" fill="#ffffff" />
+        <circle cx="72.2" cy="62.4" r="1.2" fill="#ffffff" />
+      </g>
+      <ellipse cx="41" cy="73" rx="5" ry="3" fill="#e07a5f" opacity=".55" />
+      <ellipse cx="79" cy="73" rx="5" ry="3" fill="#e07a5f" opacity=".55" />
+      <path d="M54 74Q60 80 66 74" stroke="#3d405b" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+    </g>
+  </svg>
 }

@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { roomIds } from '../shared/rooms.ts'
 import { companionActionLabels, companionEntries, companionStarters } from '../src/companionAnswers.ts'
 import { companionStarterEntries, normalizeQuestion, searchCompanion, stem, terms } from '../src/companionSearch.ts'
-import { untilCompanionBlink } from '../src/companionModel.ts'
 
 const top = (question: string, roomId: Parameters<typeof searchCompanion>[1] = 'kitchen') => searchCompanion(question, roomId)[0]?.entry.id
 
@@ -69,13 +68,5 @@ describe('companion questions', () => {
       assert.equal(companionStarters[roomId].length, 4)
       assert.equal(companionStarterEntries(roomId).length, 4)
     }
-  })
-})
-
-describe('companion kettle view', () => {
-  it('wakes only for the next blink', () => {
-    assert.equal(untilCompanionBlink(0), 3800)
-    assert.equal(untilCompanionBlink(1000), 2800)
-    assert.equal(untilCompanionBlink(7599), 1)
   })
 })

@@ -73,21 +73,13 @@ test('every room has the kettle with its own starter questions', { tag: '@room' 
   await expect(page.getByRole('dialog', { name: 'Make the room feel like home.', exact: true })).toBeVisible()
 })
 
-test('the kettle still opens its answers when 3D is unavailable', { tag: '@room' }, async ({ page, emptyHousehold: _household }) => {
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext
-    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-      value(this: HTMLCanvasElement, name: string, ...args: unknown[]) {
-        if (name.startsWith('webgl') || name === 'experimental-webgl') return null
-        return Reflect.apply(original, this, [name, ...args])
-      },
-    })
-  })
+test('the corner kettle is a cartoon that draws no WebGL of its own', async ({ page, emptyHousehold: _household }) => {
   await page.goto('/kitchen')
   const kettle = page.getByRole('button', { name: 'Ask the kettle a question', exact: true })
-  await expect(kettle).toHaveAttribute('data-unavailable', 'true')
+  await expect(kettle.locator('svg.companion-kettle-art')).toBeVisible()
   await expect(kettle.locator('canvas')).toHaveCount(0)
-  await expect(kettle).toHaveText('Ask')
+  await expect(kettle).toHaveText('Ask me')
+  await expect(kettle).toHaveAttribute('aria-pressed', 'false')
   const panel = await openCompanion(page)
   await expect(panel.getByRole('button', { name: 'How do I record a grocery run?', exact: true })).toBeVisible()
   await expect(kettle).toHaveAttribute('aria-pressed', 'true')

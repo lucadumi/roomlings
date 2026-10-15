@@ -19,17 +19,31 @@
 .companion-suggestion svg { flex: none; color: var(--muted); }
 .companion .field-hint { margin: 0; }
 
-.companion-kettle { position: relative; display: flex; flex: none; align-items: center; justify-content: center; width: 4.75rem; height: 4.75rem; margin-left: auto; padding: 0; border-radius: 1.125rem; cursor: pointer; }
-.companion-kettle:hover { background: var(--control-hover); }
-.companion-kettle[aria-pressed="true"] { border-color: var(--leaf-border); background: var(--leaf-soft); }
-.companion-kettle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.companion-kettle-view { position: absolute; inset: 0.25rem 0.25rem 0.875rem; }
-.companion-kettle-view canvas { display: block; width: 100%; height: 100%; }
-.companion-kettle[data-unavailable="true"] { flex-direction: column; gap: 0.25rem; color: var(--leaf-ink); }
-.companion-kettle-label { position: absolute; bottom: 0.3125rem; left: 50%; transform: translateX(-50%); padding: 0.0625rem 0.5rem; border-radius: 0.5rem; background: var(--leaf-soft); color: var(--leaf-ink); font-size: max(10px, 0.625rem); font-weight: 700; line-height: 1.4; letter-spacing: 0.02em; white-space: nowrap; }
-.companion-kettle[data-unavailable="true"] .companion-kettle-label { position: static; transform: none; }
+.companion-kettle { position: relative; flex: none; width: 5.5rem; height: 5.125rem; margin-left: auto; padding: 0; border: 0; background: none; cursor: pointer; }
+.companion-kettle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 0.75rem; }
+.companion-kettle-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; transition: transform 160ms ease; }
+.companion-kettle:hover .companion-kettle-art { transform: translateY(-0.1875rem); }
+.companion-kettle-body, .companion-kettle-eyes, .companion-kettle-steam circle { transform-box: fill-box; }
+.companion-kettle-body { transform-origin: 50% 100%; }
+.companion-kettle-eyes { transform-origin: center; animation: kettle-blink 4.2s infinite; }
+.companion-kettle-steam circle { opacity: 0; transform-origin: center; }
+.companion-kettle[data-greeting="true"] .companion-kettle-body { animation: kettle-hop 900ms ease-out; }
+.companion-kettle[data-greeting="true"] .companion-kettle-steam circle { animation: kettle-steam 1400ms ease-out both; }
+.companion-kettle[data-greeting="true"] .companion-kettle-steam circle:nth-child(2) { animation-delay: 160ms; }
+.companion-kettle[data-greeting="true"] .companion-kettle-steam circle:nth-child(3) { animation-delay: 320ms; }
+@keyframes kettle-blink { 0%, 94% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } 98%, 100% { transform: scaleY(1); } }
+@keyframes kettle-hop { 0% { transform: translateY(0) scale(1, 1); } 15% { transform: translateY(0) scale(1.08, 0.9); } 40% { transform: translateY(-10%) scale(0.96, 1.05); } 65% { transform: translateY(0) scale(1.05, 0.95); } 100% { transform: translateY(0) scale(1, 1); } }
+@keyframes kettle-steam { 0% { opacity: 0; transform: translateY(20%) scale(0.5); } 30% { opacity: 0.9; } 100% { opacity: 0; transform: translateY(-40%) scale(1.3); } }
+.companion-kettle-bubble { position: absolute; bottom: calc(100% + 0.375rem); left: 50%; transform: translateX(-50%); padding: 0.25rem 0.625rem; border: 1px solid var(--control-border); border-radius: 0.75rem; background: var(--control-surface); box-shadow: var(--control-shadow); color: var(--ink); font-size: max(11px, 0.6875rem); font-weight: 650; line-height: 1.4; white-space: nowrap; transition: opacity 160ms ease; }
+.companion-kettle-bubble::after { content: ""; position: absolute; top: 100%; left: 50%; width: 0.5rem; height: 0.5rem; margin-top: -0.25rem; border-right: 1px solid var(--control-border); border-bottom: 1px solid var(--control-border); background: var(--control-surface); transform: translateX(-50%) rotate(45deg); }
+.companion-kettle[aria-pressed="true"] .companion-kettle-bubble { opacity: 0; }
 /* The status keeps its own spot beside the kettle instead of sharing the free space. */
 .companion-kettle + .room-sync { margin-left: 0; }
 @media (max-width: 560px) {
-  .companion-kettle { position: absolute; right: 0.625rem; bottom: calc(var(--game-dock-space, 5.8125rem) + 0.5rem); z-index: 10; width: 3.75rem; height: 3.75rem; border-radius: 0.875rem; }
+  .companion-kettle { position: absolute; right: 0.375rem; bottom: calc(var(--game-dock-space, 5.8125rem) + 0.375rem); z-index: 10; width: 4.5rem; height: 4.25rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .companion-kettle-art, .companion-kettle-bubble { transition: none; }
+  .companion-kettle:hover .companion-kettle-art { transform: none; }
+  .companion-kettle-eyes, .companion-kettle[data-greeting="true"] .companion-kettle-body, .companion-kettle[data-greeting="true"] .companion-kettle-steam circle { animation: none; }
 }
