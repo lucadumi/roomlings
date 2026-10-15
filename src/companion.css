@@ -52,7 +52,7 @@
 }
 @media (max-width: 800px) {
   .game-bottom .game-dock { position: relative; left: auto; }
-  .companion-kettle { right: 0.375rem; width: 3.75rem; height: 3.5rem; }
+  .companion-kettle { right: 0.375rem; width: 4.25rem; height: 3.75rem; }
   /* Bottom sheets rest on the dock, so the kettle steps away while one is open. */
   .game-home[data-panel-open="true"] .companion-kettle { display: none; }
 }
