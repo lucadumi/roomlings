@@ -25,7 +25,10 @@
 .companion-suggestion svg { flex: none; color: var(--muted); }
 .companion .field-hint { margin: 0; }
 
-.companion-kettle { position: relative; flex: none; width: 5.5rem; height: 5.125rem; margin-left: auto; padding: 0; border: 0; background: none; cursor: pointer; }
+/* The kettle perches on the dock, feet resting on its top edge. */
+.companion-kettle { position: absolute; right: 1rem; bottom: calc(100% - 0.375rem); z-index: 1; width: 4.5rem; height: 4.25rem; padding: 0; border: 0; background: none; cursor: pointer; }
+/* With a right-hand panel open it hops to the dock's left end to keep the panel clear. */
+.game-home[data-panel-open="true"][data-panel-side="right"] .companion-kettle { right: auto; left: 1rem; }
 .companion-kettle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 0.75rem; }
 .companion-kettle-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; transition: transform 160ms ease; }
 .companion-kettle:hover .companion-kettle-art { transform: translateY(-0.1875rem); }
@@ -43,10 +46,15 @@
 .companion-kettle-bubble { position: absolute; bottom: calc(100% + 0.375rem); left: 50%; transform: translateX(-50%); padding: 0.25rem 0.625rem; border: 1px solid var(--control-border); border-radius: 0.75rem; background: var(--control-surface); box-shadow: var(--control-shadow); color: var(--ink); font-size: max(11px, 0.6875rem); font-weight: 650; line-height: 1.4; white-space: nowrap; transition: opacity 160ms ease; }
 .companion-kettle-bubble::after { content: ""; position: absolute; top: 100%; left: 50%; width: 0.5rem; height: 0.5rem; margin-top: -0.25rem; border-right: 1px solid var(--control-border); border-bottom: 1px solid var(--control-border); background: var(--control-surface); transform: translateX(-50%) rotate(45deg); }
 .companion-kettle[aria-pressed="true"] .companion-kettle-bubble { opacity: 0; }
-/* The status keeps its own spot beside the kettle instead of sharing the free space. */
-.companion-kettle + .room-sync { margin-left: 0; }
-@media (max-width: 560px) {
-  .companion-kettle { position: absolute; right: 0.375rem; bottom: calc(var(--game-dock-space, 5.8125rem) + 0.375rem); z-index: 10; width: 4.5rem; height: 4.25rem; }
+/* Mid-width windows leave no free stretch of dock beside an open panel. */
+@media (max-width: 1000px) {
+  .game-home[data-panel-open="true"][data-panel-side="right"] .companion-kettle { display: none; }
+}
+@media (max-width: 800px) {
+  .game-bottom .game-dock { position: relative; left: auto; }
+  .companion-kettle { right: 0.375rem; width: 3.75rem; height: 3.5rem; }
+  /* Bottom sheets rest on the dock, so the kettle steps away while one is open. */
+  .game-home[data-panel-open="true"] .companion-kettle { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .companion-kettle-art, .companion-kettle-bubble { transition: none; }

@@ -198,8 +198,8 @@ export function GameHome({
         <button className="dock-tool" data-tool="chores" onClick={() => onOpenChores(null)} aria-label="Chores" title="Chores" aria-pressed={activeTool === 'chores'}><ListChecks size="1.3125rem" /><span>Chores</span>{dueChoreCount > 0 && <i className="tool-count">{dueChoreCount}</i>}</button>
         <button className="dock-tool" data-tool="settle" onClick={() => onAction('settle')} aria-label="Settle up" title="Settle up" aria-pressed={activeTool === 'settle'}><Wallet size="1.3125rem" /><span>Settle up</span>{transferCount > 0 && <i className="tool-count">{transferCount}</i>}</button>
         <button className="dock-tool" data-tool="roommates" onClick={() => onAction('roommates')} aria-label="The roommates" title="People" aria-pressed={activeTool === 'roommates'}><Users size="1.3125rem" /><span>People</span></button>
+        {!editMode && <CompanionKettle active={companionActive} onOpen={onCompanion} />}
       </nav>
-      {!editMode && <CompanionKettle active={companionActive} onOpen={onCompanion} />}
       <span className={`room-sync ${syncState}`}><span className={`connection-dot ${syncState}`} />{syncState === 'offline' ? 'Offline' : editMode ? 'Private room preview' : 'All fresh & saved'}<small>{monthLabel}</small></span>
     </div>
   </main>
