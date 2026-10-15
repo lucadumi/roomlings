@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Coffee, Eye, EyeOff, Maximize, Minus, Moon, Move, Plus, Snowflake, Sun } from 'lucide-react'
+import { Coffee, Eye, EyeOff, Maximize, MessageCircleQuestion, Minus, Moon, Move, Plus, Snowflake, Sun } from 'lucide-react'
 import {
   ACESFilmicToneMapping, BoxGeometry, Color, CylinderGeometry,
   DodecahedronGeometry, Group, MathUtils,
@@ -32,8 +32,9 @@ import { createRoomCutaway } from './roomCutaway.ts'
 import { applyRoomReflections, createRoomReflections, roomReflectionIntensity } from './roomEnvironment.ts'
 import type { RoomReflections } from './roomEnvironment.ts'
 import { useDeferredSceneEffect } from './deferredScene.ts'
+import { createRoomCompanion } from './companionModel.ts'
 
-type Target = { category: Category } | { action: SceneAction } | { utility: KitchenUtility } | { componentId: string }
+type Target = { category: Category } | { action: SceneAction } | { utility: KitchenUtility } | { componentId: string } | { companion: true }
 const targetLabels: Record<SceneAction, string> = {
   fridge: 'Open or close your fridge',
   stock: 'Open the shared shopping list',
@@ -57,6 +58,7 @@ type WorldControls = {
   focusOn: (target: SceneFocus) => void
   reset: () => void
   brew: () => void
+  greet: () => void
 }
 
 export type KitchenPreviewProps = Pick<RoomWorldProps, 'roomStyle' | 'paused' | 'components' | 'onComponentSelect'> & {
@@ -89,14 +91,15 @@ export function KitchenPreview({ onComponentSelect, wholeRoomView = true, ...pro
 
 export default function KitchenWorld({
   roomStyle, paused, deferColdStart = false, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent,
-  onSelect, onAction, onOpenChores, onRestock, grime = noGrime, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false,
+  onSelect, onAction, onOpenChores, onRestock, grime = noGrime, components, editMode = false, wholeRoomView = false, selectedComponentId = null, placementPreviewId = null, onComponentSelect, overviewFocus = false, onCompanion,
   previewOnly = false, roomZoom = 1, cameraToolsInQuickActions = false, onStatus,
 }: RoomWorldProps & { previewOnly?: boolean; roomZoom?: number; cameraToolsInQuickActions?: boolean; onStatus?: KitchenPreviewProps['onStatus'] }) {
   const host = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const componentLabels = useRef(new Map<string, HTMLButtonElement>())
+  const companionLabel = useRef<HTMLButtonElement>(null)
   const controls = useRef<WorldControls | null>(null)
-  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus, previewOnly, roomZoom, onStatus, grime })
+  const state = useRef({ roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus, previewOnly, roomZoom, onStatus, grime, onCompanion })
   const [open, setOpen] = useState(true)
   const [evening, setEvening] = useState(false)
   const [zoom, setZoom] = useState(1)
@@ -110,7 +113,7 @@ export default function KitchenWorld({
   const [renderingPaused, setRenderingPaused] = useState(false)
   const [cameraMoving, setCameraMoving] = useState(false)
   const [brewing, setBrewing] = useState(false)
-  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus, previewOnly, roomZoom, onStatus, grime }
+  state.current = { roomStyle, paused, panelOpen, focusRequest, counts, selected, fundFraction, memberCount, expenseCount, stockEvent, onSelect, onAction, onOpenChores, onRestock, components, editMode, wholeRoomView, selectedComponentId, placementPreviewId, onComponentSelect, overviewFocus, previewOnly, roomZoom, onStatus, grime, onCompanion }
   hoverRef.current = hovered
   const installed = installedRoomComponents(components, 'kitchen')
   const placementLabelsHidden = editMode && !!placementPreviewId
@@ -174,6 +177,9 @@ export default function KitchenWorld({
     scene.add(lighting)
     // These meshes change individually; animated groups keep their own transforms.
     batchStaticMeshes(room, scenery.preserved)
+    // Added after batching: the companion animates as a whole and only lives in household rooms.
+    const companion = !state.current.previewOnly && state.current.onCompanion ? createRoomCompanion('kitchen') : null
+    if (companion) room.add(companion.root)
 
     const flyingShapes = {
       produce: new DodecahedronGeometry(0.2, 0),
@@ -298,6 +304,11 @@ export default function KitchenWorld({
         focusOn('brew')
         wake(1800)
       },
+      greet: () => {
+        if (!companion || state.current.editMode) return
+        companion.greet(performance.now())
+        wake(2800)
+      },
     }
     controls.current = currentControls
     doors.forEach((door, index) => { door.rotation.y = index ? -1.72 : -1.97 })
@@ -335,6 +346,7 @@ export default function KitchenWorld({
       const intersections = raycaster.intersectObjects(room.children, true)
       const hit = intersections.find((intersection) => isSceneObjectVisible(intersection.object, room))
       let object = hit?.object
+      if (companion?.contains(object) && !state.current.editMode) return { companion: true }
       const component = object ? componentScene.componentForObject(object) : null
       if (state.current.previewOnly) {
         if (component && state.current.onComponentSelect) return { componentId: component.id }
@@ -433,7 +445,10 @@ export default function KitchenWorld({
       if (!cancelled && !(state.current.previewOnly && state.current.paused)
         && event.button === 0 && !moved && Math.hypot(event.clientX - startX, event.clientY - startY) < 5) {
         const target = hitTarget(event)
-        if (target && 'componentId' in target) state.current.onComponentSelect?.(target.componentId)
+        if (target && 'companion' in target) {
+          currentControls.greet()
+          state.current.onCompanion?.()
+        } else if (target && 'componentId' in target) state.current.onComponentSelect?.(target.componentId)
         else if (target && 'category' in target) state.current.onSelect(target.category)
         else if (target && 'utility' in target) {
           focusOn(target.utility)
@@ -708,6 +723,11 @@ export default function KitchenWorld({
         }
         shadowsMoving ||= actor.position.y !== previousY || actor.rotation.z !== previousRotation
       }
+      if (companion) {
+        const companionUpdate = companion.update(now, { reducedMotion: reducedMotion.matches, hidden: latest.editMode })
+        transitioning ||= companionUpdate.animating
+        shadowsMoving ||= companionUpdate.shadowsChanged
+      }
       const targetLighting = currentControls.evening ? 1 : 0
       lightingMix = reducedMotion.matches ? targetLighting : dampTo(lightingMix, targetLighting, 4, delta)
       transitioning ||= lightingMix !== targetLighting
@@ -781,6 +801,15 @@ export default function KitchenWorld({
           && x > area.x + insetX && x < area.x + area.width - insetX
           && y > area.y + insetY && y < area.y + area.height - insetY ? 'visible' : 'hidden'
       }
+      const askLabel = companionLabel.current
+      if (askLabel && companion) {
+        companion.anchor.getWorldPosition(projected).project(camera)
+        const x = (projected.x * 0.5 + 0.5) * viewport.width
+        const y = (-projected.y * 0.5 + 0.5) * viewport.height
+        askLabel.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`
+        askLabel.style.visibility = companion.root.visible && isSceneObjectVisible(companion.anchor, room) && projected.z > -1 && projected.z < 1
+          && x > area.x + 18 && x < area.x + area.width - 18 && y > area.y + 18 && y < area.y + area.height - 18 ? 'visible' : 'hidden'
+      }
       if (!initialized) {
         initialized = true
         renderer.domElement.dataset.renderReady = 'true'
@@ -806,6 +835,7 @@ export default function KitchenWorld({
       placementArrow.dispose()
       hologram.dispose()
       componentScene.dispose()
+      companion?.dispose()
       const geometries = new Set<BufferGeometry>(Object.values(flyingShapes))
       scene.traverse((object) => { if (object instanceof Mesh) geometries.add(object.geometry) })
       geometries.forEach((geometry) => geometry.dispose())
@@ -892,6 +922,12 @@ export default function KitchenWorld({
             onMouseLeave={() => setHovered(null)} onFocus={() => setHovered({ componentId: component.id })} onBlur={() => setHovered(null)}>
             <span className="hotspot-dot"><Plus size="0.75rem" /></span><span className="hotspot-label">{componentAccessibleName(component, installed)}</span>
           </button>)}
+          {onCompanion && !previewOnly && !editMode && <button type="button" ref={companionLabel} className="world-hotspot hotspot-companion"
+            aria-label="Ask the kettle a question" onClick={() => { controls.current?.greet(); onCompanion() }}
+            onMouseEnter={() => setHovered({ companion: true })} onMouseLeave={() => setHovered(null)}
+            onFocus={() => setHovered({ companion: true })} onBlur={() => setHovered(null)}>
+            <span className="hotspot-dot"><MessageCircleQuestion size="0.75rem" aria-hidden="true" /></span><span className="hotspot-label">Ask the kettle</span>
+          </button>}
         </div>}
         <div className="world-view-label" data-visible={!overviewFocus && (focused !== 'room' || componentFocused)}><span className="view-label-dot" />{overviewFocus ? focusLabels.room : selectedComponent && componentFocused ? componentAccessibleName(selectedComponent, installed) : focusLabels[focused]}{cameraMoving && <span className="view-moving">Adjusting view</span>}</div>
         <div className="world-camera-controls">
@@ -900,7 +936,7 @@ export default function KitchenWorld({
           <button className="icon-button" onClick={() => changeZoom(-1)} disabled={interactionBlocked || zoom <= roomZoomLimits.min} aria-label="Zoom out" title="Zoom out"><Minus size="1.1875rem" /></button>
           {!toolsWithActions && <><i />{resetControl}{labelsControl}{lightControl}</>}
         </div>
-        <div className="world-interaction-hint"><Move size="0.8125rem" />{hovered ? ('componentId' in hovered ? hoveredComponent ? componentChoresLabel(hoveredComponent, installed, grime[hoveredComponent.id]) : 'Open object chores' : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : previewOnly && !onComponentSelect ? 'Drag to turn. Pinch to zoom.' : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
+        <div className="world-interaction-hint"><Move size="0.8125rem" />{hovered ? ('companion' in hovered ? 'Ask the kettle a question' : 'componentId' in hovered ? hoveredComponent ? componentChoresLabel(hoveredComponent, installed, grime[hoveredComponent.id]) : 'Open object chores' : 'category' in hovered ? `${categoryLabels[hovered.category]}: open the receipt book` : 'utility' in hovered ? hovered.utility === 'supplies' ? 'Restock kitchen supplies' : 'Open related chores' : targetLabels[hovered.action]) : previewOnly && !onComponentSelect ? 'Drag to turn. Pinch to zoom.' : editMode ? 'Edit from the list. Use + for chores.' : 'Drag to turn. Use + for chores.'}</div>
         {!editMode && <div className="world-quick-actions" role="group" aria-label="Kitchen quick actions">
           {componentAtSlot(components, 'kitchen-fridge') && <button className="world-fridge-toggle" onClick={toggle} disabled={interactionBlocked} aria-label={open ? 'Close the fridge' : 'Peek inside'} aria-pressed={open}><Snowflake size="0.9375rem" /><span className="world-action-label">{open ? 'Close the fridge' : 'Peek inside'}</span><span>{open ? 'Keep it cool' : 'See what is shared'}</span></button>}
           {componentAtSlot(components, 'kitchen-kettle') && <button className="world-kettle-toggle" onClick={() => controls.current?.brew()} disabled={interactionBlocked} aria-label="Put the kettle on" aria-pressed={brewing}><Coffee size="1rem" /><span className="world-action-label">{brewing ? 'Kettle is on' : 'Tea break'}</span></button>}

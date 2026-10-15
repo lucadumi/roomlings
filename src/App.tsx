@@ -39,6 +39,8 @@ import { dateTitle, monthTitle } from './format.ts'
 import { GameHome } from './GameHome.tsx'
 import { RoomStyleForm } from './RoomStyle.tsx'
 import type { KitchenAction } from './room.ts'
+import { CompanionPanel } from './Companion.tsx'
+import type { CompanionAction } from './companionAnswers.ts'
 import type { FocusRequest } from './camera.ts'
 import { defaultRoom, resolveEntry, roomPath } from './roomNavigation.ts'
 import { ChoreForm, ChoresPanel } from './Chores.tsx'
@@ -65,11 +67,11 @@ const browserStorageMessage = 'Could not save browser access. Keep this tab open
 const browserAccessEndedMessage = 'Browser access ended. Sign in or recover your access.'
 const roomHelpHint = 'Open Rooms to choose a room preview. Drag to turn the view, scroll or pinch to zoom, or use the camera controls. Chores and supplies also work without 3D.'
 
-type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit' | 'notifications'
+type Page = 'overview' | 'shopping' | 'groceries' | 'bills' | 'settle' | 'kitchen' | 'budget' | 'chores' | 'supplies' | 'objects' | 'room-edit' | 'notifications' | 'companion'
 const pageFocus: Record<Page, FocusRequest['target']> = {
   overview: 'room', shopping: 'stock', groceries: 'ledger', bills: 'ledger', settle: 'settle',
   kitchen: 'roommates', budget: 'budget', chores: 'chores', supplies: 'supplies', objects: 'room', 'room-edit': 'room',
-  notifications: 'room',
+  notifications: 'room', companion: 'room',
 }
 type Dialog = 'expense' | 'shopping-add' | 'bill-create' | 'create' | 'join' | 'recover' | 'access' | 'invite' | 'settings' | 'room-style' | 'rooms' | 'help' | 'room-admins'
   | { account: AccountIntent }
@@ -672,6 +674,19 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       visit('bills')
     } else visit('settle')
   }
+  const companionActions = new Set<CompanionAction>(['shopping', 'groceries', 'bills', 'budget', 'settle', 'roommates', 'invite',
+    'chores', 'supplies', 'objects', 'notifications', ...(canEditRooms ? ['edit-room', 'room-style'] as const : [])])
+  const companionAction = (action: CompanionAction) => {
+    if (action === 'shopping') { setShoppingView('list'); visit('shopping') }
+    else if (action === 'groceries' || action === 'bills' || action === 'budget' || action === 'settle' || action === 'notifications') visit(action)
+    else if (action === 'roommates') visit('kitchen')
+    else if (action === 'invite') openDialog('invite')
+    else if (action === 'chores') openChores()
+    else if (action === 'supplies') openSupplies()
+    else if (action === 'objects') openRoomObjects()
+    else if (action === 'edit-room') editRoom()
+    else openDialog('room-style')
+  }
   const openSupplies = (roomId = currentRoom) => {
     setSupplyRoom(roomId)
     visit('supplies')
@@ -1091,6 +1106,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
       onObjects={() => { if (page === 'room-edit') setSelectedComponentId(null); else openRoomObjects() }}
       canEditRooms={canEditRooms} onRoomStyle={() => openDialog('room-style')} onHelp={() => openDialog('help')} onSettings={() => openDialog('settings')}
       unreadNotifications={inbox.unreadCount} onNotifications={() => visit(page === 'notifications' ? 'overview' : 'notifications')}
+      onCompanion={() => visit('companion', null)}
       onAction={interact} onInvite={() => openDialog('invite')}
       onSelect={(category) => { visit('groceries'); setFilter(category); setFocusRequest((previous) => ({ target: 'fridge', id: previous.id + 1 })) }}
     />
@@ -1104,8 +1120,8 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
     </div>}
     {page !== 'overview' && (!dialog || dialog === 'rooms' || page === 'room-edit') && <RoomPanel
       title={activePlacement ? `Try ${activePlacement.name.trim() || componentCatalog[activePlacement.kind].name}`
-        : { shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', notifications: 'Notifications.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
-      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', notifications: 'Your chore turns and the money that involves you.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
+        : { shopping: 'The shopping bag.', groceries: 'The receipt book.', bills: 'The receipt book.', settle: 'Keep it even.', kitchen: 'Your kind of people.', budget: 'The little house pot.', chores: 'Household chores.', notifications: 'Notifications.', companion: 'Ask the kettle.', supplies: `${roomCatalog[supplyRoom].name} supplies.`, objects: 'Components.', 'room-edit': 'Edit room.' }[page]}
+      subtitle={{ shopping: 'Plan together. Record the receipt after someone has paid.', groceries: 'Paid grocery runs and shared costs for the selected month.', bills: 'The regular costs of home, in the same shared ledger.', settle: 'Repayments across groceries and bills, over all months.', kitchen: 'Your roommates and shared household settings.', budget: 'Your remaining grocery budget for the selected month.', chores: 'One schedule for your home, with room-by-room assignments and completed turns.', notifications: 'Your chore turns and the money that involves you.', companion: 'Quick answers about sharing a home, right here in the room.', supplies: 'Use the same shopping list for supplies across your home.', objects: '', 'room-edit': '' }[page]}
       view={page === 'bills' ? `bills:${billMonth}` : page === 'shopping' ? `shopping:${shoppingView}` : page === 'chores' ? `chores:${choreView}:${choreFilter.room}:${choreFilter.area}:${choreFilter.componentId ?? ''}` : page === 'objects' ? `objects:${selectedComponentId ?? ''}` : page}
       suspended={dialog !== null && dialog !== 'rooms'} busy={page === 'room-edit' && busy}
       side={page === 'objects' || page === 'room-edit' ? 'left' : 'right'}
@@ -1132,6 +1148,7 @@ export function App({ roomId: currentRoom = defaultRoom }: { roomId?: RoomId }) 
           onEdit={(chore) => openDialog({ editChore: chore })} onComplete={(chore) => openDialog({ completeChore: chore })}
           onArchive={(chore) => openDialog({ archiveChore: chore })} onUndo={(completion) => openDialog({ undoChore: completion })}
           onRestock={() => openSupplies(choreFilter.room === 'all' || choreFilter.room === 'home' ? currentRoom : choreFilter.room)} />}
+        {page === 'companion' && <CompanionPanel key={currentRoom} roomId={currentRoom} available={companionActions} onAction={companionAction} />}
         {page === 'notifications' && <InboxPanel household={household} items={inbox.items} state={inbox.state} loadError={inbox.loadError}
           onRetry={inbox.retry} onReadAll={inbox.readAll} onOpen={openNotification}
           alerts={session.token === null ? <BrowserAlerts householdId={household.id} csrfToken={account?.csrfToken} /> : undefined} />}

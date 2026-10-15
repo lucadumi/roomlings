@@ -31,4 +31,6 @@ export type RoomWorldProps = {
   selectedComponentId?: string | null
   placementPreviewId?: string | null
   onComponentSelect?: (id: string) => void
+  // Present only in a household room, where the kettle companion opens its question panel.
+  onCompanion?: () => void
 }
