@@ -1,0 +1,67 @@
+.companion { display: flex; flex-direction: column; gap: 1rem; }
+.companion-ask { display: flex; gap: 0.5rem; }
+.companion-field { display: flex; flex: 1; align-items: center; gap: 0.5rem; min-width: 0; min-height: var(--control-height); padding: 0 0.625rem; border: 1px solid var(--field-border); border-radius: var(--control-radius); background: var(--field-surface); color: var(--leaf-ink); }
+.companion-field:focus-within { border-color: var(--focus-ring); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.companion-field input { flex: 1; min-width: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: max(14px, 0.875rem); }
+.companion-field input:focus { outline: none; }
+.companion-field input::placeholder { color: var(--muted); }
+.companion-ask .button { flex: none; }
+.companion-answer { display: flex; flex-direction: column; align-items: flex-start; gap: 0.625rem; padding: 1rem; border: 1px solid var(--section-border); border-radius: 0.75rem; background: var(--control-surface); }
+.companion-answer h3 { width: 100%; margin: 0; font-family: var(--font-heading); font-size: 1.25rem; line-height: 1.25; }
+.companion-answer-toggle { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.companion-answer-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 0.25rem; border-radius: 0.25rem; }
+.companion-answer-toggle svg { flex: none; color: var(--muted); transition: transform 160ms ease; }
+.companion-answer-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.companion-answer-body { display: flex; flex-direction: column; align-items: flex-start; gap: 0.625rem; }
+.companion-answer-body[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .companion-answer-toggle svg { transition: none; } }
+.companion-answer p { margin: 0; font-size: max(14px, 0.875rem); line-height: 1.6; }
+.companion-answer .button { gap: 0.375rem; }
+.companion-group { margin: 0 0 0.5rem; color: var(--muted); font-size: max(12px, 0.75rem); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.companion-suggestions ul { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.companion-suggestion { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; width: 100%; min-height: 2.75rem; padding: 0.625rem 0.75rem; border: 1px solid var(--section-border); border-radius: 0.625rem; background: var(--control-surface); color: var(--ink); font: inherit; font-size: max(14px, 0.875rem); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.companion-suggestion:hover { border-color: var(--leaf-border); background: var(--leaf-soft); }
+.companion-suggestion:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
+.companion-suggestion svg { flex: none; color: var(--muted); }
+.companion .field-hint { margin: 0; }
+
+/* The kettle perches on the dock, feet resting on its top edge. */
+.companion-kettle { position: absolute; right: 1rem; bottom: calc(100% - 0.375rem); z-index: 1; width: 4.5rem; height: 4.25rem; padding: 0; border: 0; background: none; cursor: pointer; }
+/* With a right-hand panel open it hops to the dock's left end to keep the panel clear. */
+.game-home[data-panel-open="true"][data-panel-side="right"] .companion-kettle { right: auto; left: 1rem; }
+.companion-kettle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 0.75rem; }
+.companion-kettle-art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; transition: transform 160ms ease; }
+.companion-kettle:hover .companion-kettle-art { transform: translateY(-0.1875rem); }
+.companion-kettle-body, .companion-kettle-eyes, .companion-kettle-steam circle { transform-box: fill-box; }
+.companion-kettle-body { transform-origin: 50% 100%; }
+.companion-kettle-eyes { transform-origin: center; animation: kettle-blink 4.2s infinite; }
+.companion-kettle-steam circle { opacity: 0; transform-origin: center; }
+.companion-kettle[data-greeting="true"] .companion-kettle-body { animation: kettle-hop 900ms ease-out; }
+.companion-kettle[data-greeting="true"] .companion-kettle-steam circle { animation: kettle-steam 1400ms ease-out both; }
+.companion-kettle[data-greeting="true"] .companion-kettle-steam circle:nth-child(2) { animation-delay: 160ms; }
+.companion-kettle[data-greeting="true"] .companion-kettle-steam circle:nth-child(3) { animation-delay: 320ms; }
+@keyframes kettle-blink { 0%, 94% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } 98%, 100% { transform: scaleY(1); } }
+@keyframes kettle-hop { 0% { transform: translateY(0) scale(1, 1); } 15% { transform: translateY(0) scale(1.08, 0.9); } 40% { transform: translateY(-10%) scale(0.96, 1.05); } 65% { transform: translateY(0) scale(1.05, 0.95); } 100% { transform: translateY(0) scale(1, 1); } }
+@keyframes kettle-steam { 0% { opacity: 0; transform: translateY(20%) scale(0.5); } 30% { opacity: 0.9; } 100% { opacity: 0; transform: translateY(-40%) scale(1.3); } }
+.companion-kettle-bubble { position: absolute; bottom: calc(100% + 0.375rem); left: 50%; transform: translateX(-50%); padding: 0.25rem 0.625rem; border: 1px solid var(--control-border); border-radius: 0.75rem; background: var(--control-surface); box-shadow: var(--control-shadow); color: var(--ink); font-size: max(11px, 0.6875rem); font-weight: 650; line-height: 1.4; white-space: nowrap; transition: opacity 160ms ease; }
+.companion-kettle-bubble::after { content: ""; position: absolute; top: 100%; left: 50%; width: 0.5rem; height: 0.5rem; margin-top: -0.25rem; border-right: 1px solid var(--control-border); border-bottom: 1px solid var(--control-border); background: var(--control-surface); transform: translateX(-50%) rotate(45deg); }
+.companion-kettle[aria-pressed="true"] .companion-kettle-bubble { opacity: 0; }
+/* Mid-width windows leave no free stretch of dock beside an open panel. */
+@media (max-width: 1000px) {
+  .game-home[data-panel-open="true"][data-panel-side="right"] .companion-kettle { display: none; }
+}
+@media (max-width: 800px) {
+  .game-bottom .game-dock { position: relative; left: auto; }
+  .companion-kettle { right: 0.375rem; width: 4.25rem; height: 3.75rem; }
+  /* Bottom sheets rest on the dock, so the kettle steps away while one is open. */
+  .game-home[data-panel-open="true"] .companion-kettle { display: none; }
+}
+/* Short, narrow windows have no free dock edge between the quick actions and the camera rail. */
+@media (max-width: 560px) and (max-height: 620px) {
+  .companion-kettle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .companion-kettle-art, .companion-kettle-bubble { transition: none; }
+  .companion-kettle:hover .companion-kettle-art { transform: none; }
+  .companion-kettle-eyes, .companion-kettle[data-greeting="true"] .companion-kettle-body, .companion-kettle[data-greeting="true"] .companion-kettle-steam circle { animation: none; }
+}

@@ -236,6 +236,12 @@ The bell in the top-right tools opens your notifications: chores due or overdue 
 
 With an account, **Alerts in this browser** at the top of the panel sends your chore turns and shared money to this browser, using the same Chores and Money choices as the iPhone app. Your browser asks for permission first; **Turn off** stops alerts on this browser only.
 
+## Asking the kettle
+
+A small cartoon kettle perches on the tool dock in every room. Select it to open a question panel. It moves to the dock's other end while a right-hand panel is open, and steps aside on narrower windows when a panel needs the space, or in windows too short and narrow to leave a free spot on the dock. It is a flat cartoon that blinks and hops without using 3D, so it works even when the room cannot render. Each room starts with four of its own questions. As you type, the panel suggests matching questions, tolerating typos and half-typed words; **Ask** or Enter shows the best answer. Answers with a related tool include a button that opens it, and admin-only tools appear only for admins.
+
+Answers come from a fixed guide bundled with the app. Matching runs in the browser, so questions are never sent to a server or an AI model. The kettle explains how Roomlings works; balances still come only from the shared ledger. It steps aside while a room is being edited.
+
 ## Chores and restocking
 
 Add a chore with a room or whole-home scope, an optional area or installed object, a due date and a one-off or recurring schedule. One assigned person keeps the task; multiple people rotate in the chosen order. The next turn advances only after a saved completion. Any active roommate can do the task, and history records who actually completed it.

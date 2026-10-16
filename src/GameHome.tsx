@@ -14,6 +14,7 @@ import { roomViews } from './roomViews.ts'
 import { getRoomComponents } from '../shared/roomComponents.ts'
 import type { RoomComponent } from '../shared/roomComponents.ts'
 import type { ChoreGrime } from '../shared/chores.ts'
+import { CompanionKettle } from './CompanionKettle.tsx'
 
 type Props = {
   roomId: RoomId
@@ -46,6 +47,8 @@ type Props = {
   activeTool: KitchenAction | 'chores' | 'objects' | 'room-edit' | 'notifications' | null
   unreadNotifications: number
   onNotifications: () => void
+  companionActive: boolean
+  onCompanion: () => void
   components?: readonly RoomComponent[]
   editMode: boolean
   wholeRoomView: boolean
@@ -77,7 +80,7 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
 export function GameHome({
   roomId, onRooms, roomsOpen, busy, dueChores, grime, dueChoreCount, onOpenChores, onRestock, household, memberId, counts, selected, remaining, yourBalance, transferCount, receiptCount,
   monthControls, monthLabel, stockEvent, focusRequest, syncState, inert, deferColdStart = false, panelOpen, activeTool, onAction, onInvite, onSelect,
-  components, editMode, wholeRoomView, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings, unreadNotifications, onNotifications,
+  components, editMode, wholeRoomView, selectedComponentId, placementPreviewId = null, onComponentSelect, onObjects, canEditRooms, onRoomStyle, onHelp, onSettings, unreadNotifications, onNotifications, companionActive, onCompanion,
   panelSide = 'right',
   overviewFocus = false,
 }: Props) {
@@ -195,6 +198,7 @@ export function GameHome({
         <button className="dock-tool" data-tool="chores" onClick={() => onOpenChores(null)} aria-label="Chores" title="Chores" aria-pressed={activeTool === 'chores'}><ListChecks size="1.3125rem" /><span>Chores</span>{dueChoreCount > 0 && <i className="tool-count">{dueChoreCount}</i>}</button>
         <button className="dock-tool" data-tool="settle" onClick={() => onAction('settle')} aria-label="Settle up" title="Settle up" aria-pressed={activeTool === 'settle'}><Wallet size="1.3125rem" /><span>Settle up</span>{transferCount > 0 && <i className="tool-count">{transferCount}</i>}</button>
         <button className="dock-tool" data-tool="roommates" onClick={() => onAction('roommates')} aria-label="The roommates" title="People" aria-pressed={activeTool === 'roommates'}><Users size="1.3125rem" /><span>People</span></button>
+        {!editMode && <CompanionKettle active={companionActive} onOpen={onCompanion} />}
       </nav>
       <span className={`room-sync ${syncState}`}><span className={`connection-dot ${syncState}`} />{syncState === 'offline' ? 'Offline' : editMode ? 'Private room preview' : 'All fresh & saved'}<small>{monthLabel}</small></span>
     </div>

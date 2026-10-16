@@ -242,6 +242,8 @@ test.describe('responsive current app', () => {
       await page.screenshot({ path: testInfo.outputPath('vertical-camera-rail.png') })
       const world = page.locator('.kitchen-world')
       const rail = page.locator('.world-camera-controls')
+      // No room is left above the dock here, so the kettle companion must not cover the rail.
+      await expect(page.getByRole('button', { name: 'Ask the kettle a question', exact: true })).toBeHidden()
       for (const button of await rail.getByRole('button').all()) await expectReachable(button)
       await rail.evaluate((element) => { element.scrollTop = 0 })
       await rail.hover()
