@@ -38,6 +38,26 @@ test('the legal pages name the operator, contact address, age and authority', as
   await expect(page.getByText('Last updated')).toHaveCount(0)
 })
 
+test('the side index follows the reader and links to each section', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/privacy')
+  const index = page.getByRole('navigation', { name: 'On this page', exact: true })
+  await expect(index.getByRole('link')).toHaveText([
+    'What we keep', "What we don't do", 'Why we use it', 'Who helps us', 'How long we keep it',
+    'Your browser', 'Your rights', 'Age', 'Changes',
+  ])
+  await expect(index.getByRole('link', { name: 'What we keep', exact: true })).toHaveAttribute('aria-current', 'location')
+  await index.getByRole('link', { name: 'Your rights', exact: true }).click()
+  await expect(page).toHaveURL(/\/privacy#your-rights$/)
+  await expect(page.getByRole('heading', { name: 'Your rights', exact: true })).toBeInViewport()
+  await expect(index.getByRole('link', { name: 'Your rights', exact: true })).toHaveAttribute('aria-current', 'location')
+  await expect(index).toBeInViewport()
+  await page.goto('/terms#law')
+  await expect(page.getByRole('heading', { name: 'Law', exact: true })).toBeInViewport()
+  await expect(page.getByRole('navigation', { name: 'On this page', exact: true }).getByRole('link', { name: 'Law', exact: true }))
+    .toHaveAttribute('aria-current', 'location')
+})
+
 test('legal pages fit narrow screens and keep keyboard entry to the content', async ({ page }) => {
   await page.goto('/privacy')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy')

@@ -282,7 +282,7 @@ The landing page's **Explore the rooms** section uses one shared template for al
 
 All rooms support selecting their 3D objects, with chapter or fixture buttons as a keyboard alternative. They share a camera angle and fit their measured scene areas throughout the scroll tours. A loading indicator stays visible until the renderer is ready; a text-only message replaces an unavailable scene. The room remains stationary while its camera and descriptions change. Only the hero and closing letter use standalone 2D illustrations. The closing invitation retains one direct Start sharing CTA.
 
-The compact footer links to the home guide, room exploration and questions. Its logo returns to the start of the page without changing household access. A second row links to the **Privacy**, **Terms** and **Contact** pages at `/privacy`, `/terms` and `/contact`. They open on every device, including phones, and each has **Back to home**.
+The compact footer links to the home guide, room exploration and questions. Its logo returns to the start of the page without changing household access. A second row links to the **Privacy**, **Terms** and **Contact** pages at `/privacy`, `/terms` and `/contact`. They open on every device, including phones, and each has **Back to home**. On wide screens a sticky index beside the text marks the section you are reading; narrower screens show it as a contents list above the text.
 
 ## Development notes
 
