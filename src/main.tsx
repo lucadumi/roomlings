@@ -11,6 +11,7 @@ import { Feedback } from './Feedback.tsx'
 import { AppBoundary } from './AppRecovery.tsx'
 
 const Welcome = lazy(() => import('./landing/Welcome.tsx'))
+const Legal = lazy(() => import('./landing/Legal.tsx'))
 const App = lazy(() => import('./App.tsx').then(({ App }) => ({ default: App })))
 function subscribeLocation(change: () => void) {
   window.addEventListener('hashchange', change)
@@ -27,7 +28,7 @@ function Entry() {
   // Phones and tablets stay on the landing; the household is the iOS app, not a mobile browser.
   const handheld = landingDevice(navigator) !== 'desktop'
   return <Suspense fallback={<SceneLoading label="Opening Roomlings..." />}>
-    {handheld || entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
+    {entry.kind === 'legal' ? <Legal page={entry.page} /> : handheld || entry.kind === 'home' ? <Welcome /> : entry.kind === 'unavailable'
       ? <Welcome accessNotice={<Feedback>Room unavailable. Sign in to open your home.</Feedback>} />
       : <App roomId={entry.roomId} />}
   </Suspense>

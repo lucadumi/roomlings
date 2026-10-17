@@ -22,7 +22,8 @@ async function expectMobileAppLanding(page: Page, device: 'ios' | 'mobile' = 'io
   await expect(page.locator('.welcome-navigation')).toHaveCSS('border-top-width', '0px')
   await expect(page.locator('.welcome-header')).toHaveCSS('border-bottom-width', '2px')
   await expect(page.getByRole('link', { name: /^(Sign in|Get started|Create our household|Start sharing|Continue in browser)$/ })).toHaveCount(0)
-  await expect(page.locator('.welcome a[href^="/"]')).toHaveCount(0)
+  await expect(page.locator('.welcome a[href^="/"]:not(.welcome-footer-legal a)')).toHaveCount(0)
+  await expect(page.locator('.welcome-footer-legal').getByRole('link')).toHaveText(['Privacy', 'Terms', 'Contact'])
   await expect(page.locator('.welcome a[href*="apps.apple.com"], .welcome a[href*="play.google.com"]')).toHaveCount(0)
   const letter = page.locator('#get-started')
   await expect(letter.getByRole('heading')).toHaveText('Make room for your people.')
@@ -222,6 +223,16 @@ test.describe('iPhone entry', () => {
     await expectMobileAppLanding(page)
     expect(await page.evaluate(() => localStorage.getItem('roomlings.session'))).toBe(populatedHousehold.token)
     expect(requests).toEqual([])
+  })
+
+  test('privacy, terms and contact stay readable on phones', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('.welcome-footer-legal').getByRole('link', { name: 'Privacy', exact: true }).click()
+    await expect(page).toHaveURL(/\/privacy$/)
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)).toBe(false)
+    await page.getByRole('link', { name: 'Back to home', exact: true }).click()
+    await expectMobileAppLanding(page)
   })
 
   test('direct account entry links stay on the mobile app landing', async ({ page }) => {

@@ -12,15 +12,15 @@ test('the footer navigates the public page without reading or changing household
     await page.goto(path)
     const footer = page.getByRole('contentinfo')
     await expect(footer.getByRole('navigation', { name: 'Footer', exact: true })).toBeVisible()
-    await expect(footer.getByRole('link')).toHaveCount(4)
+    await expect(footer.getByRole('link')).toHaveCount(7)
     await expect(footer.getByRole('heading')).toHaveCount(0)
     await expect(footer.getByText('\u00a9 2031 Roomlings', { exact: true })).toBeVisible()
-    const planned = footer.getByRole('group', { name: 'Planned pages', exact: true })
-    await expect(planned.getByText('Coming soon:', { exact: true })).toBeVisible()
-    for (const name of ['About', 'Privacy', 'Terms', 'Contact']) {
-      await expect(planned.getByText(name, { exact: true })).toBeVisible()
+    await expect(footer.getByText('Coming soon:')).toHaveCount(0)
+    const legal = footer.getByRole('navigation', { name: 'Legal', exact: true })
+    await expect(legal.getByRole('link')).toHaveText(['Privacy', 'Terms', 'Contact'])
+    for (const [name, href] of [['Privacy', '/privacy'], ['Terms', '/terms'], ['Contact', '/contact']]) {
+      await expect(legal.getByRole('link', { name, exact: true })).toHaveAttribute('href', href)
     }
-    await expect(planned.locator('a, button, [tabindex]')).toHaveCount(0)
     await page.evaluate(() => document.fonts.ready)
     for (const [label, hash, heading] of [
       ['Your home', '#how-it-works', 'Your home, shared.'],
@@ -93,7 +93,7 @@ test('the compact footer keeps the paper background and fits narrow screens with
         brand: { bottom: brand.bottom, right: brand.right },
         navigation: { top: navigation.top, left: navigation.left, right: navigation.right },
         copyright: { left: copyright.left, bottom: copyright.bottom },
-        clipped: [...element.querySelectorAll('a, p, .welcome-footer-planned > span')].filter((item) => {
+        clipped: [...element.querySelectorAll('a, p')].filter((item) => {
           const box = item.getBoundingClientRect()
           return box.left < 0 || box.right > document.documentElement.clientWidth || item.scrollWidth > item.clientWidth + 1
         }).map((item) => item.textContent?.trim()),
@@ -101,7 +101,8 @@ test('the compact footer keeps the paper background and fits narrow screens with
     })
     expect(layout.left).toBe(layout.header.left)
     expect(layout.right).toBe(layout.header.right)
-    expect(layout.height).toBeLessThanOrEqual(width < 760 ? 200 : 130)
+    // The legal row adds 44px link targets below the main row.
+    expect(layout.height).toBeLessThanOrEqual(width < 760 ? 200 : 140)
     expect(layout.overflow, `${width}x${height}`).toBe(false)
     expect(layout.clipped, `${width}x${height}`).toEqual([])
     if (width < 760) {
@@ -112,9 +113,9 @@ test('the compact footer keeps the paper background and fits narrow screens with
     }
   }
   await page.setViewportSize({ width: 320, height: 568 })
-  await page.addStyleTag({ content: '.welcome-footer p, .welcome-footer .welcome-text-link, .welcome-footer-planned { font-size: 24px; }' })
+  await page.addStyleTag({ content: '.welcome-footer p, .welcome-footer .welcome-text-link { font-size: 24px; }' })
   expect(await footer.evaluate((element) => ({
     page: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-    text: [...element.querySelectorAll('a, p, .welcome-footer-planned > span')].some((item) => item.scrollWidth > item.clientWidth + 1),
+    text: [...element.querySelectorAll('a, p')].some((item) => item.scrollWidth > item.clientWidth + 1),
   }))).toEqual({ page: false, text: false })
 })

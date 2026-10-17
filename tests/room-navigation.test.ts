@@ -29,3 +29,10 @@ test('old kitchen links and account/invitation/recovery fragments remain usable'
     assert.deepEqual(resolveEntry('/', hash), { kind: 'legacy', roomId: defaultRoom })
   }
 })
+
+test('privacy, terms and contact are public pages on every device', () => {
+  assert.deepEqual(resolveEntry('/privacy'), { kind: 'legal', page: 'privacy' })
+  assert.deepEqual(resolveEntry('/terms/'), { kind: 'legal', page: 'terms' })
+  assert.deepEqual(resolveEntry('/contact', '#account'), { kind: 'legal', page: 'contact' })
+  for (const path of ['/about', '/privacy/extra', '/legal']) assert.deepEqual(resolveEntry(path), { kind: 'unavailable' })
+})

@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Store } from '../server/store.ts'
-import { createApp } from '../server/app.ts'
+import { createApp, trustProxySetting } from '../server/app.ts'
 import { accessStateSchema, recoveryCodePrefix, recoveryRotationSchema } from '../shared/access.ts'
 import { householdSchema, localDate } from '../shared/domain.ts'
 import type { Session } from '../shared/domain.ts'
@@ -165,5 +165,41 @@ describe('roommate recovery and browser access', () => {
     assert.equal(limited.status, 429)
     assert.match((await limited.json()).error, /Wait a minute/)
     assert.equal((await call('/health')).status, 200)
+  })
+
+  it('limits each forwarded client separately only behind a configured proxy', async () => {
+    const proxied = createApp(store, { trustProxy: 1 }).listen(0, '127.0.0.1')
+    await once(proxied, 'listening')
+    try {
+      const code = `${recoveryCodePrefix}${randomBytes(32).toString('base64url')}`
+      const attempt = (base: string, client: string) => fetch(`${base}/api/recover`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': client },
+        body: JSON.stringify({ code, label: 'A browser' }),
+      })
+      const behindProxy = `http://127.0.0.1:${(proxied.address() as AddressInfo).port}`
+      for (let index = 0; index < 20; index++) assert.equal((await attempt(behindProxy, '203.0.113.7')).status, 401)
+      assert.equal((await attempt(behindProxy, '203.0.113.7')).status, 429)
+      assert.equal((await attempt(behindProxy, '198.51.100.4')).status, 401)
+      // Without a trusted proxy, a forged header cannot escape the limit.
+      for (let index = 0; index < 20; index++) assert.equal((await attempt(origin, `203.0.113.${index}`)).status, 401)
+      assert.equal((await attempt(origin, '198.51.100.4')).status, 429)
+    } finally {
+      proxied.close()
+      await once(proxied, 'close')
+    }
+  })
+})
+
+describe('trusted proxy configuration', () => {
+  it('accepts hop counts and explicit proxy addresses but never every hop', () => {
+    for (const value of [undefined, '', ' ', 'false']) assert.equal(trustProxySetting(value), false)
+    assert.equal(trustProxySetting('1'), 1)
+    assert.equal(trustProxySetting(' 2 '), 2)
+    for (const value of ['loopback', 'loopback, 10.0.0.0/8', '192.0.2.10', 'fd00::/8, uniquelocal']) {
+      assert.equal(trustProxySetting(value), value)
+    }
+    for (const value of ['true', '0', '11', '1.5', '-1', '*', 'proxy.example', '10.0.0.0/8/1', 'loopback/8', '10.0.0.1,']) {
+      assert.throws(() => trustProxySetting(value), /TRUST_PROXY must be/, value)
+    }
   })
 })
