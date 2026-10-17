@@ -26,6 +26,22 @@ Room authority is private persistence, not client-editable household JSON. `hous
 
 Rows carrying the retired example marker are preserved byte for byte during migration and remain in place, but the application refuses access, recovery, invitations, account membership joins and saves for them. This prevents legacy examples from being reclassified as real kitchens when the current public household schema ignores their old marker. Older legitimate rows with the original false marker remain readable.
 
+## New Postgres schema
+
+For a first deployment without SQLite data, create the schema explicitly. Put the target settings in `.env.migration`, then inspect the read-only plan:
+
+```sh
+npm run database:migrate -- --init
+```
+
+Apply it to the exact configured schema:
+
+```sh
+npm run database:migrate -- --init --apply --confirm-schema roomlings
+```
+
+`--init` refuses any schema that already exists, at any version, without changes. Use `--upgrade` for an existing application and the SQLite migration below to import existing data.
+
 ## Postgres schema upgrades
 
 Application schema version 7 adds `browser_push_devices`, which marks a push registration as a browser subscription; version 6 upgrades receive only that table. Application schema version 6 adds `inbox_reads`, each roommate's private notification read state; version 5 upgrades receive only that table. Application schema version 5 adds `analytics_events`, including its dedup, expiry and reporting indexes. Application schema version 4 adds `notification_preferences`, `push_devices`, `notification_events` and `notification_deliveries`, including uniqueness, claim and retention indexes. Versions 1 to 6 can upgrade directly to version 7, receiving any earlier tables they lack. Version 1 also receives version 2's recovery tables; versions 1 and 2 receive version 3's `household_room_owners` and `household_room_admins`; versions 1, 2 and 3 receive version 4's notification tables. Version 4 upgrades leave all existing tables and rows untouched.
@@ -139,7 +155,24 @@ Apple references verified for this implementation: [token authentication](https:
 
 ## Deployment
 
-Build with `npm run build`, then serve the build and API with `npm start`. Configure [Supabase accounts](accounts.md), HTTPS, the correct `APP_ORIGIN`, mail delivery, abuse limits, backups and a privacy/retention policy first.
+Build with `npm run build`, then serve the build and API with `npm start`. Before launch:
+
+- Configure [Supabase accounts](accounts.md), mail delivery from a verified domain, HTTPS and the correct `APP_ORIGIN`.
+- Create or migrate the Postgres schema, and set up backups.
+- Replace the placeholder `contactEmail` in `src/landing/legal.ts`, and name the hosting and email providers on the privacy page once chosen.
+
+### Reverse proxies
+
+Most hosts terminate HTTPS at a proxy. Set `TRUST_PROXY` so rate limits see each visitor's address instead of the proxy's:
+
+- A hop count, such as `1` for one load balancer in front of the API.
+- Or comma-separated proxy addresses, such as `loopback` or `10.0.0.0/8`.
+
+Leave it unset when clients connect directly. Trusting every hop is refused because clients can forge `X-Forwarded-For`. Production logs a warning when forwarded requests arrive without `TRUST_PROXY`.
+
+### Instances
+
+Run one API instance per database. Rate limits live in that process's memory, and SQLite needs one durable local disk. Separate push workers remain supported.
 
 Keep API writers sharing a database on compatible builds, even when no SQL schema upgrade is needed. Household mutation-retry receipts and private account-creation receipts live inside household JSON; an older server can pass the SQL schema check but discard that metadata on its next save. Coordinate deployment and restarts for every writer rather than relying on the schema version alone.
 

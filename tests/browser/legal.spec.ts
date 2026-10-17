@@ -1,0 +1,58 @@
+import { expect, test } from './account-fixtures.ts'
+import { contactEmail } from '../../src/landing/legal.ts'
+
+test.use({ reducedMotion: 'reduce' })
+
+test('privacy, terms and contact open from the footer without reading household access', async ({ page }) => {
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname.startsWith('/api/')) requests.push(request.url())
+  })
+  await page.goto('/')
+  for (const [name, path] of [['Privacy', '/privacy'], ['Terms', '/terms'], ['Contact', '/contact']]) {
+    await page.getByRole('contentinfo').getByRole('link', { name, exact: true }).click()
+    await expect(page).toHaveURL(new RegExp(`${path}$`))
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
+    await expect(page).toHaveTitle(`${name} · Roomlings`)
+    await expect(page.getByRole('contentinfo').getByRole('link', { name, exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByRole('link', { name: 'Back to home', exact: true })).toHaveAttribute('href', '/')
+  }
+  await page.getByRole('link', { name: 'Back to home', exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Share a home.')
+  expect(requests).toEqual([])
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([])
+})
+
+test('the legal pages name the operator, contact address, age and authority', async ({ page }) => {
+  await page.goto('/privacy')
+  const privacy = page.getByRole('main')
+  await expect(privacy).toContainText('Luca Dumitrescu in the Netherlands')
+  await expect(privacy).toContainText('Last updated 17 October 2026')
+  await expect(privacy.getByRole('link', { name: 'Autoriteit Persoonsgegevens', exact: true })).toHaveAttribute('href', /^https:\/\/autoriteitpersoonsgegevens\.nl\//)
+  await expect(privacy.getByRole('link', { name: contactEmail }).first()).toHaveAttribute('href', `mailto:${contactEmail}`)
+  await page.goto('/terms')
+  await expect(page.getByRole('main')).toContainText('You must be 16 or older.')
+  await expect(page.getByRole('main')).toContainText('Dutch law applies.')
+  await page.goto('/contact/')
+  await expect(page.getByRole('main').getByRole('link', { name: contactEmail })).toHaveAttribute('href', `mailto:${contactEmail}`)
+  await expect(page.getByText('Last updated')).toHaveCount(0)
+})
+
+test('legal pages fit narrow screens and keep keyboard entry to the content', async ({ page }) => {
+  await page.goto('/privacy')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy')
+  for (const [width, height] of [[1440, 960], [768, 1024], [390, 844], [320, 568]]) {
+    await page.setViewportSize({ width, height })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), `${width}x${height}`).toBe(false)
+    const edges = await page.evaluate(() => [
+      document.querySelector('.welcome-header')!.getBoundingClientRect().left,
+      document.querySelector('#legal-content')!.getBoundingClientRect().left,
+    ])
+    expect(edges[1], `${width}x${height}`).toBe(edges[0])
+    expect(edges[1]).toBeGreaterThanOrEqual(16)
+  }
+  await page.getByRole('link', { name: 'Skip to content', exact: true }).focus()
+  await expect(page.locator('.welcome-skip')).toBeInViewport()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('#legal-content')).toBeFocused()
+})

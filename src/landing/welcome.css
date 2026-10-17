@@ -109,7 +109,8 @@
 .welcome-footer-links { display: flex; align-items: center; flex-wrap: wrap; gap: 0 1.5rem; }
 .welcome-footer-links .welcome-text-link { max-width: 100%; min-width: max(44px, 2.75rem); font-size: max(12px, 0.75rem); font-weight: 500; overflow-wrap: anywhere; }
 .welcome-footer p { margin: 0; color: var(--muted); font-size: max(12px, 0.75rem); line-height: 1.8; }
-.welcome-footer-planned { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex-basis: 100%; order: 4; gap: 0.25rem 0.75rem; color: var(--muted); font-size: max(12px, 0.75rem); line-height: 1.8; }
+.welcome-footer-legal { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex-basis: 100%; order: 4; gap: 0 1.5rem; }
+.welcome-footer-legal .welcome-text-link { justify-content: center; min-width: max(44px, 2.75rem); color: var(--muted); font-size: max(12px, 0.75rem); font-weight: 500; }
 .welcome-access-notice { padding: 1rem 0 0; color: var(--muted); font-size: max(13px, 0.8125rem); line-height: 1.7; }
 .welcome-access-notice .form-error { margin: 0 0 0.625rem; }
 .welcome-access-notice .button-row { justify-content: flex-start; }
@@ -164,7 +165,7 @@ html:has(.welcome[data-motion="full"]) { scroll-behavior: smooth; }
   .welcome-invitation > .welcome-enter { grid-column: 1 / -1; justify-self: start; }
   .welcome-footer { margin-top: 2rem; gap: 0.5rem 1rem; }
   .welcome-footer-links { order: 3; width: 100%; }
-  .welcome-footer-planned { justify-content: flex-start; }
+  .welcome-footer-legal { justify-content: flex-start; }
 }
 @media (max-width: 370px) {
   .welcome { --welcome-edge: 1rem; }

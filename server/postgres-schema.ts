@@ -7,6 +7,7 @@ import {
 import { backfillRoomOwners } from './room-access-migration.ts'
 
 export type PostgresUpgradeResult = { applied: boolean; schema: string; fromVersion: number; toVersion: number }
+export type PostgresCreateResult = { applied: boolean; schema: string; toVersion: number }
 
 export async function schemaExists(db: PostgresDatabase): Promise<boolean> {
   return !!await db.prepare('SELECT 1 FROM pg_namespace WHERE nspname = ?').get(db.schema)
@@ -43,6 +44,24 @@ export async function initializePostgres(db: PostgresDatabase): Promise<void> {
       CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);`)
     await protectPrivateTables(db, [...applicationTables, 'schema_migrations'])
     await recordSchemaVersion(db)
+  })
+}
+
+// Explicit first deployment: creates the application schema only when it does not exist yet.
+export async function createPostgres(db: PostgresDatabase, options: {
+  apply?: boolean; confirmSchema?: string
+} = {}): Promise<PostgresCreateResult> {
+  if ((options.apply || options.confirmSchema !== undefined) && options.confirmSchema !== db.schema) {
+    throw new Error('Explicitly confirm the exact target schema with --confirm-schema before creating it.')
+  }
+  return db.transaction(async () => {
+    if (await schemaExists(db)) {
+      throw new Error(`Application schema "${db.schema}" already exists. --init only creates a new schema; use --upgrade for an existing application. No changes were made.`)
+    }
+    const result = { applied: false, schema: db.schema, toVersion: applicationSchemaVersion }
+    if (!options.apply) return result
+    await initializePostgres(db)
+    return { ...result, applied: true }
   })
 }
 

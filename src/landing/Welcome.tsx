@@ -6,7 +6,7 @@ import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
 import { landingDevice } from './device.ts'
 import invitationPlant from '../assets/garden/left.png'
-import { roomPath } from '../roomNavigation.ts'
+import { legalPages, roomPath } from '../roomNavigation.ts'
 import './welcome.css'
 
 function subscribeToMotion(callback: () => void) {
@@ -167,13 +167,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <a className="welcome-text-link" href="#questions">Questions</a>
       </nav>
       <p>&copy; {new Date().getFullYear()} Roomlings</p>
-      <div className="welcome-footer-planned" role="group" aria-label="Planned pages">
-        <span>Coming soon:</span>
-        <span>About</span>
-        <span>Privacy</span>
-        <span>Terms</span>
-        <span>Contact</span>
-      </div>
+      <nav className="welcome-footer-legal" aria-label="Legal">
+        {legalPages.map((link) => <a className="welcome-text-link" key={link.id} href={link.path}>{link.label}</a>)}
+      </nav>
     </footer>
   </div>
 }

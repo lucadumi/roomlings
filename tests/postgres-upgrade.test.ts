@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { PostgresDatabase } from '../server/database.ts'
 import type { Row, Statement, Value } from '../server/database.ts'
-import { initializePostgres, upgradePostgres } from '../server/postgres-schema.ts'
+import { createPostgres, initializePostgres, upgradePostgres } from '../server/postgres-schema.ts'
 import {
   accountRecoverySchema, accountRecoveryTables, analyticsSchema, analyticsTables,
   applicationSchemaVersion, browserPushSchema, browserPushTables, inboxSchema, inboxTables, notificationIndexes, notificationSchema, notificationTables,
@@ -72,6 +72,34 @@ describe('PostgreSQL upgrade safety without a database connection', () => {
     assert.match(f.writes.at(-1)!.sql, /^INSERT INTO schema_migrations/)
     assert.equal(f.writes.at(-1)!.values[0], applicationSchemaVersion)
     assert.ok(f.writes.every((write) => write.depth > 0))
+  })
+
+  it('plans a first deployment without writes and creates it only after exact confirmation', async (t) => {
+    const planned = fixture(t, { exists: false })
+    for (const options of [{}, { apply: false }, { confirmSchema: schema }]) {
+      assert.deepEqual(await createPostgres(planned.db, options), { applied: false, schema, toVersion: applicationSchemaVersion })
+    }
+    assert.deepEqual(planned.writes, [])
+    for (const options of [{ apply: true }, { apply: true, confirmSchema: 'another_schema' }, { confirmSchema: `${schema} ` }]) {
+      await assert.rejects(createPostgres(planned.db, options), /confirm the exact target schema/)
+    }
+    const created = fixture(t, { exists: false })
+    assert.deepEqual(await createPostgres(created.db, { apply: true, confirmSchema: schema }), {
+      applied: true, schema, toVersion: applicationSchemaVersion,
+    })
+    assert.equal(created.writes[0].sql, `CREATE SCHEMA "${schema}";`)
+    assert.equal(created.writes.at(-1)!.values[0], applicationSchemaVersion)
+    assert.ok(created.writes.every((write) => write.depth > 0))
+  })
+
+  it('refuses to initialize an existing schema at any version without writes', async (t) => {
+    for (const input of [{ version: applicationSchemaVersion }, { version: 1 }, { initialized: false }]) {
+      const f = fixture(t, input)
+      for (const options of [{}, { apply: true, confirmSchema: schema }]) {
+        await assert.rejects(createPostgres(f.db, options), /already exists\. --init only creates a new schema/)
+      }
+      assert.deepEqual(f.writes, [])
+    }
   })
 
   it('defaults to a read-only plan even when a valid confirmation is supplied', async (t) => {
@@ -295,6 +323,20 @@ describe('database migration CLI validation', () => {
       ['--source', ''], ['--backup', ''],
       ['--source', 'data/unused-source.sqlite', '--backup', 'data/unused-backup.sqlite', '--apply'],
     ]) rejects(['--upgrade', ...args], /--upgrade cannot be combined with --source or --backup/)
+  })
+
+  it('keeps initialization separate from upgrades and SQLite imports before reading configuration', () => {
+    rejects(['--init', '--upgrade'], /Choose either --init for a new schema or --upgrade/)
+    for (const args of [['--source', 'data/unused-source.sqlite'], ['--backup', 'data/unused-backup.sqlite']]) {
+      rejects(['--init', ...args], /--init cannot be combined with --source or --backup/)
+    }
+  })
+
+  it('rejects missing and incorrect initialization confirmation without opening a connection', () => {
+    const env = { DATABASE_URL: url, DATABASE_SCHEMA: schema, DATABASE_TLS: 'disable' }
+    for (const args of [['--apply'], ['--apply', '--confirm-schema', 'another_schema'], ['--confirm-schema', 'roomlings']]) {
+      rejects(['--init', ...args], /confirm the exact target schema/, env)
+    }
   })
 
   it('retains required source and backup validation outside upgrade mode', () => {

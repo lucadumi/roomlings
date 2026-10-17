@@ -1,0 +1,17 @@
+.legal { display: flex; flex-direction: column; min-height: 100svh; }
+.legal .welcome-sign-in:hover { color: var(--red-dark); }
+.legal .legal-content { flex: 1; margin-inline: auto; outline: none; }
+.legal-content article { max-width: 42rem; padding-block: clamp(2rem, 5vw, 3.75rem) 1rem; }
+.legal-content h1 { margin: 0 0 0.5rem; font-size: clamp(2.375rem, 5vw, 3.5rem); font-weight: 600; line-height: 1.08; letter-spacing: -0.1rem; }
+.legal-updated { margin-bottom: 2rem; color: var(--muted); font-size: max(13px, 0.8125rem); }
+.legal-content .legal-lead { color: var(--ink); font-size: 1.125rem; line-height: 1.7; }
+.legal-content h2 { margin: 2.25rem 0 0.75rem; font-size: clamp(1.375rem, 2.2vw, 1.625rem); letter-spacing: -0.5px; }
+.legal-content p, .legal-content li { color: var(--muted); font-size: 1rem; line-height: 1.75; overflow-wrap: anywhere; }
+.legal-content p { margin-bottom: 1rem; }
+.legal-content ul { margin: 0 0 1rem; padding-left: 1.25rem; }
+.legal-content li + li { margin-top: 0.5rem; }
+.legal-content li::marker { color: var(--sage); }
+.legal-content strong { color: var(--ink); font-weight: 600; }
+.legal-content a { color: var(--leaf-ink); text-decoration: underline; text-decoration-color: var(--sage); text-underline-offset: 0.25rem; }
+.legal-content a:hover { color: var(--red-dark); }
+.legal .welcome-footer-links a[aria-current="page"] { color: var(--leaf-ink); text-decoration: underline; text-underline-offset: 0.3125rem; }
