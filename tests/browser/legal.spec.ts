@@ -58,6 +58,27 @@ test('the side index follows the reader and links to each section', async ({ pag
     .toHaveAttribute('aria-current', 'location')
 })
 
+test('the index stays in view at every width', async ({ page }) => {
+  for (const [width, height] of [[1440, 900], [800, 900], [700, 800], [390, 844], [320, 568]]) {
+    await page.setViewportSize({ width, height })
+    await page.goto('/terms')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Terms')
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight))
+    const index = page.getByRole('navigation', { name: 'On this page', exact: true })
+    await expect(index, `${width}x${height}`).toBeInViewport()
+    const marked = index.getByRole('link', { name: 'Changes', exact: true })
+    await expect(marked).toHaveAttribute('aria-current', 'location')
+    await expect(marked, `${width}x${height}`).toBeInViewport()
+    // On phones the strip scrolls sideways; the marked link must sit fully inside it.
+    if (width <= 640) expect(await marked.evaluate((link) => {
+      const box = link.getBoundingClientRect()
+      const frame = link.closest('ol')!.getBoundingClientRect()
+      return box.left >= frame.left - 1 && box.right <= frame.right + 1
+    }), `${width}x${height}`).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), `${width}x${height}`).toBe(false)
+  }
+})
+
 test('legal pages fit narrow screens and keep keyboard entry to the content', async ({ page }) => {
   await page.goto('/privacy')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy')

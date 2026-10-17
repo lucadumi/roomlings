@@ -1,6 +1,6 @@
 .legal { display: flex; flex-direction: column; min-height: 100svh; }
 .legal .welcome-sign-in:hover { color: var(--red-dark); }
-.legal .legal-content { flex: 1; display: grid; grid-template-columns: minmax(11rem, 15rem) minmax(0, 44rem); align-items: start; column-gap: clamp(2.5rem, 7vw, 6rem); margin-inline: auto; padding-block: clamp(2rem, 5vw, 3.75rem) 1rem; outline: none; }
+.legal .legal-content { flex: 1; display: grid; grid-template-columns: minmax(9rem, 15rem) minmax(0, 44rem); align-items: start; column-gap: clamp(2rem, 7vw, 6rem); margin-inline: auto; padding-block: clamp(2rem, 5vw, 3.75rem) 1rem; outline: none; }
 .legal-title { grid-column: 1 / -1; margin-bottom: clamp(1.5rem, 3vw, 2.5rem); }
 .legal-title h1 { margin: 0 0 0.5rem; font-size: clamp(2.375rem, 5vw, 3.5rem); font-weight: 600; line-height: 1.08; letter-spacing: -0.1rem; }
 .legal-updated { margin: 0; color: var(--muted); font-size: max(13px, 0.8125rem); }
@@ -22,9 +22,12 @@
 .legal-content article a:hover { color: var(--red-dark); }
 .legal .welcome-footer-links a[aria-current="page"] { color: var(--leaf-ink); text-decoration: underline; text-underline-offset: 0.3125rem; }
 
-/* Below the side-by-side width, the index becomes a plain contents list above the text. */
-@media (max-width: 860px) {
+/* Phones keep the index as a sticky strip of section links above the text. */
+@media (max-width: 640px) {
   .legal .legal-content { grid-template-columns: minmax(0, 1fr); }
-  .legal-index { position: static; margin-bottom: 1.75rem; }
-  .legal-index a[aria-current="location"] { color: var(--muted); border-left-color: transparent; font-weight: 500; }
+  .legal-index { top: 0; z-index: 2; margin: 0 calc(-1 * var(--welcome-edge)) 1.5rem; padding: 0 var(--welcome-edge); border-left: 0; border-bottom: 1px solid var(--welcome-rule); background: var(--paper); }
+  .legal-index ol { display: flex; gap: 1.25rem; overflow-x: auto; scrollbar-width: none; }
+  .legal-index a { min-height: max(44px, 2.75rem); margin-left: 0; padding-left: 0; border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .legal-index a[aria-current="location"] { border-bottom-color: var(--sage); }
+  .legal-content h2 { scroll-margin-top: 4.5rem; }
 }

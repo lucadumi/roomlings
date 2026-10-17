@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { Brand } from '../Branding.tsx'
@@ -134,6 +134,17 @@ export default function Legal({ page }: { page: LegalPage }) {
   const { title, dated, lead, sections } = documents[page]
   const ids = useMemo(() => sections.map((section) => section.id), [sections])
   const current = useCurrentSection(ids)
+  const index = useRef<HTMLOListElement>(null)
+  // On phones the index is a sideways strip, so keep the marked section within it.
+  useEffect(() => {
+    const list = index.current
+    const link = list?.querySelector('[aria-current="location"]')
+    if (!list || !link || list.scrollWidth <= list.clientWidth) return
+    const box = link.getBoundingClientRect()
+    const frame = list.getBoundingClientRect()
+    if (box.left < frame.left) list.scrollLeft -= frame.left - box.left + 16
+    else if (box.right > frame.right) list.scrollLeft += box.right - frame.right + 16
+  }, [current])
   useEffect(() => {
     const previousTitle = document.title
     document.title = `${title} · Roomlings`
@@ -156,7 +167,7 @@ export default function Legal({ page }: { page: LegalPage }) {
         {dated && <p className="legal-updated">Last updated {legalUpdated}</p>}
       </div>
       <nav className="legal-index" aria-label="On this page">
-        <ol>
+        <ol ref={index}>
           {sections.map((section) => <li key={section.id}>
             <a href={`#${section.id}`} aria-current={section.id === current ? 'location' : undefined}>{section.title}</a>
           </li>)}
