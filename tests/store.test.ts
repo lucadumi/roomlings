@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, unlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { Store } from '../server/store.ts'
 import { SQLiteDatabase } from '../server/database.ts'
 import { localDate } from '../shared/domain.ts'
@@ -121,5 +123,27 @@ it('keeps legitimate legacy markers readable and retires old examples without re
     assert.equal((await database.prepare('SELECT COUNT(*) AS count FROM recovery_codes WHERE household_id = ?').get(retired.household.id))?.count, 1)
   } finally {
     await store.close()
+  }
+})
+
+it('waits for a briefly locked database instead of failing to open it', async () => {
+  const filename = resolve('data', `test-store-${randomUUID()}.sqlite`)
+  await new Store(filename).close()
+  // Another process holding the file exclusively, as during a concurrent startup or commit.
+  const holder = new DatabaseSync(filename)
+  holder.exec('PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT;')
+  const program = `
+    import { Store } from './server/store.ts'
+    const store = new Store(${JSON.stringify(filename)})
+    await store.close()
+    console.log('opened')
+  `
+  try {
+    const opening = promisify(execFile)(process.execPath, ['--input-type=module', '-e', program], { timeout: 15_000 })
+    setTimeout(() => holder.close(), 300)
+    assert.equal((await opening).stdout.trim(), 'opened')
+  } finally {
+    if (holder.isOpen) holder.close()
+    for (const suffix of ['', '-wal', '-shm']) if (existsSync(filename + suffix)) unlinkSync(filename + suffix)
   }
 })

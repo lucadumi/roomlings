@@ -10,20 +10,6 @@ SQLite startup adds account-recovery, room-permission, notification, analytics, 
 
 Use `npm run preview:local` for a stable API with frontend hot reload. Restart it after server, schema or environment changes. `npm run dev` also watches the API.
 
-## Hosting behind a proxy
-
-Most hosting providers put a reverse proxy in front of the API. Set `TRUSTED_PROXY_HOPS=1` there so rate limits use each client's address instead of sharing the proxy's. Leave it unset when clients connect directly, or anyone could spoof `X-Forwarded-For`.
-
-## Deploying to Render
-
-[render.yaml](../render.yaml) runs the site and API as one service at `https://roomlings.me`, deploying from `main`.
-
-1. In Render, choose **New > Blueprint** and select this repository. Enter the secret values it asks for.
-2. Under the service's **Secret Files**, add `supabase-ca.crt` with the Supabase CA certificate.
-3. Point the domain's DNS records at the service as Render's **Custom Domains** page shows, then wait for the certificate.
-
-Use a database that local development does not share. Production must keep the `PUSH_TOKEN_ENCRYPTION_KEY` already used with that database.
-
 ## Postgres
 
 Set `DATABASE_DRIVER=postgres`, a server-only `DATABASE_URL`, and `DATABASE_SCHEMA=roomlings`. Invalid configuration fails rather than silently falling back to SQLite.
@@ -39,6 +25,22 @@ Connection failures surface as unconfirmed requests, and broken checked-out clie
 Room authority is private persistence, not client-editable household JSON. `household_room_owners` retains each legitimate kitchen's original creator ID for browser-only ownership. A row in `household_accounts` makes its current `owner_member_id` authoritative instead, including `NULL` for a closed kitchen. `household_room_admins` stores explicit `(household_id, member_id)` delegations. Role resolution checks current active membership; it never uses display names. Household saves retain creator metadata and remove delegations for inactive or removed identities. Leaving, removal, deletion, rejoining and ownership transfer also clear the relevant delegation rows transactionally.
 
 Rows carrying the retired example marker are preserved byte for byte during migration and remain in place, but the application refuses access, recovery, invitations, account membership joins and saves for them. This prevents legacy examples from being reclassified as real kitchens when the current public household schema ignores their old marker. Older legitimate rows with the original false marker remain readable.
+
+## New Postgres schema
+
+For a first deployment without SQLite data, create the schema explicitly. Put the target settings in `.env.migration`, then inspect the read-only plan:
+
+```sh
+npm run database:migrate -- --init
+```
+
+Apply it to the exact configured schema:
+
+```sh
+npm run database:migrate -- --init --apply --confirm-schema roomlings
+```
+
+`--init` refuses any schema that already exists, at any version, without changes. Use `--upgrade` for an existing application and the SQLite migration below to import existing data.
 
 ## Postgres schema upgrades
 
@@ -153,7 +155,34 @@ Apple references verified for this implementation: [token authentication](https:
 
 ## Deployment
 
-Build with `npm run build`, then serve the build and API with `npm start`. Configure [Supabase accounts](accounts.md), HTTPS, the correct `APP_ORIGIN`, mail delivery, abuse limits, backups and a privacy/retention policy first.
+Build with `npm run build`, then serve the build and API with `npm start`. Before launch:
+
+- Configure [Supabase accounts](accounts.md), mail delivery from a verified domain, HTTPS and the correct `APP_ORIGIN`.
+- Create or migrate the Postgres schema, and set up backups.
+- Replace the placeholder `contactEmail` in `src/landing/legal.ts`, and name the hosting and email providers on the privacy page once chosen.
+
+### Reverse proxies
+
+Most hosts terminate HTTPS at a proxy. Set `TRUST_PROXY` so rate limits see each visitor's address instead of the proxy's:
+
+- A hop count, such as `1` for one load balancer in front of the API.
+- Or comma-separated proxy addresses, such as `loopback` or `10.0.0.0/8`.
+
+Leave it unset when clients connect directly. Trusting every hop is refused because clients can forge `X-Forwarded-For`. Production logs a warning when forwarded requests arrive without `TRUST_PROXY`.
+
+### Render
+
+[render.yaml](../render.yaml) runs the site and API as one service at `https://roomlings.me`, deploying from `main`, with `TRUST_PROXY=1` for Render's proxy.
+
+1. In Render, choose **New > Blueprint** and select this repository. Enter the secret values it asks for.
+2. Under the service's **Secret Files**, add `supabase-ca.crt` with the Supabase CA certificate.
+3. Point the domain's DNS records at the service as Render's **Custom Domains** page shows, then wait for the certificate.
+
+Use a database that local development does not share. Production must keep the `PUSH_TOKEN_ENCRYPTION_KEY` already used with that database.
+
+### Instances
+
+Run one API instance per database. Rate limits live in that process's memory, and SQLite needs one durable local disk. Separate push workers remain supported.
 
 Keep API writers sharing a database on compatible builds, even when no SQL schema upgrade is needed. Household mutation-retry receipts and private account-creation receipts live inside household JSON; an older server can pass the SQL schema check but discard that metadata on its next save. Coordinate deployment and restarts for every writer rather than relying on the schema version alone.
 

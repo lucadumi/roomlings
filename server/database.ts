@@ -83,7 +83,8 @@ export class SQLiteDatabase implements Database {
     if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true })
     this.db = new DatabaseSync(filename)
     try {
-      this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; BEGIN IMMEDIATE;')
+      // The timeout comes first so switching the journal mode also waits out another writer's lock.
+      this.db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; BEGIN IMMEDIATE;')
       this.db.exec(sqliteSchema)
       for (const row of this.db.prepare(`SELECT h.id, h.state FROM households h
         LEFT JOIN household_room_owners o ON o.household_id = h.id WHERE o.household_id IS NULL`).all()) {

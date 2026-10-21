@@ -1,4 +1,4 @@
-# Render Blueprint for https://roomlings.me. See docs/storage.md#deploying-to-render.
+# Render Blueprint for https://roomlings.me. See docs/storage.md#render.
 services:
   - type: web
     name: roomlings
@@ -18,7 +18,7 @@ services:
         value: https://roomlings.me
       - key: HOST
         value: 0.0.0.0
-      - key: TRUSTED_PROXY_HOPS
+      - key: TRUST_PROXY
         value: "1"
       - key: DATABASE_DRIVER
         value: postgres

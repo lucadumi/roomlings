@@ -1,6 +1,7 @@
 import express from 'express'
 import type { ErrorRequestHandler, Request, RequestHandler, Response } from 'express'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { isIP } from 'node:net'
 import { z } from 'zod'
 import {
   activeMemberLimit, balances, billCreateInputSchema, billEditInputSchema, billPaymentInputSchema, billingDate,
@@ -59,17 +60,38 @@ function rateLimit(maximum: number, window: number, message: string): RequestHan
   }
 }
 
-// Counts the reverse proxies in front of the API so rate limits key on the client address, not the proxy's.
-export function trustedProxyHops(value: string | undefined): number {
-  if (value === undefined || value === '') return 0
-  if (!/^\d+$/.test(value) || Number(value) > 10) throw new Error('TRUSTED_PROXY_HOPS must be a whole number from 0 to 10.')
-  return Number(value)
+export type TrustProxy = number | string | false
+
+// Behind a load balancer, every visitor shares the proxy's address unless Express knows which
+// hops may report the client. Trusting every hop would let clients forge X-Forwarded-For.
+export function trustProxySetting(value: string | undefined): TrustProxy {
+  const setting = value?.trim() ?? ''
+  if (!setting || setting === 'false') return false
+  const hops = /^\d+$/.test(setting) ? Number(setting) : NaN
+  if (hops >= 1 && hops <= 10) return hops
+  const address = (entry: string) => {
+    const [ip, prefix, extra] = entry.trim().split('/')
+    if (['loopback', 'linklocal', 'uniquelocal'].includes(ip)) return prefix === undefined
+    return isIP(ip) !== 0 && extra === undefined && (prefix === undefined || /^\d{1,3}$/.test(prefix))
+  }
+  if (Number.isNaN(hops) && setting.split(',').every(address)) return setting
+  throw new Error('TRUST_PROXY must be a hop count from 1 to 10, or comma-separated proxy addresses such as loopback or 10.0.0.0/8. Never trust every hop.')
 }
 
-export function createApp(store: Store, options: AccountOptions & { push?: PushConfiguration; trustedProxyHops?: number } = {}) {
+export function createApp(store: Store, options: AccountOptions & { push?: PushConfiguration; trustProxy?: TrustProxy } = {}) {
   const app = express()
   app.disable('x-powered-by')
-  if (options.trustedProxyHops) app.set('trust proxy', options.trustedProxyHops)
+  app.set('trust proxy', options.trustProxy ?? false)
+  if (!options.trustProxy && !options.allowLocalDevelopment) {
+    let warned = false
+    app.use((req, _res, next) => {
+      if (!warned && req.get('x-forwarded-for') !== undefined) {
+        warned = true
+        console.warn('Requests arrive through a proxy, but TRUST_PROXY is not set. Rate limits will treat every visitor as one; see docs/storage.md.')
+      }
+      next()
+    })
+  }
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')

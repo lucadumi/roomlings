@@ -2,7 +2,7 @@ import { resolve, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import express from 'express'
 import { openStore } from './storage.ts'
-import { createApp, trustedProxyHops } from './app.ts'
+import { createApp, trustProxySetting } from './app.ts'
 import { providerFromEnvironment } from './provider.ts'
 import { retryAccountDeletions } from './accounts-api.ts'
 import { pushFromEnvironment } from './apns.ts'
@@ -14,6 +14,7 @@ const production = process.env.NODE_ENV === 'production' || process.argv.include
 if (production && (!provider || !process.env.APP_ORIGIN?.startsWith('https://'))) {
   throw new Error('Production startup requires complete Supabase account configuration and an HTTPS APP_ORIGIN.')
 }
+const trustProxy = trustProxySetting(process.env.TRUST_PROXY)
 const store = await openStore()
 let push: PushConfiguration | undefined
 try { push = pushFromEnvironment() } catch {
@@ -21,7 +22,7 @@ try { push = pushFromEnvironment() } catch {
 }
 const app = createApp(store, {
   provider, appOrigin: process.env.APP_ORIGIN,
-  allowLocalDevelopment: !production, push, trustedProxyHops: trustedProxyHops(process.env.TRUSTED_PROXY_HOPS),
+  allowLocalDevelopment: !production, push, trustProxy,
 })
 const pushWorker = push?.mode === 'inline' ? new NotificationWorker(store, push) : undefined
 pushWorker?.start(true)
