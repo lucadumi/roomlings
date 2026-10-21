@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { once } from 'node:events'
 import { PostgresDatabase, SQLiteDatabase, postgresFromEnvironment, postgresPoolConfig, postgresSql } from '../server/database.ts'
 import type { Database, Row } from '../server/database.ts'
-import { initializePostgres, schemaExists, upgradePostgres } from '../server/postgres-schema.ts'
+import { createPostgres, initializePostgres, schemaExists, upgradePostgres } from '../server/postgres-schema.ts'
 import { migrateSqlite } from '../server/migration.ts'
 import {
   accountRecoveryTables, analyticsIndexes, analyticsTables, applicationSchemaVersion, applicationTables, browserPushTables, inboxTables,
@@ -101,6 +101,28 @@ async function assertPrivateTables(db: PostgresDatabase, tables: readonly string
 }
 
 describe('real PostgreSQL storage', { skip: !enabled }, () => {
+  it('creates a first deployment schema only on a confirmed apply and never over an existing one', async () => {
+    const db = new PostgresDatabase(configuration())
+    try {
+      assert.deepEqual(await createPostgres(db), { applied: false, schema: db.schema, toVersion: applicationSchemaVersion })
+      assert.equal(await schemaExists(db), false)
+      assert.deepEqual(await createPostgres(db, { apply: true, confirmSchema: db.schema }), {
+        applied: true, schema: db.schema, toVersion: applicationSchemaVersion,
+      })
+      await db.verifySchema()
+      await assertPrivateTables(db, [...applicationTables, 'schema_migrations'])
+      const before = await schemaObjects(db)
+      await assert.rejects(createPostgres(db, { apply: true, confirmSchema: db.schema }), /already exists/)
+      assert.deepEqual(await schemaObjects(db), before)
+    } finally {
+      try {
+        if (await schemaExists(db)) await removeTestSchema(db)
+      } finally {
+        await db.close()
+      }
+    }
+  })
+
   it('serializes account kitchen creation receipts across independent connections without restoring closed membership', async () => {
     const config = configuration()
     const firstDb = new PostgresDatabase(config)
