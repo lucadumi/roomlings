@@ -5,7 +5,7 @@ import { z } from 'zod'
 import {
   acceptAccountInvitationSchema, accountInvitationResultSchema, accountRecoveryResultSchema, accountRecoveryStateSchema, accountStateSchema,
   createAccountHouseholdSchema, deleteAccountSchema, householdAccessSchema, linkAccountSchema,
-  sendAccountCodeSchema, verifyAccountCodeSchema,
+  newAccountName, sendAccountCodeSchema, verifyAccountCodeSchema,
 } from '../shared/accounts.ts'
 import type { AccountRecoveryState, AccountState, CreateAccountHousehold, HouseholdAccess } from '../shared/accounts.ts'
 import type { Session } from '../shared/domain.ts'
@@ -644,8 +644,6 @@ function EmailSignIn({ busy, initialEmail, initialName, fixedEmail = false, onSe
   const [email, setEmail] = useState(initialEmail)
   const [sent, setSent] = useState(false)
   const [code, setCode] = useState('')
-  const [name, setName] = useState(initialName)
-  const [label, setLabel] = useState('Saved browser')
   const [error, setError] = useState('')
   const codeInput = useRef<HTMLInputElement>(null)
   useEffect(() => { if (sent) codeInput.current?.focus() }, [sent])
@@ -656,7 +654,7 @@ function EmailSignIn({ busy, initialEmail, initialName, fixedEmail = false, onSe
       if (!input.success) { setError(input.error.issues[0].message); return }
       void onSend(input.data.email).then((success) => { if (success) { setEmail(input.data.email); setSent(true) } })
     } else {
-      const input = verifyAccountCodeSchema.safeParse({ email, code, name, label })
+      const input = verifyAccountCodeSchema.safeParse({ email, code, name: newAccountName(email, initialName) })
       if (!input.success) { setError(input.error.issues[0].message); return }
       void onVerify(input.data).then((success) => { if (success) setCode('') })
     }
@@ -665,9 +663,6 @@ function EmailSignIn({ busy, initialEmail, initialName, fixedEmail = false, onSe
     <label className="field">Email address<input type="email" required autoComplete="email" maxLength={254} value={email} disabled={busy || sent || fixedEmail} onChange={(event) => setEmail(event.target.value)} /></label>
     {sent && <>
       <label className="field">Email sign-in code<input ref={codeInput} type="text" required inputMode="numeric" pattern="[0-9]{6,10}" autoComplete="one-time-code" maxLength={10} value={code} disabled={busy} onChange={(event) => setCode(event.target.value)} /></label>
-      <label className="field">Account display name<input required autoComplete="nickname" maxLength={50} value={name} disabled={busy} onChange={(event) => setName(event.target.value)} /></label>
-      <label className="field">Name this browser<input required maxLength={50} autoComplete="off" value={label} disabled={busy} onChange={(event) => setLabel(event.target.value)} /></label>
-      <p className="field-hint">The display name is used when creating a new account. Signing into an existing account keeps its saved name.</p>
     </>}
     {error && <Feedback>{error}</Feedback>}
     <button className="button primary full" disabled={busy}>{busy ? <LoadingIcon size={17} tone="light" /> : <Mail size="1.0625rem" />}{sent ? 'Verify and sign in' : 'Send sign-in code'}</button>

@@ -80,6 +80,13 @@ export const accountInvitationResultSchema = z.object({
   access: householdAccessSchema,
 })
 export const sendAccountCodeSchema = z.object({ email: accountEmailSchema })
+// Signing in asks only for the code. The server names only brand-new accounts with this and keeps
+// an existing account's name; the owner can rename it later.
+export function newAccountName(email: string, saved = ''): string {
+  const trimmed = email.trim()
+  const local = trimmed.split('@')[0]
+  return saved.trim().slice(0, 50) || (local || trimmed).slice(0, 50)
+}
 export const verifyAccountCodeSchema = sendAccountCodeSchema.extend({
   code: z.string().trim().regex(/^\d{6,10}$/, 'Enter the sign-in code from your email.'),
   name: nameSchema,

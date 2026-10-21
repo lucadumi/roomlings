@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { householdSchema } from '../shared/domain.ts'
 import type { Session } from '../shared/domain.ts'
 import type { AccountKitchenSession, AccountMembership } from '../shared/accounts.ts'
+import { newAccountName, verifyAccountCodeSchema } from '../shared/accounts.ts'
 import {
   errorMessage, forgetAccountKitchens, getAccountState, readAccessMode, readToken, rememberKitchen,
   request, RequestError, sameKitchenSession, savedKitchens,
@@ -284,5 +285,15 @@ describe('account-aware client access', () => {
     assert.equal(storage.getItem('roomlings.sample-session'), 'retired-browser-value')
     assert.equal(storage.getItem('coldshare.session'), real.token)
     assert.equal(calls.mock.callCount(), 0)
+  })
+})
+
+describe('code-only sign-in names', () => {
+  it('names a new account from a saved kitchen name or the email, within the server limit', () => {
+    assert.equal(newAccountName(' ada.lovelace@example.com '), 'ada.lovelace')
+    assert.equal(newAccountName('ada@example.com', '  Ada  '), 'Ada')
+    assert.equal(newAccountName(`${'a'.repeat(60)}@example.com`).length, 50)
+    const input = verifyAccountCodeSchema.parse({ email: 'ada@example.com', code: '123456', name: newAccountName('ada@example.com') })
+    assert.deepEqual([input.name, input.label], ['ada', 'Saved browser'])
   })
 })

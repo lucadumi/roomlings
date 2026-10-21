@@ -27,7 +27,6 @@ async function signInWithKitchen(page: Page, accounts: AccountHarness) {
   await dialog.getByLabel('Email address', { exact: true }).fill('ada@example.com')
   await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
   await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('ada@example.com'))
-  await dialog.getByLabel('Account display name', { exact: true }).fill('Ada')
   await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
   await dialog.getByRole('button', { name: 'Create a kitchen', exact: true }).click()
   await dialog.getByLabel('What do you call home?', { exact: true }).fill('The alert home')

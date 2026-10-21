@@ -8,16 +8,25 @@ import {
 } from './account-fixtures.ts'
 import type { AccountHarness } from './account-fixtures.ts'
 
-async function signIn(page: Page, accounts: AccountHarness, email: string, name: string, label = 'Account browser') {
+// Signing in takes only the code. A name or browser label is then set from the account profile.
+async function signIn(page: Page, accounts: AccountHarness, email: string, name?: string, label?: string) {
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Email address', { exact: true }).fill(email)
   await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
   await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
   await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor(email))
-  await dialog.getByLabel('Account display name', { exact: true }).fill(name)
-  await dialog.getByLabel('Name this browser', { exact: true }).fill(label)
   await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
   await expect(dialog.getByText(`${email} (verified)`, { exact: false })).toBeVisible()
+  if (name && await dialog.getByLabel('Account display name', { exact: true }).inputValue() !== name) {
+    await dialog.getByLabel('Account display name', { exact: true }).fill(name)
+    await dialog.getByRole('button', { name: 'Save account name', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('Account name saved')
+  }
+  if (label) {
+    await dialog.getByLabel('Name this account browser', { exact: true }).fill(label)
+    await dialog.getByRole('button', { name: 'Save account browser name', exact: true }).click()
+    await expect(dialog.getByRole('status')).toContainText('Browser name saved')
+  }
 }
 
 async function createKitchen(page: Page, name: string) {
@@ -45,9 +54,10 @@ test.describe('verified accounts and household membership', () => {
     await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
     await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
     await dialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('ada@example.com'))
-    await dialog.getByLabel('Account display name', { exact: true }).fill('Ada draft')
-    await expect(dialog.getByLabel('Account display name', { exact: true })).toHaveValue('Ada draft')
-    await expect(dialog.getByLabel('Account display name', { exact: true })).toBeFocused()
+    await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toBeFocused()
+    // The code is the only field; names come from the email or the account profile.
+    await expect(dialog.getByLabel('Account display name', { exact: true })).toHaveCount(0)
+    await expect(dialog.getByLabel('Name this browser', { exact: true })).toHaveCount(0)
     await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
     await expect(dialog).toHaveAccessibleName('Your Roomlings account.')
     await createKitchen(page, 'The account home')
@@ -110,7 +120,7 @@ test.describe('verified accounts and household membership', () => {
       const phone = await phoneContext.newPage()
       await routeAccountApi(phone, accounts)
       await phone.goto('/#account')
-      await signIn(phone, accounts, 'ada@example.com', 'Do not overwrite the saved name', 'Phone')
+      await signIn(phone, accounts, 'ada@example.com', undefined, 'Phone')
       const restored = await accountState(phone)
       expect(restored.account?.id).toBe(linked.account?.id)
       expect(restored.account?.name).toBe('Ada')
@@ -138,8 +148,11 @@ test.describe('verified accounts and household membership', () => {
       const guest = await guestContext.newPage()
       await routeAccountApi(guest, accounts)
       await guest.goto(link)
-      await signIn(guest, accounts, 'guest@example.com', 'Ben')
+      await signIn(guest, accounts, 'guest@example.com')
       await expect(guest.getByRole('dialog').getByLabel('Account invitation link or code', { exact: true })).toHaveValue(new URLSearchParams(new URL(link).hash.slice(1)).get('account-invite') ?? '')
+      // A new account arriving from an invitation names itself in the join form.
+      await expect(guest.getByRole('dialog').getByLabel('Your name in this kitchen', { exact: true })).toHaveValue('guest')
+      await guest.getByRole('dialog').getByLabel('Your name in this kitchen', { exact: true }).fill('Ben')
       await guest.getByRole('dialog').getByRole('button', { name: 'Accept kitchen invitation', exact: true }).click()
       await expect(guest.getByRole('dialog')).toHaveAccessibleName('Your Roomlings account.')
       const joined = await accountState(guest)
@@ -266,7 +279,6 @@ test.describe('verified accounts and household membership', () => {
     accounts.provider.failDelivery = false
     await dialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
     await dialog.getByLabel('Email sign-in code', { exact: true }).fill('000000')
-    await dialog.getByLabel('Account display name', { exact: true }).fill('Ada')
     await dialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
     await expect(dialog.getByRole('alert')).toBeVisible()
     await expect(dialog.getByLabel('Email sign-in code', { exact: true })).toHaveValue('000000')
@@ -293,7 +305,7 @@ test.describe('verified accounts and household membership', () => {
       const phone = await phoneContext.newPage()
       await routeAccountApi(phone, accounts)
       await phone.goto('/#account')
-      await signIn(phone, accounts, 'sessions@example.com', 'Ada', 'Phone')
+      await signIn(phone, accounts, 'sessions@example.com', undefined, 'Phone')
       await phone.getByRole('dialog').getByRole('button', { name: 'Open The session home', exact: true }).click()
       await dialog.getByRole('button', { name: 'Open The session home', exact: true }).click()
 
@@ -304,7 +316,6 @@ test.describe('verified accounts and household membership', () => {
       await renewalDialog.getByRole('button', { name: 'Send sign-in code', exact: true }).click()
       await expect(renewalDialog.getByLabel('Email sign-in code', { exact: true })).toBeVisible()
       await renewalDialog.getByLabel('Email sign-in code', { exact: true }).fill(accounts.provider.codeFor('sessions@example.com'))
-      await renewalDialog.getByLabel('Name this browser', { exact: true }).fill('Renewed desktop')
       await renewalDialog.getByRole('button', { name: 'Verify and sign in', exact: true }).click()
       await expect(renewalDialog).toHaveAccessibleName('Your Roomlings account.')
       const refreshed = page.waitForResponse('**/api/household')
