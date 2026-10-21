@@ -2,7 +2,7 @@ import { resolve, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import express from 'express'
 import { openStore } from './storage.ts'
-import { createApp } from './app.ts'
+import { createApp, trustedProxyHops } from './app.ts'
 import { providerFromEnvironment } from './provider.ts'
 import { retryAccountDeletions } from './accounts-api.ts'
 import { pushFromEnvironment } from './apns.ts'
@@ -21,7 +21,7 @@ try { push = pushFromEnvironment() } catch {
 }
 const app = createApp(store, {
   provider, appOrigin: process.env.APP_ORIGIN,
-  allowLocalDevelopment: !production, push,
+  allowLocalDevelopment: !production, push, trustedProxyHops: trustedProxyHops(process.env.TRUSTED_PROXY_HOPS),
 })
 const pushWorker = push?.mode === 'inline' ? new NotificationWorker(store, push) : undefined
 pushWorker?.start(true)

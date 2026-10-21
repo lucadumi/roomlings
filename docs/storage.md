@@ -10,6 +10,10 @@ SQLite startup adds account-recovery, room-permission, notification, analytics, 
 
 Use `npm run preview:local` for a stable API with frontend hot reload. Restart it after server, schema or environment changes. `npm run dev` also watches the API.
 
+## Hosting behind a proxy
+
+Most hosting providers put a reverse proxy in front of the API. Set `TRUSTED_PROXY_HOPS=1` there so rate limits use each client's address instead of sharing the proxy's. Leave it unset when clients connect directly, or anyone could spoof `X-Forwarded-For`.
+
 ## Postgres
 
 Set `DATABASE_DRIVER=postgres`, a server-only `DATABASE_URL`, and `DATABASE_SCHEMA=roomlings`. Invalid configuration fails rather than silently falling back to SQLite.

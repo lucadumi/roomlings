@@ -59,9 +59,17 @@ function rateLimit(maximum: number, window: number, message: string): RequestHan
   }
 }
 
-export function createApp(store: Store, options: AccountOptions & { push?: PushConfiguration } = {}) {
+// Counts the reverse proxies in front of the API so rate limits key on the client address, not the proxy's.
+export function trustedProxyHops(value: string | undefined): number {
+  if (value === undefined || value === '') return 0
+  if (!/^\d+$/.test(value) || Number(value) > 10) throw new Error('TRUSTED_PROXY_HOPS must be a whole number from 0 to 10.')
+  return Number(value)
+}
+
+export function createApp(store: Store, options: AccountOptions & { push?: PushConfiguration; trustedProxyHops?: number } = {}) {
   const app = express()
   app.disable('x-powered-by')
+  if (options.trustedProxyHops) app.set('trust proxy', options.trustedProxyHops)
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
