@@ -170,6 +170,16 @@ Most hosts terminate HTTPS at a proxy. Set `TRUST_PROXY` so rate limits see each
 
 Leave it unset when clients connect directly. Trusting every hop is refused because clients can forge `X-Forwarded-For`. Production logs a warning when forwarded requests arrive without `TRUST_PROXY`.
 
+### Render
+
+[render.yaml](../render.yaml) runs the site and API as one service at `https://roomlings.me`, deploying from `main`, with `TRUST_PROXY=1` for Render's proxy.
+
+1. In Render, choose **New > Blueprint** and select this repository. Enter the secret values it asks for.
+2. Under the service's **Secret Files**, add `supabase-ca.crt` with the Supabase CA certificate.
+3. Point the domain's DNS records at the service as Render's **Custom Domains** page shows, then wait for the certificate.
+
+Use a database that local development does not share. Production must keep the `PUSH_TOKEN_ENCRYPTION_KEY` already used with that database.
+
 ### Instances
 
 Run one API instance per database. Rate limits live in that process's memory, and SQLite needs one durable local disk. Separate push workers remain supported.

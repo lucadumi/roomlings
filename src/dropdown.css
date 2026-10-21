@@ -2,6 +2,9 @@
 .dropdown-value { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dropdown-trigger > svg { flex-shrink: 0; color: var(--control-ink); transition: transform 150ms; }
 .dropdown-trigger[data-state="open"] > svg { transform: rotate(180deg); }
+/* Fields stay still when pressed, unlike buttons. */
+.dropdown-trigger { transition: border-color 160ms, background-color 160ms; }
+.dropdown-trigger:active:not(:disabled) { transform: none; }
 .dropdown-trigger:hover:not(:disabled) { border-color: var(--sage); background: var(--control-surface); }
 .dropdown-trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .dropdown-trigger:disabled { opacity: 1; background: var(--disabled-surface); border-color: var(--control-border); color: var(--disabled-ink); cursor: not-allowed; }

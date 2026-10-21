@@ -90,7 +90,7 @@ test('legal pages fit narrow screens and keep keyboard entry to the content', as
       document.querySelector('#legal-content')!.getBoundingClientRect().left,
     ])
     expect(edges[1], `${width}x${height}`).toBe(edges[0])
-    expect(edges[1]).toBeGreaterThanOrEqual(16)
+    expect(edges[1], `${width}x${height}`).toBeGreaterThanOrEqual(16)
   }
   await page.getByRole('link', { name: 'Skip to content', exact: true }).focus()
   await expect(page.locator('.welcome-skip')).toBeInViewport()
