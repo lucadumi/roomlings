@@ -1,0 +1,49 @@
+# Render Blueprint for https://roomlings.me. See docs/storage.md#deploying-to-render.
+services:
+  - type: web
+    name: roomlings
+    runtime: node
+    plan: starter
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    domains:
+      - roomlings.me
+      - www.roomlings.me
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: APP_ORIGIN
+        value: https://roomlings.me
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
+      - key: DATABASE_DRIVER
+        value: postgres
+      - key: DATABASE_SCHEMA
+        value: roomlings
+      - key: DATABASE_TLS
+        value: verify-full
+      - key: DATABASE_SSL_ROOT_CERT
+        value: /etc/secrets/supabase-ca.crt
+      - key: PUSH_WORKER_MODE
+        value: inline
+      # Render asks for these when the Blueprint is created. Never commit their values.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PUSH_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: WEB_PUSH_PUBLIC_KEY
+        sync: false
+      - key: WEB_PUSH_PRIVATE_KEY
+        sync: false
+      - key: WEB_PUSH_SUBJECT
+        sync: false

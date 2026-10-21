@@ -14,6 +14,16 @@ Use `npm run preview:local` for a stable API with frontend hot reload. Restart i
 
 Most hosting providers put a reverse proxy in front of the API. Set `TRUSTED_PROXY_HOPS=1` there so rate limits use each client's address instead of sharing the proxy's. Leave it unset when clients connect directly, or anyone could spoof `X-Forwarded-For`.
 
+## Deploying to Render
+
+[render.yaml](../render.yaml) runs the site and API as one service at `https://roomlings.me`, deploying from `main`.
+
+1. In Render, choose **New > Blueprint** and select this repository. Enter the secret values it asks for.
+2. Under the service's **Secret Files**, add `supabase-ca.crt` with the Supabase CA certificate.
+3. Point the domain's DNS records at the service as Render's **Custom Domains** page shows, then wait for the certificate.
+
+Use a database that local development does not share. Production must keep the `PUSH_TOKEN_ENCRYPTION_KEY` already used with that database.
+
 ## Postgres
 
 Set `DATABASE_DRIVER=postgres`, a server-only `DATABASE_URL`, and `DATABASE_SCHEMA=roomlings`. Invalid configuration fails rather than silently falling back to SQLite.
