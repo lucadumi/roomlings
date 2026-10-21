@@ -168,7 +168,8 @@ html:has(.welcome[data-motion="full"]) { scroll-behavior: smooth; }
   .welcome-footer-legal { justify-content: flex-start; }
 }
 @media (max-width: 370px) {
-  .welcome { --welcome-edge: 1rem; }
+  /* The root size shrinks on small screens; keep the 16px minimum gutter. */
+  .welcome { --welcome-edge: max(16px, 1rem); }
   .welcome-header { gap: 0.5rem 0.875rem; }
   .welcome-header .brand { font-size: 1.5625rem; }
   .welcome-actions { gap: 0.5rem; }
