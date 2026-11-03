@@ -9,10 +9,24 @@ test.use({ reducedMotion: 'reduce' })
 async function expectMobileAppLanding(page: Page, device: 'ios' | 'mobile' = 'ios') {
   await expect(page.locator('.welcome')).toHaveAttribute('data-mobile-app', 'true')
   await expect(page.locator('.welcome')).toHaveAttribute('data-device', device)
-  const start = page.locator('.welcome-hero').getByRole('button', { name: 'Download', exact: true })
+  const app = page.locator('#ios-app')
+  let start
+  if (device === 'ios') {
+    start = page.locator('.welcome-hero').getByRole('link', { name: 'Download', exact: true })
+    await expect(start).toHaveAttribute('href', '#ios-app')
+    await expect(app.getByRole('heading', { level: 2 })).toHaveText('Roomlings for iPhone and iPad.')
+    await expect(app.getByRole('img')).toHaveAttribute('alt', /Roomlings app/)
+    await expect(app.getByRole('link')).toHaveCount(0)
+    const store = app.getByRole('button', { name: 'Coming soon to the App Store', exact: true })
+    await expect(store).toBeDisabled()
+    await expect(store).toHaveAccessibleDescription('For iPhone and iPad. Currently in development.')
+  } else {
+    start = page.locator('.welcome-hero').getByRole('button', { name: 'Download', exact: true })
+    await expect(start).toBeDisabled()
+    await expect(start).not.toHaveAttribute('href')
+    await expect(app).toHaveCount(0)
+  }
   await expect(start).toBeVisible()
-  await expect(start).toBeDisabled()
-  await expect(start).not.toHaveAttribute('href')
   await expect(start).toHaveAccessibleDescription(device === 'ios'
     ? 'For iPhone and iPad. Currently in development.'
     : 'For iPhone and iPad only. Not available on Android.')
@@ -105,7 +119,10 @@ for (const [name, width, height] of [
         }
         await page.screenshot({ path: testInfo.outputPath(`app-landing-${viewport.width}.png`), animations: 'disabled' })
         const url = page.url()
-        for (const button of [start, page.locator('#get-started').getByRole('button', { name: 'Start sharing', exact: true })]) {
+        for (const button of [
+          page.locator('#ios-app').getByRole('button', { name: 'Coming soon to the App Store', exact: true }),
+          page.locator('#get-started').getByRole('button', { name: 'Start sharing', exact: true }),
+        ]) {
           await button.scrollIntoViewIfNeeded()
           const bounds = await button.boundingBox()
           if (!bounds) throw new Error('The disabled landing button is missing.')
@@ -114,7 +131,18 @@ for (const [name, width, height] of [
           await expect(page.getByRole('dialog')).toHaveCount(0)
         }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+        const preview = await page.locator('#ios-app .welcome-app-screen').evaluate((image: HTMLImageElement) => {
+          image.scrollIntoView()
+          return { file: image.currentSrc.split('/').pop() ?? '', width: image.getBoundingClientRect().width }
+        })
+        expect(preview.file).toMatch(viewport.width >= 760 ? /^ipad-room/ : /^iphone-room/)
+        expect(preview.width).toBeGreaterThan(0)
       }
+      const download = page.locator('.welcome-hero').getByRole('link', { name: 'Download', exact: true })
+      await download.scrollIntoViewIfNeeded()
+      await download.click()
+      await expect(page).toHaveURL(/\/welcome#ios-app$/)
+      await expect(page.locator('#ios-app')).toBeInViewport()
       await page.getByText('When can I download the mobile app?', { exact: true }).click()
       await expect(page.locator('.welcome-faq details[open]')).toContainText('not available to download yet')
       await expect(page.getByRole('dialog')).toHaveCount(0)

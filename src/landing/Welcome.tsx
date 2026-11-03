@@ -5,6 +5,8 @@ import { Brand } from '../Branding.tsx'
 import { KitchenTour } from './KitchenTour.tsx'
 import { HomeIllustration } from './HomeIllustration.tsx'
 import { landingDevice } from './device.ts'
+import { appStoreUrl } from './appStore.ts'
+import { IosAppPreview } from './IosAppPreview.tsx'
 import invitationPlant from '../assets/garden/left.png'
 import { legalPages, roomPath } from '../roomNavigation.ts'
 import './welcome.css'
@@ -28,6 +30,7 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
   const device = landingDevice(navigator)
   const mobileApp = device !== 'desktop'
   const supported = device === 'ios'
+  const storeUrl = supported ? appStoreUrl(import.meta.env.VITE_APP_STORE_URL) : null
   const [motionOverride, setMotionOverride] = useState<boolean | null>(null)
   const reducedMotion = motionOverride ?? systemReduced
   const createPath = `${roomPath()}#account=create`
@@ -99,13 +102,15 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
         <div className="welcome-hero-copy">
           <h1 id="welcome-title">Share a home.<br /><em>Not the hassle.</em></h1>
           <div className="welcome-actions">
-            {mobileApp
-              ? <button className="button primary welcome-enter" id="home-start" type="button" disabled aria-describedby="welcome-action-note">Download <ArrowRight size="1.125rem" /></button>
-              : <a className="button primary welcome-enter" id="home-start" href={createPath}>Get started <ArrowRight size="1.125rem" /></a>}
+            {supported
+              ? <a className="button primary welcome-enter" id="home-start" href="#ios-app" aria-describedby="welcome-action-note">Download <ArrowRight size="1.125rem" /></a>
+              : mobileApp
+                ? <button className="button primary welcome-enter" id="home-start" type="button" disabled aria-describedby="welcome-action-note">Download <ArrowRight size="1.125rem" /></button>
+                : <a className="button primary welcome-enter" id="home-start" href={createPath}>Get started <ArrowRight size="1.125rem" /></a>}
             <a className="welcome-text-link" href="#tour">Explore rooms <ArrowUpRight size="1rem" /></a>
           </div>
           <p className="welcome-action-note" id="welcome-action-note">{mobileApp
-            ? supported ? 'For iPhone and iPad. Currently in development.' : 'For iPhone and iPad only. Not available on Android.'
+            ? supported ? storeUrl ? 'For iPhone and iPad.' : 'For iPhone and iPad. Currently in development.' : 'For iPhone and iPad only. Not available on Android.'
             : 'Less chasing. More time together.'}</p>
         </div>
         <div className="welcome-home-frame">
@@ -114,6 +119,8 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
           </figure>
         </div>
       </section>
+
+      {supported && <IosAppPreview storeUrl={storeUrl} />}
 
       <section className="welcome-features welcome-container" id="how-it-works" aria-labelledby="features-title">
         <div className="welcome-section-heading">
@@ -139,7 +146,9 @@ export default function Welcome({ accessNotice, paused = false }: { accessNotice
             : <p>Each roommate signs in to their own account with an email code and accepts an invitation from the household owner. Single-use account recovery codes provide another way back in. You can also link an older kitchen without replacing its history, or <a href="/#recover">recover browser-only access</a> with its separate private kitchen code. These are different kinds of recovery code.</p>}</details>
           <details><summary><span>{mobileApp ? 'When can I download the mobile app?' : 'Can I use it without 3D?'}</span><Plus size="1.1875rem" /></summary>{mobileApp
             ? supported
-              ? <p>The Roomlings app for iPhone and iPad is still in development and is not available to download yet. In the meantime, you can explore the rooms here.</p>
+              ? storeUrl
+                ? <p>Now. The Roomlings app for iPhone and iPad is <a href={storeUrl} target="_blank" rel="noopener">on the App Store</a>. It opens the same household as the web app on a computer.</p>
+                : <p>The Roomlings app for iPhone and iPad is still in development and is not available to download yet. In the meantime, you can explore the rooms here.</p>
               : <p>The Roomlings app is being made for iPhone and iPad only. There is no Android app, and phones and tablets cannot use Roomlings in a browser. You can still explore the rooms here, or open Roomlings on a computer.</p>
             : <p>Yes. Every household tool is also available from the toolbar. Your account opens the same home in any desktop browser, including your saved chores, shopping, bills and repayments.</p>}</details>
         </div>
